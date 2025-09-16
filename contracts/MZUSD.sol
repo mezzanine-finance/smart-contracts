@@ -17,7 +17,7 @@ interface IVault {
 /// Users can mint MZUSD by depositing USDC and can burn MZUSD to redeem USDC.
 /// Withdrawals are instant if the vault has enough USDC liquidity,
 /// otherwise they are queued and processed later by anyone when liquidity is available.
-/// To limit risk, users have an hourly withdrawal limit (in USDC terms).
+/// To limit risk, the system enforces a global hourly redemption cap (in USDC terms).
 contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     using SafeERC20 for IERC20;
 
@@ -25,6 +25,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     struct WithdrawalRequest {
         address user;
         uint256 amountMZ; // store in 18-decimals MZ units
+        uint64 createdAt; // timestamp of request creation (for window accounting)
     }
 
     bytes32 public constant LIMIT_SETTER_ROLE = keccak256("LIMIT_SETTER_ROLE");
@@ -38,16 +39,17 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
 
-    // Hourly limit in USDC base units (6 decimals)
-    uint256 public hourlyWithdrawalLimitUSDC;
+    // Global hourly redemption cap (USDC-6)
+    uint256 public globalHourlyRedemptionCapUSDC; // 0 = disabled
+    uint64 public windowStartTimestamp; // start of current 1h window
+    uint256 public windowUsedUSDC; // consumed in current window (USDC-6)
 
     WithdrawalRequest[] public withdrawalQueue;
     uint256 public queueHead; // index of the next request to process
     mapping(address => uint256) private queueIndex; // idx+1 in withdrawal queue
 
-    // Track hourly spent in USDC base units
-    mapping(address => uint256) public hourlyWithdrawnUSDC;
-    mapping(address => uint256) public lastWithdrawalTimestamp;
+    event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
+    error GlobalHourlyCapExceeded();
 
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
     event InstantWithdrawal(
@@ -67,7 +69,6 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         uint256 usdcOut,
         uint256 queuePos
     );
-    event HourlyWithdrawalLimitUpdated(uint256 newLimitUSDC);
 
     error ZeroAmount();
     error ZeroAddress();
@@ -78,10 +79,10 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     error QueueEmpty();
     error InsufficientLiquidity();
     error DustOnlyWithdrawal(); // when mzAmount < SCALE -> would produce 0 USDC
-        
+
     /// @param _usdc Address of the USDC token contract
     /// @param _vault Address of the vault contract where USDC is stored
-    /// @param _hourlyLimitUSDC Initial hourly withdrawal limit per user (in USDC base units, 6 decimals)
+    /// @param _hourlyLimitUSDC Initial global hourly withdrawal limit (in USDC base units, 6 decimals)
     /// @param _admin Address to be granted admin roles
     constructor(
         address _usdc,
@@ -93,7 +94,8 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
             revert ZeroAddress();
         usdc = IERC20(_usdc);
         vault = IVault(_vault);
-        hourlyWithdrawalLimitUSDC = _hourlyLimitUSDC;
+        globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
+        windowStartTimestamp = uint64(block.timestamp);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(LIMIT_SETTER_ROLE, _admin);
@@ -116,10 +118,12 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     /// @param amountMZ Amount of MZUSD to burn (18 decimals)
     /// @dev If the vault has enough USDC liquidity, the withdrawal is instant.
     /// Otherwise, the request is queued and can be processed later by anyone.
-    /// Withdrawals are limited by an hourly limit per user (in USDC terms).
+    /// Withdrawals are limited by an hourly global limit (in USDC terms).
     /// 1 MZUSD (18 decimals) = 1 USDC (6 decimals)
     /// Any "dust" MZUSD that cannot be redeemed for USDC (amountMZ < 1e12) is kept by the protocol.
-    function withdraw(uint256 amountMZ) external whenNotPaused nonReentrant {
+    function withdrawalRequest(
+        uint256 amountMZ
+    ) external whenNotPaused nonReentrant {
         if (amountMZ == 0) revert ZeroAmount();
         if (balanceOf(msg.sender) < amountMZ) revert InsufficientBalance();
         if (queueIndex[msg.sender] != 0)
@@ -129,7 +133,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert DustOnlyWithdrawal();
 
-        _checkAndUpdateHourlyLimit(msg.sender, usdcOut);
+        _checkAndConsumeGlobalCap(usdcOut);
         _burn(msg.sender, amountMZ);
 
         uint256 vaultBal = usdc.balanceOf(address(vault));
@@ -138,7 +142,13 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
             emit InstantWithdrawal(msg.sender, amountMZ, usdcOut);
         } else {
             uint256 idx = withdrawalQueue.length;
-            withdrawalQueue.push(WithdrawalRequest(msg.sender, amountMZ));
+            withdrawalQueue.push(
+                WithdrawalRequest({
+                    user: msg.sender,
+                    amountMZ: amountMZ,
+                    createdAt: uint64(block.timestamp)
+                })
+            );
             queueIndex[msg.sender] = idx + 1;
             emit WithdrawalQueued(msg.sender, amountMZ, idx);
         }
@@ -153,6 +163,19 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         uint256 idx = idxPlus - 1;
         WithdrawalRequest memory req = withdrawalQueue[idx];
         uint256 last = withdrawalQueue.length - 1;
+
+        // remove from cap if request is in current window
+        uint256 usdcOut = req.amountMZ / SCALE;
+        if (
+            globalHourlyRedemptionCapUSDC != 0 &&
+            req.createdAt >= windowStartTimestamp
+        ) {
+            if (usdcOut <= windowUsedUSDC) {
+                windowUsedUSDC -= usdcOut;
+            } else {
+                windowUsedUSDC = 0;
+            }
+        }
 
         if (idx != last) {
             WithdrawalRequest memory tail = withdrawalQueue[last];
@@ -195,21 +218,42 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         delete withdrawalQueue[queueHead - 1];
     }
 
-    /// @notice Sets a new hourly withdrawal limit per user (in USDC terms)
-    /// @param newLimitUSDC New hourly withdrawal limit (in USDC base units, 6 decimals)
-    function setHourlyWithdrawalLimit(
-        uint256 newLimitUSDC
-    ) external onlyRole(LIMIT_SETTER_ROLE) {
-        hourlyWithdrawalLimitUSDC = newLimitUSDC;
-        emit HourlyWithdrawalLimitUpdated(newLimitUSDC);
-    }
-
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
+    }
+
+    /// @notice Sets a new global hourly redemption cap (in USDC terms)
+    /// @param newCapUSDC New hourly cap in USDC base units (6 decimals), 0 = disabled
+    /// @dev Can only be called by an account with the LIMIT_SETTER_ROLE role
+    function setGlobalHourlyRedemptionCap(
+        uint256 newCapUSDC
+    ) external onlyRole(LIMIT_SETTER_ROLE) {
+        globalHourlyRedemptionCapUSDC = newCapUSDC;
+        emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
+    }
+
+    /// @notice Returns the remaining USDC amount that can be redeemed in the current hourly window
+    /// @return remainingUSDC Remaining USDC amount that can be redeemed (6 decimals)
+    /// @return windowStart of the start of the current hourly window
+    function getRemainingGlobalHourlyCap()
+        external
+        view
+        returns (uint256 remainingUSDC, uint256 windowStart)
+    {
+        if (globalHourlyRedemptionCapUSDC == 0)
+            return (type(uint256).max, windowStartTimestamp);
+        if (block.timestamp >= uint256(windowStartTimestamp) + 1 hours) {
+            return (globalHourlyRedemptionCapUSDC, uint256(block.timestamp));
+        }
+        uint256 spent = windowUsedUSDC;
+        remainingUSDC = spent >= globalHourlyRedemptionCapUSDC
+            ? 0
+            : globalHourlyRedemptionCapUSDC - spent;
+        return (remainingUSDC, windowStartTimestamp);
     }
 
     /// @notice Returns the number of pending withdrawal requests in the queue
@@ -228,22 +272,6 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         if (idxPlus == 0) return (0, type(uint256).max);
         uint256 idx = idxPlus - 1;
         return (withdrawalQueue[idx].amountMZ, idx - queueHead);
-    }
-
-    /// @notice Returns the remaining hourly withdrawal limit for a user
-    /// @param user Address of the user
-    /// @return Remaining amount of USDC that the user can withdraw in the current hour (6 decimals)
-    function getRemainingHourlyLimit(
-        address user
-    ) external view returns (uint256) {
-        if (block.timestamp > lastWithdrawalTimestamp[user] + 1 hours) {
-            return hourlyWithdrawalLimitUSDC;
-        }
-        uint256 spent = hourlyWithdrawnUSDC[user];
-        return
-            spent >= hourlyWithdrawalLimitUSDC
-                ? 0
-                : hourlyWithdrawalLimitUSDC - spent;
     }
 
     /// @notice Simulates the amount of MZUSD that would be minted for a given USDC deposit
@@ -266,26 +294,26 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         usdcOut = amountMZ / SCALE;
         dustMZ = amountMZ % SCALE; // this “dust” is implicitly kept by protocol via floor
     }
-    
+
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
     }
 
-    /// @dev Checks and updates the hourly withdrawal limit for a user
-    /// Reverts if the new withdrawal would exceed the limit
-    /// @param user Address of the user
-    /// @param usdcAmount Amount of USDC to withdraw (6 decimals)
-    function _checkAndUpdateHourlyLimit(
-        address user,
-        uint256 usdcAmount
-    ) internal {
-        if (block.timestamp > lastWithdrawalTimestamp[user] + 1 hours) {
-            hourlyWithdrawnUSDC[user] = 0;
-        }
-        uint256 newTotal = hourlyWithdrawnUSDC[user] + usdcAmount;
-        if (newTotal > hourlyWithdrawalLimitUSDC) revert HourlyLimitExceeded();
+    /// @notice Checks and consumes the global hourly redemption cap
+    /// @param usdcAmount Amount of USDC (6 decimals) to check and consume from the global hourly cap
+    function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
+        uint256 cap = globalHourlyRedemptionCapUSDC;
+        if (cap == 0) return; // disabled
 
-        hourlyWithdrawnUSDC[user] = newTotal;
-        lastWithdrawalTimestamp[user] = block.timestamp;
+        // roll window if an hour passed
+        if (block.timestamp >= uint256(windowStartTimestamp) + 1 hours) {
+            windowStartTimestamp = uint64(block.timestamp);
+            windowUsedUSDC = 0;
+        }
+
+        uint256 newTotal = windowUsedUSDC + usdcAmount;
+        if (newTotal > cap) revert GlobalHourlyCapExceeded();
+
+        windowUsedUSDC = newTotal;
     }
 }
