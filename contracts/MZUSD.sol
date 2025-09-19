@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
 interface IVault {
     function withdraw(address token, address to, uint256 amount) external;
@@ -18,7 +19,7 @@ interface IVault {
 /// Withdrawals are instant if the vault has enough USDC liquidity,
 /// otherwise they are queued and processed later by anyone when liquidity is available.
 /// To limit risk, the system enforces a global hourly redemption cap (in USDC terms).
-contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
+contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged {
     using SafeERC20 for IERC20;
 
     // Request in MZUSD (18 decimals)
@@ -30,6 +31,8 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
 
     bytes32 public constant LIMIT_SETTER_ROLE = keccak256("LIMIT_SETTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
     IERC20 public immutable usdc;
     IVault public immutable vault;
@@ -88,9 +91,12 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         address _usdc,
         address _vault,
         uint256 _hourlyLimitUSDC,
-        address _admin
-    ) ERC20("MZUSD Token", "MZUSD") {
-        if (_admin == address(0) || _vault == address(0) || _usdc == address(0))
+        address _admin,
+        address accessManager
+    ) ERC20("MZUSD Token", "MZUSD") AccessManaged(accessManager) {
+       AccessManaged(accessManager);
+
+        if (_admin == address(0) || _vault == address(0) || _usdc == address(0) || accessManager == address(0))
             revert ZeroAddress();
         usdc = IERC20(_usdc);
         vault = IVault(_vault);
@@ -194,6 +200,8 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     /// @dev Can be called by anyone. If the vault has enough USDC liquidity,
     /// the request is fulfilled and the user receives USDC.
     /// Otherwise, the function reverts.
+
+    //todo check about fifo, maybe refactor
     function release() external nonReentrant {
         if (queueHead >= withdrawalQueue.length) revert QueueEmpty();
 
@@ -218,11 +226,19 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
         delete withdrawalQueue[queueHead - 1];
     }
 
-    function pause() external onlyRole(PAUSER_ROLE) {
+    function mint(address to, uint256 amount) external restricted onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external restricted onlyRole(BURNER_ROLE) {
+        _burn(from, amount);
+    }
+
+    function pause() external restricted onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external restricted onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 
@@ -231,7 +247,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl {
     /// @dev Can only be called by an account with the LIMIT_SETTER_ROLE role
     function setGlobalHourlyRedemptionCap(
         uint256 newCapUSDC
-    ) external onlyRole(LIMIT_SETTER_ROLE) {
+    ) external restricted onlyRole(LIMIT_SETTER_ROLE) {
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
