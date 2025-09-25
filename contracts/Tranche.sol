@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "./IVault.sol"; // Assumes IVault is in the same directory
+import "./IVault.sol";
 
 /**
  * @title Tranche
@@ -17,8 +17,8 @@ import "./IVault.sol"; // Assumes IVault is in the same directory
 contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
     /// @dev Represents a user's pending withdrawal request for a delayed withdrawal.
     struct Withdrawal {
-        uint128 shares;
-        uint128 unlocksAt;
+        uint256 shares;
+        uint256 unlocksAt;
     }
 
     /// @dev Role for accounts that can configure tranche parameters like unlock periods and deposit limits.
@@ -127,31 +127,22 @@ contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
      * If `unlockPeriod` is 0, withdrawal is instant. Otherwise, it initiates a delayed withdrawal request.
      * @param shares The amount of share tokens to withdraw.
      */
-    function requestWithdrawal(
-        uint256 shares
-    ) external whenNotPaused nonReentrant {
-        if (shares == 0 || balanceOf(msg.sender) < shares)
-            revert InvalidAmount();
+    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
+        if (shares == 0 || balanceOf(msg.sender) < shares) revert InvalidAmount();
 
         if (unlockPeriod == 0) {
-            // Instant withdrawal path
-            uint256 assets = super.redeem(shares, msg.sender, msg.sender);
-            // vault.notifyWithdrawal(trancheId, assets); // Interface for IVault needs this method
+            // instant path — выдаём mzUSD сразу
+            uint256 assets = redeem(shares, msg.sender, msg.sender);
             emit WithdrawalExecuted(msg.sender, shares, assets);
             return;
         }
 
-        // Delayed withdrawal path
-        if (withdrawalRequests[msg.sender].shares != 0)
-            revert ActiveWithdrawalRequestExists();
-
-        uint256 unlocksAt = block.timestamp + unlockPeriod;
-        _transfer(msg.sender, address(this), shares); // Lock shares in the contract
-
-        withdrawalRequests[msg.sender] = Withdrawal(
-            uint128(shares),
-            uint128(unlocksAt)
-        );
+        // delayed path — сразу фиксируем результат в эскроу
+        uint64 unlocksAt = uint64(block.timestamp  unlockPeriod);
+        // redeem переводит asset (mzUSD) на pendingEscrow
+        uint256 assets = redeem(shares, address(pendingEscrow), msg.sender);
+        // записываем долг и дедлайн
+        pendingEscrow.record(msg.sender, assets, unlocksAt);
         emit WithdrawalRequested(msg.sender, shares, unlocksAt);
     }
 
@@ -168,20 +159,9 @@ contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
         emit WithdrawalCancelled(msg.sender, req.shares);
     }
 
-    /**
-     * @dev Executes a delayed withdrawal request after the unlock period has passed.
-     */
-    function executeWithdrawal() external nonReentrant {
-        Withdrawal memory req = withdrawalRequests[msg.sender];
-        if (req.shares == 0) revert NoActiveWithdrawalRequest();
-        if (block.timestamp < req.unlocksAt) revert WithdrawalNotYetUnlocked();
-
-        delete withdrawalRequests[msg.sender];
-        // Redeem shares held by the contract and send assets to the user
-        uint256 assets = super.redeem(req.shares, msg.sender, address(this));
-
-        // vault.notifyWithdrawal(trancheId, assets); // Interface for IVault needs this method
-        emit WithdrawalExecuted(msg.sender, req.shares, assets);
+   
+    function executeWithdrawal() external nonReentrant whenNotPaused {
+        pendingEscrow.claimFor(msg.sender);
     }
 
     // -------- configuration --------
@@ -189,11 +169,11 @@ contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
     /**
      * @dev Updates the unlock period for this tranche.
      * @notice Can only be called by an account with `CONFIG_MANAGER_ROLE`.
-     * @param p The new unlock period in seconds. Setting to 0 enables instant withdrawals.
+     * @param period The new unlock period in seconds. Setting to 0 enables instant withdrawals.
      */
-    function setUnlockPeriod(uint256 p) external onlyRole(CONFIG_MANAGER_ROLE) {
-        unlockPeriod = p;
-        emit UnlockPeriodUpdated(p);
+    function setUnlockPeriod(uint256 period) external onlyRole(CONFIG_MANAGER_ROLE) {
+        unlockPeriod = period;
+        emit UnlockPeriodUpdated(period);
     }
 
     /**
@@ -216,17 +196,9 @@ contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
 
     // -------- view --------
 
-    /**
-     * @dev Returns the details of a user's pending delayed withdrawal.
-     * @param user The address of the user.
-     * @return The number of shares in the request.
-     * @return The timestamp when the withdrawal becomes available.
-     */
-    function getWithdrawalStatus(
-        address user
-    ) external view returns (uint256, uint256) {
-        Withdrawal memory r = withdrawalRequests[user];
-        return (r.shares, r.unlocksAt);
+    function getWithdrawalStatus(address user) external view returns (uint256 amountMZ, uint256 unlocksAt) {
+        (uint256 owed, uint256 ua) = pendingEscrow.getClaim(user);
+        return (owed, uint256(ua));
     }
 
     /**
@@ -235,6 +207,17 @@ contract Tranche is ERC4626, AccessControl, ReentrancyGuard, Pausable {
      */
     function pricePerShare() external view returns (uint256) {
         return convertToAssets(10 ** decimals());
+    }
+
+
+    function hasPendingWithdrawal(address user) external view returns (bool) {
+        (uint256 owed,) = pendingEscrow.getClaim(user);
+        return owed != 0;
+    }
+
+    function pendingAssets(address user) external view returns (uint256 assets, uint256 unlocksAt) {
+        (uint256 owed, uint64 ua) = pendingEscrow.getClaim(user);
+        return (owed, uint256(ua));
     }
 
     // -------- internal --------
