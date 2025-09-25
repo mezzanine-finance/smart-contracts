@@ -2,11 +2,12 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+
 
 interface IStrategy {
     function invest(uint256 amount) external returns (bool);
@@ -15,7 +16,7 @@ interface IStrategy {
     function totalAssets() external view returns (uint256);
 }
 
-contract SmallReservoirUSDC is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
+contract SmallReservoirUSDC is Initializable, AccessManagedUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     /* ---------- roles ----------*/
@@ -41,44 +42,46 @@ contract SmallReservoirUSDC is Initializable, AccessControlUpgradeable, Reentran
     error StrategyNotFound();
     error ZeroAmount();
     error InsufficientBalance();
+    error ZeroAddress();
+
+
+    //vault role + strategy manager role ()
 
     /* ---------- constructor ----------*/
     constructor() { _disableInitializers(); }
 
-    function initialize(address _admin, address _usdcAddress) external initializer {
-        __AccessControl_init();
+    function initialize(address _usdcAddress, address accessManager) external initializer {
+         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdcAddress);
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(VAULT_ROLE,           _admin);
-        _grantRole(STRATEGY_MANAGER_ROLE, _admin);
     }
 
     /* ---------------------------------------------------------
      *  Funds Management
      * -------------------------------------------------------*/
-    function deposit(uint256 amount) external onlyRole(VAULT_ROLE) nonReentrant {
+    function deposit(uint256 amount) external restricted nonReentrant {
         if (amount == 0) revert ZeroAmount();
         usdc.safeTransferFrom(msg.sender, address(this), amount);
         emit Deposited(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount, address to) external onlyRole(VAULT_ROLE) nonReentrant {
+    function withdraw(uint256 amount, address to) external restricted nonReentrant {
         if (amount == 0) revert ZeroAmount();
         uint256 localBal = usdc.balanceOf(address(this));
 
         if (localBal < amount) {
             uint256 needed = amount - localBal;
-            for (uint i = strategies.length; i > 0 && needed > 0; i--) {
+            uint256 len = strategies.length;
+            for (uint i = len; i > 0 && needed > 0; i--) {
                 IStrategy strat = strategies[i-1];
                 uint256 bal = strat.totalAssets();
                 if (bal == 0) continue;
                 uint256 toDivest = bal > needed ? needed : bal;
-                strat.divest(toDivest);
-                needed -= toDivest;
+                uint256 got = strat.divest(toDivest);
+                if (got == 0) continue;
+                needed = got >= needed ? 0 : needed - got;
             }
         }
 
@@ -91,15 +94,17 @@ contract SmallReservoirUSDC is Initializable, AccessControlUpgradeable, Reentran
     /* ---------------------------------------------------------
      *  Strategy Management
      * -------------------------------------------------------*/
-    function addStrategy(IStrategy strategy) external onlyRole(STRATEGY_MANAGER_ROLE) {
+    function addStrategy(IStrategy strategy) external restricted {
+        if (strategy == IStrategy(address(0))) revert ZeroAddress();
         if (isStrategyActive[strategy]) revert StrategyAlreadyExists();
         isStrategyActive[strategy] = true;
         strategies.push(strategy);
         emit StrategyAdded(strategy);
     }
 
-    function removeStrategy(IStrategy strategy) external onlyRole(STRATEGY_MANAGER_ROLE) {
+    function removeStrategy(IStrategy strategy) external restricted {
         if (!isStrategyActive[strategy]) revert StrategyNotFound();
+        usdc.forceApprove(address(strategy), 0); // reset approval
         // remove from array (swap & pop)
         for (uint i = 0; i < strategies.length; i++) {
             if (strategies[i] == strategy) {
@@ -112,23 +117,24 @@ contract SmallReservoirUSDC is Initializable, AccessControlUpgradeable, Reentran
         emit StrategyRemoved(strategy);
     }
 
-    function invest(IStrategy strategy, uint256 amount) external onlyRole(STRATEGY_MANAGER_ROLE) {
+    function invest(IStrategy strategy, uint256 amount) external restricted {
         if (!isStrategyActive[strategy]) revert StrategyNotFound();
         if (amount == 0) revert ZeroAmount();
         if (usdc.balanceOf(address(this)) < amount) revert InsufficientBalance();
 
         usdc.safeIncreaseAllowance(address(strategy), amount);
         strategy.invest(amount);
+        usdc.forceApprove(address(strategy), 0);
         emit Invested(strategy, amount);
     }
 
-    function divest(IStrategy strategy, uint256 amount) external onlyRole(STRATEGY_MANAGER_ROLE) {
+    function divest(IStrategy strategy, uint256 amount) external restricted {
         if (!isStrategyActive[strategy]) revert StrategyNotFound();
         strategy.divest(amount);
         emit Divested(strategy, amount);
     }
 
-    function harvest(IStrategy strategy) external {
+    function harvest(IStrategy strategy) external restricted{
         if (!isStrategyActive[strategy]) revert StrategyNotFound();
         strategy.harvest();
         emit Harvested(strategy);
@@ -146,7 +152,7 @@ contract SmallReservoirUSDC is Initializable, AccessControlUpgradeable, Reentran
     }
 
     /* ---------- UUPS ----------*/
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
 
     uint256[50] private __gap; // reserved for upgrades
 }
