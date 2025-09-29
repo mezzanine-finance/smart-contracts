@@ -30,12 +30,14 @@ contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
     error TooEarly(uint256 unlockAt);
     error NothingToClaim();
 
-    constructor(IERC20 _mzusd, address admin, address tranche)
+    constructor(IERC20 _mzusd, address admin, address tranche, address accessManager) AccessManaged(accessManager)
     {
         mzusd  = _mzusd;
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(TRANCHE_ROLE, tranche);
-        _grantRole(PAUSER_ROLE, admin);
+        
+        // @todo save roles to the central roles hub @anik-woof @NikitaWoofSoftware
+        // _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        // _grantRole(TRANCHE_ROLE, tranche);
+        // _grantRole(PAUSER_ROLE, admin);
     }
 
     // onlyRole(TRANCHE_ROLE)
