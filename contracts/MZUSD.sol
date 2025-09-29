@@ -94,7 +94,6 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
         address _admin,
         address accessManager
     ) ERC20("MZUSD Token", "MZUSD") AccessManaged(accessManager) {
-       AccessManaged(accessManager);
 
         if (_admin == address(0) || _vault == address(0) || _usdc == address(0) || accessManager == address(0))
             revert ZeroAddress();
