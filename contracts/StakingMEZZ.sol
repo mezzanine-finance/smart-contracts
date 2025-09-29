@@ -10,7 +10,7 @@ pragma solidity ^0.8.24;
  * - Unstake: burn sMEZZ → start unstake lock → claim() transfers MEZZ back.
  */
 
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -27,7 +27,7 @@ interface ISMEZZ is IERC20 {
 
 contract StakingMEZZ is
     Initializable,
-    AccessControlUpgradeable,
+    AccessManagedUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
@@ -35,12 +35,6 @@ contract StakingMEZZ is
     using SafeERC20 for IERC20;
 
     struct PendingWithdrawal { uint256 mezzAmount; uint256 unlockTs; }
-
-    // Roles
-    bytes32 public constant ADMIN_ROLE       = keccak256("ADMIN_ROLE");
-    bytes32 public constant PAUSER_ROLE      = keccak256("PAUSER_ROLE");
-    bytes32 public constant FLOW_STAKER_ROLE = keccak256("FLOW_STAKER_ROLE"); // authorized minter flow (MEZZ)
-    bytes32 public constant DONOR_ROLE       = keccak256("DONOR_ROLE");       // authorized donor (buyback via MEZZ)
 
     // Tokens
     IERC20 public mezz;   // the staked asset
@@ -62,18 +56,14 @@ contract StakingMEZZ is
 
     constructor() { _disableInitializers(); }
 
-    function initialize(address _admin, address _mezz, address _smezz) external initializer {
-        __AccessControl_init();
+    function initialize(address _mezz, address _smezz, address accessManager) external initializer {
+        __AccessManaged_init(accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
         mezz  = IERC20(_mezz);
         smezz = ISMEZZ(_smezz);
-
-        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-        _grantRole(ADMIN_ROLE,        _admin);
-        _grantRole(PAUSER_ROLE,       _admin);
     }
 
     /**
@@ -88,13 +78,13 @@ contract StakingMEZZ is
 
     /**
      * @notice Mint flow (called by MEZZ): apply deposit lock and mint sMEZZ to the end-user.
-     * @dev Caller must hold FLOW_STAKER_ROLE and transfer MEZZ in along this call.
+     * @dev AccessManager controls which callers can invoke this function (expected: MEZZ contract).
      */
     function stakeFromMint(address user, uint256 mezzAmount)
         external
         whenNotPaused
         nonReentrant
-        onlyRole(FLOW_STAKER_ROLE)
+        restricted
     {
         require(mezzAmount > 0, "amount=0");
         mezz.safeTransferFrom(msg.sender, address(this), mezzAmount);
@@ -108,13 +98,13 @@ contract StakingMEZZ is
 
     /**
      * @notice Donation flow (buyback): transfer MEZZ in without minting sMEZZ.
-     * @dev Caller must hold DONOR_ROLE. This simply increases the MEZZ pool held by the staking contract.
+     * @dev AccessManager controls caller authorization. This simply increases the MEZZ pool.
      */
     function donateFrom(address from, uint256 mezzAmount)
         external
         whenNotPaused
         nonReentrant
-        onlyRole(DONOR_ROLE)
+        restricted
     {
         require(mezzAmount > 0, "amount=0");
         mezz.safeTransferFrom(from, address(this), mezzAmount);
@@ -152,22 +142,19 @@ contract StakingMEZZ is
 
     // --- Admin ---
 
-    function setLockDurations(uint256 _deposit, uint256 _unstake) external onlyRole(ADMIN_ROLE) {
+    function setLockDurations(uint256 _deposit, uint256 _unstake) external restricted {
         depositLock = _deposit;
         unstakeLock = _unstake;
     }
 
-    function grantFlowStaker(address addr) external onlyRole(ADMIN_ROLE) { _grantRole(FLOW_STAKER_ROLE, addr); }
-    function grantDonor(address addr) external onlyRole(ADMIN_ROLE) { _grantRole(DONOR_ROLE, addr); }
-
     /// @notice Optionally grant sMEZZ MINTER_ROLE to another contract (e.g., this contract or MEZZ).
-    function setSmezzMinter(address addr) external onlyRole(ADMIN_ROLE) {
+    function setSmezzMinter(address addr) external restricted {
         smezz.grantRole(smezz.MINTER_ROLE(), addr);
     }
 
-    function pause() external onlyRole(PAUSER_ROLE) { _pause(); }
-    function unpause() external onlyRole(PAUSER_ROLE) { _unpause(); }
+    function pause() external restricted { _pause(); }
+    function unpause() external restricted { _unpause(); }
 
     // --- UUPS ---
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -15,11 +15,8 @@ interface IStrategy {
     function totalAssets() external view returns (uint256);
 }
 
-abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
+abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, AccessManagedUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
-
-    /* ---------- roles ----------*/
-    bytes32 public constant HARVESTER_ROLE = keccak256("HARVESTER_ROLE");
 
     /* ---------- state ----------*/
     address public reservoir;
@@ -31,23 +28,15 @@ abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, 
         _;
     }
 
-    modifier onlyHarvester() {
-        require(hasRole(HARVESTER_ROLE, _msgSender()), "Not harvester");
-        _;
-    }
-
     /* ---------- init ----------*/
-    function __BaseStrategy_init(address _admin, address _usdc, address _reservoir) internal onlyInitializing {
+    function __BaseStrategy_init(address _usdc, address _reservoir, address _accessManager) internal onlyInitializing {
         __Context_init();
-        __AccessControl_init();
+        __AccessManaged_init(_accessManager);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
         reservoir = _reservoir;
-
-        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-        _grantRole(HARVESTER_ROLE,     _admin);
     }
 
     /* ---------- IStrategy wrappers ----------*/
@@ -60,7 +49,7 @@ abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, 
         return _divest(amount);
     }
 
-    function harvest() external virtual override onlyHarvester nonReentrant {
+    function harvest() external virtual override restricted nonReentrant {
         _harvest();
     }
 
@@ -70,7 +59,7 @@ abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, 
     function _harvest() internal virtual;
 
     /* ---------- UUPS ----------*/
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
 
     uint256[50] private __gap;
 }

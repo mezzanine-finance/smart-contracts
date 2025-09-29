@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -39,7 +38,6 @@ interface IVault {
  */
 contract Vault is
     Initializable,
-    AccessControlUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
@@ -47,12 +45,6 @@ contract Vault is
     AccessManagedUpgradeable
 {
     using SafeERC20 for IERC20;
-
-    /* ─────────────── Roles ─────────────── */
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 public constant DISTRIBUTOR_ROLE = keccak256("DISTRIBUTOR_ROLE");
-    bytes32 public constant MZUSD_ROLE = keccak256("MZUSD_ROLE");
 
     uint256 public constant BPS = 10_000;
 
@@ -121,19 +113,17 @@ contract Vault is
     }
 
     /// @dev Initializes the contract with the given parameters.
-    /// @param _admin Address of the admin role
     /// @param _usdc Address of the USDC token contract (stablecoin backing MZUSD)
     /// @param _mzusd Address of the MZUSD token contract (mintable by vault, 18 decimals, protocol main stablecoin)
     /// @param _reservoir Address of the reservoir contract (for buffer and yield on strategies)
+    /// @param accessManager Access manager contract controlling restricted functions
     function initialize(
-        address _admin,
         address _usdc,
         address _mzusd,
         address _reservoir,
         address accessManager
     ) external initializer {
         if (
-            _admin == address(0) ||
             _usdc == address(0) ||
             _mzusd == address(0) ||
             _reservoir == address(0) ||
@@ -141,7 +131,6 @@ contract Vault is
         ) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
-        __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
@@ -149,11 +138,6 @@ contract Vault is
         usdc = IERC20(_usdc);
         mzusd = IMZUSD(_mzusd);
         reservoir = IReservoir(_reservoir);
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ADMIN_ROLE, _admin);
-        _grantRole(PAUSER_ROLE, _admin);
-        _grantRole(DISTRIBUTOR_ROLE, _admin);
 
         idleBufferUSDC = 1_000_000 * 1e6; // 1M USDC
         hysteresisBps = 500; // +-5 %
@@ -164,7 +148,7 @@ contract Vault is
         address to,
         uint256 amount
     ) external whenNotPaused nonReentrant {
-        if (!hasRole(MZUSD_ROLE, msg.sender)) revert NotMZUSD();
+        if (msg.sender != address(mzusd)) revert NotMZUSD();
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -201,7 +185,7 @@ contract Vault is
     /* ─────────────── Yield distribution ─────────────── */
     function distributeYield(
         uint256 usdcReported
-    ) external whenNotPaused nonReentrant restricted onlyRole(DISTRIBUTOR_ROLE) {
+    ) external whenNotPaused nonReentrant restricted {
         if (usdcReported == 0) revert ZeroAmount();
         if (tranches.length == 0) revert NoTranchesAdded();
 
@@ -283,7 +267,7 @@ contract Vault is
     /* ─────────────── Admin ─────────────── */
     /// @dev Sets the reservoir contract address.
     /// @param _reservoir Address of the reservoir contract (for buffer and yield on strategies)
-    function setReservoir(address _reservoir) external restricted onlyRole(ADMIN_ROLE) {
+    function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         reservoir = IReservoir(_reservoir);
         emit ReservoirUpdated(_reservoir);
@@ -291,18 +275,13 @@ contract Vault is
 
     /// @dev Sets the MZUSD contract address.
     /// @param _mzusd Address of the MZUSD token contract (mintable by vault, 18 decimals, protocol main stablecoin)
-    function setMZUSD(address _mzusd) external restricted onlyRole(ADMIN_ROLE) {
+    function setMZUSD(address _mzusd) external restricted {
         if (_mzusd == address(0)) revert ZeroAddress();
         
         address old = address(mzusd);
         if (old == _mzusd) return;
         
         mzusd = IMZUSD(_mzusd);
-        
-        _grantRole(MZUSD_ROLE, _mzusd);
-        if (old != address(0)) {
-            _revokeRole(MZUSD_ROLE, old);
-        }
         emit MZUSDChanged(_mzusd);
     }
 
@@ -316,7 +295,7 @@ contract Vault is
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
-    ) external restricted onlyRole(ADMIN_ROLE) {
+    ) external restricted {
         if (_performanceFeeBps > BPS || _protocolFeeBps > BPS)
             revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
@@ -345,7 +324,7 @@ contract Vault is
         address tranche,
         uint16 weightBps,
         bool enabled
-    ) external restricted onlyRole(ADMIN_ROLE) {
+    ) external restricted {
         if (tranche == address(0)) revert ZeroAddress();
         if (isTranche[tranche]) revert TrancheExists();
         tranches.push(TrancheInfo(tranche, weightBps, enabled));
@@ -357,7 +336,7 @@ contract Vault is
         uint256 idx,
         uint16 weightBps,
         bool enabled
-    ) external restricted onlyRole(ADMIN_ROLE) {
+    ) external restricted {
         if (idx >= tranches.length) revert TrancheIndexOOB();
         tranches[idx].weightBps = weightBps;
         tranches[idx].enabled = enabled;
@@ -367,7 +346,7 @@ contract Vault is
     function setInsurance(
         address _insurance,
         uint16 bps
-    ) external restricted onlyRole(ADMIN_ROLE) {
+    ) external restricted {
         if (bps > BPS) revert TooBigBps();
         if (_insurance == address(0)) revert ZeroAddress();
         insurance = _insurance;
@@ -378,17 +357,17 @@ contract Vault is
     function setBuffer(
         uint256 target,
         uint256 bandBps
-    ) external restricted onlyRole(ADMIN_ROLE) {
+    ) external restricted {
         idleBufferUSDC = target;
         hysteresisBps = bandBps;
         emit BufferUpdated(target, bandBps);
     }
 
-    function pause() external restricted onlyRole(PAUSER_ROLE) {
+    function pause() external restricted {
         _pause();
     }
 
-    function unpause() external restricted onlyRole(PAUSER_ROLE) {
+    function unpause() external restricted {
         _unpause();
     }
 
@@ -408,7 +387,7 @@ contract Vault is
     /* ─────────────── UUPS ─────────────── */
     function _authorizeUpgrade(
         address newImpl
-    ) internal override onlyRole(ADMIN_ROLE) {}
+    ) internal override restricted {}
 
     /* ─────────────── Helpers ─────────────── */
     function _approveIfNeeded(

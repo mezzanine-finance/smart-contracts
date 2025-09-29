@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
 interface IVault {
@@ -19,7 +18,7 @@ interface IVault {
 /// Withdrawals are instant if the vault has enough USDC liquidity,
 /// otherwise they are queued and processed later by anyone when liquidity is available.
 /// To limit risk, the system enforces a global hourly redemption cap (in USDC terms).
-contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged {
+contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessManaged {
     using SafeERC20 for IERC20;
 
     // Request in MZUSD (18 decimals)
@@ -28,11 +27,6 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
         uint256 amountMZ; // store in 18-decimals MZ units
         uint64 createdAt; // timestamp of request creation (for window accounting)
     }
-
-    bytes32 public constant LIMIT_SETTER_ROLE = keccak256("LIMIT_SETTER_ROLE");
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
     IERC20 public immutable usdc;
     IVault public immutable vault;
@@ -86,25 +80,20 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
     /// @param _usdc Address of the USDC token contract
     /// @param _vault Address of the vault contract where USDC is stored
     /// @param _hourlyLimitUSDC Initial global hourly withdrawal limit (in USDC base units, 6 decimals)
-    /// @param _admin Address to be granted admin roles
+    /// @param accessManager Access manager contract controlling restricted functions
     constructor(
         address _usdc,
         address _vault,
         uint256 _hourlyLimitUSDC,
-        address _admin,
         address accessManager
     ) ERC20("MZUSD Token", "MZUSD") AccessManaged(accessManager) {
 
-        if (_admin == address(0) || _vault == address(0) || _usdc == address(0) || accessManager == address(0))
+        if (_vault == address(0) || _usdc == address(0) || accessManager == address(0))
             revert ZeroAddress();
         usdc = IERC20(_usdc);
         vault = IVault(_vault);
         globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
         windowStartTimestamp = uint64(block.timestamp);
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(LIMIT_SETTER_ROLE, _admin);
-        _grantRole(PAUSER_ROLE, _admin);
     }
 
     /// @notice Mints MZUSD tokens in exchange for USDC deposited into the vault
@@ -225,28 +214,27 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
         delete withdrawalQueue[queueHead - 1];
     }
 
-    function mint(address to, uint256 amount) external restricted onlyRole(MINTER_ROLE) {
+    function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
 
-    function burn(address from, uint256 amount) external restricted onlyRole(BURNER_ROLE) {
+    function burn(address from, uint256 amount) external restricted {
         _burn(from, amount);
     }
 
-    function pause() external restricted onlyRole(PAUSER_ROLE) {
+    function pause() external restricted {
         _pause();
     }
 
-    function unpause() external restricted onlyRole(PAUSER_ROLE) {
+    function unpause() external restricted {
         _unpause();
     }
 
     /// @notice Sets a new global hourly redemption cap (in USDC terms)
     /// @param newCapUSDC New hourly cap in USDC base units (6 decimals), 0 = disabled
-    /// @dev Can only be called by an account with the LIMIT_SETTER_ROLE role
     function setGlobalHourlyRedemptionCap(
         uint256 newCapUSDC
-    ) external restricted onlyRole(LIMIT_SETTER_ROLE) {
+    ) external restricted {
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }

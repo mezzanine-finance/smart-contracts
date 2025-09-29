@@ -10,7 +10,7 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -30,17 +30,12 @@ interface IStakingMEZZ {
 contract MEZZ is
     Initializable,
     ERC20Upgradeable,
-    AccessControlUpgradeable,
+    AccessManagedUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
-
-    /* ─────────────── Roles ─────────────── */
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 public constant BUYBACK_ROLE = keccak256("BUYBACK_ROLE");
 
     uint256 public constant BPS_DIVISOR = 10_000;
 
@@ -77,13 +72,13 @@ contract MEZZ is
     }
 
     function initialize(
-        address _admin,
         address _usdc,
         address _vault,
-        address _staking
+        address _staking,
+        address _accessManager
     ) external initializer {
         __ERC20_init("MEZZ Token", "MEZZ");
-        __AccessControl_init();
+        __AccessManaged_init(_accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
@@ -91,10 +86,6 @@ contract MEZZ is
         usdc = IERC20(_usdc);
         vault = _vault;
         stakingContract = IStakingMEZZ(_staking);
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ADMIN_ROLE, _admin);
-        _grantRole(PAUSER_ROLE, _admin);
 
         maxOracleDelay = 1 hours;
     }
@@ -136,33 +127,33 @@ contract MEZZ is
     }
 
     /* ────────────────── Admin setters ────────────────── */
-    function setOracle(address _oracle) external onlyRole(ADMIN_ROLE) {
+    function setOracle(address _oracle) external restricted {
         priceOracle = IOracle(_oracle);
     }
 
-    function setMaxOracleDelay(uint256 _sec) external onlyRole(ADMIN_ROLE) {
+    function setMaxOracleDelay(uint256 _sec) external restricted {
         maxOracleDelay = _sec;
     }
 
-    function setDiscount(uint256 _bps) external onlyRole(ADMIN_ROLE) {
+    function setDiscount(uint256 _bps) external restricted {
         if (_bps >= BPS_DIVISOR) revert DiscountTooBig();
         discountBps = _bps;
     }
 
-    function setDepositLimit(uint256 _lim) external onlyRole(ADMIN_ROLE) {
+    function setDepositLimit(uint256 _lim) external restricted {
         depositLimit = _lim;
     }
 
-    function pause() external onlyRole(PAUSER_ROLE) {
+    function pause() external restricted {
         _pause();
     }
 
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external restricted {
         _unpause();
     }
 
     /* ─────────────── UUPS ─────────────── */
     function _authorizeUpgrade(
         address newImpl
-    ) internal override onlyRole(ADMIN_ROLE) {}
+    ) internal override restricted {}
 }

@@ -10,8 +10,8 @@ contract ExampleYieldStrategy is BaseStrategy {
     uint256 private mockInvestedBalance;
 
     /* ---------- initializer ----------*/
-    function initialize(address _admin, address _usdc, address _reservoir) external initializer {
-        __BaseStrategy_init(_admin, _usdc, _reservoir);
+    function initialize(address _usdc, address _reservoir, address _accessManager) external initializer {
+        __BaseStrategy_init(_usdc, _reservoir, _accessManager);
     }
 
     /* ---------- view ----------*/

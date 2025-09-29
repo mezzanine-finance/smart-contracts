@@ -10,9 +10,6 @@ import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant TRANCHE_ROLE = keccak256("TRANCHE_ROLE");
-    bytes32 public constant PAUSER_ROLE  = keccak256("PAUSER_ROLE");
-
     IERC20 public immutable mzusd;
 
     struct Claim {
@@ -30,7 +27,7 @@ contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
     error TooEarly(uint256 unlockAt);
     error NothingToClaim();
 
-    constructor(IERC20 _mzusd, address admin, address tranche, address accessManager) AccessManaged(accessManager)
+    constructor(IERC20 _mzusd, address, address, address accessManager) AccessManaged(accessManager)
     {
         mzusd  = _mzusd;
         
@@ -40,11 +37,11 @@ contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
         // _grantRole(PAUSER_ROLE, admin);
     }
 
-    // onlyRole(TRANCHE_ROLE)
+    // AccessManager restricts caller (tranche)
     function record(address user, uint256 amountMZ, uint256 unlockAt)
         external
         nonReentrant
-        
+        restricted
     {
         if (amountMZ == 0) revert ZeroAmount();
 
@@ -65,7 +62,7 @@ contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
         emit Claimed(msg.sender, userClaim.owed);
     }
 
-    function claimFor(address user) external nonReentrant whenNotPaused {
+    function claimFor(address user) external nonReentrant whenNotPaused restricted {
         Claim memory c = claims[user];
         if (c.owed == 0) revert NothingToClaim();
         if (block.timestamp < c.unlockAt) revert TooEarly(c.unlockAt);
