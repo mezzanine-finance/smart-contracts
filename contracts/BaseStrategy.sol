@@ -8,7 +8,12 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import "./IStrategy.sol";
+interface IStrategy {
+    function invest(uint256 amount) external returns (bool);
+    function divest(uint256 amount) external returns (uint256);
+    function harvest() external;
+    function totalAssets() external view returns (uint256);
+}
 
 abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
