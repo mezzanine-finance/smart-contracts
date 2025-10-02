@@ -9,16 +9,14 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
-interface IVault {
-    function withdraw(address token, address to, uint256 amount) external;
-}
+import "./interfaces/IVault.sol";
 
 /// @title MZUSD stablecoin
-/// @notice MZUSD is a USD-pegged stablecoin backed by USDC in a vault.
-/// Users can mint MZUSD by depositing USDC and can burn MZUSD to redeem USDC.
+/// @notice MZUSD is a USD-pegged stablecoin backed by USDC in a Vault
+/// Users can mint MZUSD by depositing USDC and can burn MZUSD to redeem USDC
 /// Withdrawals are instant if the vault has enough USDC liquidity,
-/// otherwise they are queued and processed later by anyone when liquidity is available.
-/// To limit risk, the system enforces a global hourly redemption cap (in USDC terms).
+/// otherwise they are queued and processed later by anyone when liquidity is available
+/// To limit risk, the system enforces a global hourly redemption cap (in USDC terms)
 contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged {
     using SafeERC20 for IERC20;
 
@@ -143,7 +141,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
 
         uint256 vaultBal = usdc.balanceOf(address(vault));
         if (vaultBal >= usdcOut) {
-            vault.withdraw(address(usdc), msg.sender, usdcOut);
+            vault.withdraw(msg.sender, usdcOut);
             emit InstantWithdrawal(msg.sender, amountMZ, usdcOut);
         } else {
             uint256 idx = withdrawalQueue.length;
@@ -214,7 +212,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessControl, AccessManaged
         delete queueIndex[req.user];
         queueHead++;
 
-        vault.withdraw(address(usdc), req.user, usdcOut);
+        vault.withdraw(req.user, usdcOut);
         emit WithdrawalProcessed(
             req.user,
             req.amountMZ,
