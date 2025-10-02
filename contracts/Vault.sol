@@ -98,19 +98,17 @@ contract Vault is
     }
 
     /// @dev Initializes the contract with the given parameters.
-    /// @param _admin Address of the admin role
     /// @param _usdc Address of the USDC token contract (stablecoin backing MZUSD)
     /// @param _mzusd Address of the MZUSD token contract (mintable by vault, 18 decimals, protocol main stablecoin)
     /// @param _reservoir Address of the reservoir contract (for buffer and yield on strategies)
+    /// @param accessManager Access manager contract controlling restricted functions
     function initialize(
-        address _admin,
         address _usdc,
         address _mzusd,
         address _reservoir,
         address accessManager
     ) external initializer {
         if (
-            _admin == address(0) ||
             _usdc == address(0) ||
             _mzusd == address(0) ||
             _reservoir == address(0) ||
