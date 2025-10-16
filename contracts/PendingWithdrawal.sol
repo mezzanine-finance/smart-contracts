@@ -63,20 +63,20 @@ contract PendingWithdrawal is AccessManaged, ReentrancyGuard, Pausable {
     }
 
     function claimFor(address user) external nonReentrant whenNotPaused restricted {
-        Claim memory c = claims[user];
-        if (c.owed == 0) revert NothingToClaim();
-        if (block.timestamp < c.unlockAt) revert TooEarly(c.unlockAt);
+        Claim memory userClaim = claims[user];
+        if (userClaim.owed == 0) revert NothingToClaim();
+        if (block.timestamp < userClaim.unlockAt) revert TooEarly(userClaim.unlockAt);
 
         delete claims[user];
-        mzusd.safeTransfer(user, c.owed);
-        emit Claimed(user, c.owed);
+        mzusd.safeTransfer(user, userClaim.owed);
+        emit Claimed(user, userClaim.owed);
     }
 
     function pause() external restricted { _pause(); }
     function unpause() external restricted { _unpause(); }
 
     function getClaim(address user) external view returns (uint256 owed, uint256 unlockAt) {
-        Claim memory c = claims[user];
-        return (c.owed, c.unlockAt);
+        Claim memory userClaim = claims[user];
+        return (userClaim.owed, userClaim.unlockAt);
     }
 }

@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
-
-/*
- * StakingMEZZ:
- * - Two inflow paths:
- *   (1) User stake: stake() → mint sMEZZ 1:1, NO deposit lock.
- *   (2) Mint flow: stakeFromMint(user, amount) → mint sMEZZ and APPLY deposit lock.
- *   (3) Buyback/donation: donateFrom(from, amount) → NO sMEZZ mint; grows MEZZ pool.
- * - Unstake: burn sMEZZ → start unstake lock → claim() transfers MEZZ back.
- */
+pragma solidity ^0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -25,6 +16,15 @@ interface ISMEZZ is IERC20 {
     function burn(address from, uint256 amount) external;
 }
 
+/* ─────────────── Custom errors ─────────────── */
+error AmountZero();
+error UserZero();
+error PendingWithdrawalExists();
+error NoPendingDeposit();
+error DepositLocked(uint256 unlockTs);
+error NothingToClaim();
+error UnlockPending(uint256 unlockTs);
+
 contract StakingMEZZ is
     Initializable,
     AccessManagedUpgradeable,
@@ -35,22 +35,25 @@ contract StakingMEZZ is
     using SafeERC20 for IERC20;
 
     struct PendingWithdrawal { uint256 mezzAmount; uint256 unlockTs; }
+    struct PendingDeposit    { uint256 mezzAmount; uint256 unlockTs; }
 
     // Tokens
     IERC20 public mezz;   // the staked asset
     ISMEZZ public smezz;  // ERC20Votes receipt/governance token
 
     // Locks
-    uint256 public depositLock;   // applies to stakeFromMint()
-    uint256 public unstakeLock;   // applies to unstake()
+    uint256 public depositLock;   // applies ONLY to MEZZ flow (stakeFromFlow)
+    uint256 public unstakeLock;   // applies to unstake() in all cases
 
     // State
-    mapping(address => uint256) public stakedUntil;        // deposit lock timestamp per user
-    mapping(address => PendingWithdrawal) public pending;  // active pending withdrawal per user
+    mapping(address => uint256) public stakedUntil; // DEPRECATED, kept for storage compatibility
+    mapping(address => PendingWithdrawal) public pending;          // withdrawals
+    mapping(address => PendingDeposit)    public pendingDeposit;   // delayed sMEZZ mints (MEZZ flow)
 
     // Events
     event Staked(address indexed user, uint256 amount, bool locked);
-    event Donated(address indexed from, uint256 amount);
+    event DepositQueued(address indexed user, uint256 amount, uint256 unlockTs);
+    event DepositClaimed(address indexed user, uint256 amount);
     event UnstakeInitiated(address indexed user, uint256 amount, uint256 unlockTs);
     event Claimed(address indexed user, uint256 amount);
 
@@ -66,81 +69,83 @@ contract StakingMEZZ is
         smezz = ISMEZZ(_smezz);
     }
 
-    /**
-     * @notice User-provided stake: transfer MEZZ in and mint sMEZZ 1:1. No deposit lock is applied.
-     */
+    /* ---------------- Direct user stake: MEZZ -> sMEZZ instantly (NO deposit lock) ---------------- */
+
     function stake(uint256 mezzAmount) external whenNotPaused nonReentrant {
-        require(mezzAmount > 0, "amount=0");
+        if (mezzAmount == 0) revert AmountZero();
         mezz.safeTransferFrom(msg.sender, address(this), mezzAmount);
         smezz.mint(msg.sender, mezzAmount);
         emit Staked(msg.sender, mezzAmount, false);
     }
 
-    /**
-     * @notice Mint flow (called by MEZZ): apply deposit lock and mint sMEZZ to the end-user.
-     * @dev AccessManager controls which callers can invoke this function (expected: MEZZ contract).
-     */
-    function stakeFromMint(address user, uint256 mezzAmount)
+    /* ---------------- MEZZ flow: queue deposit, mint sMEZZ only after depositLock ---------------- */
+
+    /// @notice Called by MEZZ contract. Transfers MEZZ from caller and applies deposit lock before minting sMEZZ.
+    function stakeFromFlow(address user, uint256 mezzAmount)
         external
         whenNotPaused
         nonReentrant
         restricted
     {
-        require(mezzAmount > 0, "amount=0");
+        if (user == address(0)) revert UserZero();
+        if (mezzAmount == 0) revert AmountZero();
+
+        // Pull MEZZ from the MEZZ contract (caller). MEZZ must approve this contract.
         mezz.safeTransferFrom(msg.sender, address(this), mezzAmount);
-        smezz.mint(user, mezzAmount);
 
-        uint256 newUnlock = block.timestamp + depositLock;
-        if (newUnlock > stakedUntil[user]) stakedUntil[user] = newUnlock;
+        if (depositLock == 0) {
+            // No deposit lock configured — mint sMEZZ immediately (back-compat mode)
+            smezz.mint(user, mezzAmount);
+            emit Staked(user, mezzAmount, false);
+            return;
+        }
 
-        emit Staked(user, mezzAmount, true);
+        // Aggregate into a single pending deposit per user
+        PendingDeposit memory pd = pendingDeposit[user];
+        uint256 newAmount  = pd.mezzAmount + mezzAmount;
+        uint256 baseUnlock = block.timestamp + depositLock;
+        uint256 newUnlock  = pd.unlockTs > baseUnlock ? pd.unlockTs : baseUnlock;
+
+        pendingDeposit[user] = PendingDeposit({ mezzAmount: newAmount, unlockTs: newUnlock });
+        emit DepositQueued(user, mezzAmount, newUnlock);
     }
 
-    /**
-     * @notice Donation flow (buyback): transfer MEZZ in without minting sMEZZ.
-     * @dev AccessManager controls caller authorization. This simply increases the MEZZ pool.
-     */
-    function donateFrom(address from, uint256 mezzAmount)
-        external
-        whenNotPaused
-        nonReentrant
-        restricted
-    {
-        require(mezzAmount > 0, "amount=0");
-        mezz.safeTransferFrom(from, address(this), mezzAmount);
-        emit Donated(from, mezzAmount);
+    /// @notice After depositLock, user claims sMEZZ minted 1:1 for queued MEZZ.
+    function claimDeposit() external whenNotPaused nonReentrant {
+        PendingDeposit memory pd = pendingDeposit[msg.sender];
+        if (pd.mezzAmount == 0) revert NoPendingDeposit();
+        if (block.timestamp < pd.unlockTs) revert DepositLocked(pd.unlockTs);
+
+        delete pendingDeposit[msg.sender];
+        smezz.mint(msg.sender, pd.mezzAmount);
+        emit DepositClaimed(msg.sender, pd.mezzAmount);
     }
 
-    /**
-     * @notice Begin unstake: burn sMEZZ and start the unstake lock countdown.
-     * @dev Only one pending withdrawal per user at a time.
-     */
+    /* ---------------- Unstake flow (applies to everyone) ---------------- */
+
+    /// @notice Burn sMEZZ → start unstake lock.
     function unstake(uint256 smezzAmount) external whenNotPaused nonReentrant {
-        require(smezzAmount > 0, "amount=0");
-        require(block.timestamp >= stakedUntil[msg.sender], "deposit lock");
-        require(pending[msg.sender].mezzAmount == 0, "pending");
-        smezz.burn(msg.sender, smezzAmount);
+        if (smezzAmount == 0) revert AmountZero();
+        if (pending[msg.sender].mezzAmount != 0) revert PendingWithdrawalExists();
 
-        pending[msg.sender] = PendingWithdrawal({
-            mezzAmount: smezzAmount,
-            unlockTs:   block.timestamp + unstakeLock
-        });
-        emit UnstakeInitiated(msg.sender, smezzAmount, pending[msg.sender].unlockTs);
+        smezz.burn(msg.sender, smezzAmount);
+        uint256 unlockTs = block.timestamp + unstakeLock;
+        pending[msg.sender] = PendingWithdrawal({ mezzAmount: smezzAmount, unlockTs: unlockTs });
+        emit UnstakeInitiated(msg.sender, smezzAmount, unlockTs);
     }
 
-    /**
-     * @notice Finish unstake after lock period: transfer MEZZ out to the user.
-     */
+    /// @notice Finish unstake: transfer MEZZ after unstakeLock.
     function claim() external whenNotPaused nonReentrant {
         PendingWithdrawal memory wd = pending[msg.sender];
-        require(wd.mezzAmount > 0, "none");
-        require(block.timestamp >= wd.unlockTs, "unlock pending");
+        if (wd.mezzAmount == 0) revert NothingToClaim();
+        if (block.timestamp < wd.unlockTs) revert UnlockPending(wd.unlockTs);
+
         delete pending[msg.sender];
         mezz.safeTransfer(msg.sender, wd.mezzAmount);
         emit Claimed(msg.sender, wd.mezzAmount);
     }
 
-    // --- Admin ---
+    /* ---------------- Admin ---------------- */
 
     function setLockDurations(uint256 _deposit, uint256 _unstake) external restricted {
         depositLock = _deposit;
@@ -155,6 +160,6 @@ contract StakingMEZZ is
     function pause() external restricted { _pause(); }
     function unpause() external restricted { _unpause(); }
 
-    // --- UUPS ---
+    /* ---------------- UUPS ---------------- */
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

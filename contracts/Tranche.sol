@@ -16,11 +16,9 @@ interface IPendingWithdrawal {
         address user
     ) external view returns (uint256 owed, uint256 unlockAt);
 }
-
-/**
- * @title Tranche (ERC4626)
- * @notice Instant: redeem to user. Delayed: redeem to escrow and fix amount at request time.
- */
+//todo deposit limit not per transaction but per all (global)
+/// @title Tranche (ERC4626) 
+/// @notice Instant redeem to user for Senior tranche. Delayed redeem to escrow and fix amount at request time.
 contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
     uint256 public constant BASIS_POINTS = 10_000;
 
@@ -121,7 +119,6 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         pendingWithdrawal.claimFor(msg.sender);
     }
 
-    /* ---------- config ---------- */
     function setUnlockPeriod(uint256 period) external restricted {
         unlockPeriod = period;
         emit UnlockPeriodUpdated(period);
@@ -139,7 +136,6 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
-    /* ---------- views ---------- */
     function pricePerShare() external view returns (uint256) {
         return convertToAssets(10 ** decimals());
     }
@@ -155,7 +151,6 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         return pendingWithdrawal.getClaim(user);
     }
 
-    /* ---------- internals ---------- */
     function _checkDepositLimit(uint256 amount) internal view {
         if (!depositLimitEnabled) return;
 

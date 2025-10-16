@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
 import "./interfaces/IVault.sol";
+//todo interfaces inheritance
 
 interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
@@ -60,6 +61,7 @@ contract Vault is
     TrancheInfo[] public tranches;
     mapping(address => bool) public isTranche;
 
+    //todo 2 epochs pass = two yield distributions
     uint256 public performanceFeeBps; // 1000 = 10%
     uint256 public protocolFeeBps; // 100  = 1%
     address public performanceFeeReceiver; // receiver of performance fee (mzUSD)

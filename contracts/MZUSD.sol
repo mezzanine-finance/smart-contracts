@@ -18,7 +18,7 @@ import "./interfaces/IVault.sol";
 /// To limit risk, the system enforces a global hourly redemption cap (in USDC terms).
 contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessManaged {
     using SafeERC20 for IERC20;
-
+    //todo transitional variables
     // Request in MZUSD (18 decimals)
     struct WithdrawalRequest {
         address user;
@@ -115,7 +115,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessManaged {
     /// Any "dust" MZUSD that cannot be redeemed for USDC (amountMZ < 1e12) is kept by the protocol.
     function withdrawalRequest(
         uint256 amountMZ
-    ) external whenNotPaused nonReentrant {
+    ) external nonReentrant whenNotPaused {
         if (amountMZ == 0) revert ZeroAmount();
         if (balanceOf(msg.sender) < amountMZ) revert InsufficientBalance();
         if (queueIndex[msg.sender] != 0)
@@ -186,8 +186,8 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessManaged {
     /// @dev Can be called by anyone. If the vault has enough USDC liquidity,
     /// the request is fulfilled and the user receives USDC.
     /// Otherwise, the function reverts.
-
     //todo check about fifo, maybe refactor
+    //todo grace 
     function release() external nonReentrant {
         if (queueHead >= withdrawalQueue.length) revert QueueEmpty();
 
