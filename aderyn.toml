@@ -1,0 +1,3 @@
+version = 1
+src = "contracts/"
+exclude = ["test/", "scripts/", "artifacts/", "cache/", "node_modules/"]
