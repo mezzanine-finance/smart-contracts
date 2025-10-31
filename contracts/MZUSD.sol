@@ -188,6 +188,7 @@ contract MZUSD is ERC20, ReentrancyGuard, Pausable, AccessManaged {
     /// Otherwise, the function reverts.
     //todo check about fifo, maybe refactor
     //todo grace 
+    //todo big amount - another queue
     function release() external nonReentrant {
         if (queueHead >= withdrawalQueue.length) revert QueueEmpty();
 
