@@ -1,4 +1,16 @@
 version = 1
 framework = "hardhat"
 src = "contracts/"
-exclude = ["test/", "scripts/", "artifacts/", "cache/", "node_modules/"]
+
+exclude = [
+  "test/",
+  "scripts/",
+  "artifacts/",
+  "cache/",
+  "node_modules/",
+
+  "contracts/mocks/**",
+  "contracts/test/**",
+  "contracts/deprecated/**",
+  "contracts/interfaces/external/**"
+]

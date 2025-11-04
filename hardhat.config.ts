@@ -16,15 +16,12 @@ import "@openzeppelin/hardhat-upgrades";
 
 const isOptionTrue = (option: string | undefined) => ["true", "1"].includes(option ?? "");
 const envs = process.env;
-/*
- * The solc compiler optimizer is disabled by default to keep the Hardhat stack traces' line numbers the same.
- * To enable, set `RUN_OPTIMIZER` to `true` in the `.env` file.
- */
+
+//The solc compiler optimizer is disabled by default to keep the Hardhat stack traces' line numbers the same.
+//To enable, set `RUN_OPTIMIZER` to `true` in the `.env` file.
 const optimizerRuns = isOptionTrue(envs.RUN_OPTIMIZER) || isOptionTrue(envs.REPORT_GAS);
 const optimizerRunNum = envs.OPTIMIZER_RUN_NUM ? +envs.OPTIMIZER_RUN_NUM : 200;
-
 const enableForking = isOptionTrue(envs.FORKING);
-
 const serial = isOptionTrue(envs.SERIAL);
 
 const config: HardhatUserConfig = {
@@ -86,7 +83,6 @@ const config: HardhatUserConfig = {
   mocha: {
     timeout: 400000,
     parallel: false,
-    // bail: true // Aborts after the first failure.
   },
 };
 
