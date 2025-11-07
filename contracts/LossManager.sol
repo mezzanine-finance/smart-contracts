@@ -10,15 +10,16 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
-    function burn(address from, uint256 amount) external; // LossManager has burn-rights
+
+    function burn(address from, uint256 amount) external;
 }
 
 interface ITrancheLike {
     function totalAssets() external view returns (uint256);
 }
 
-/// @title LossManager
-/// @notice Manages losses by burning mzUSD from tranches in a predefined order
+// @title LossManager
+// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
 contract LossManager is
     Initializable,
     AccessManagedUpgradeable,
@@ -31,7 +32,7 @@ contract LossManager is
     uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
 
     IMZUSD public mzusd;
-    address[] public trancheOrder; // [JLT, MLT, SMT], burn from these addresses in order
+    address[] public trancheOrder; // order to burn from
     uint256 public maxLossPerTxUSDC; // 0 = no limit
 
     event LossApplied(
@@ -49,6 +50,10 @@ contract LossManager is
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address accessManager,
         address _mzusd,
@@ -57,6 +62,7 @@ contract LossManager is
     ) external initializer {
         if (accessManager == address(0) || _mzusd == address(0))
             revert ZeroAddress();
+
         __AccessManaged_init(accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
@@ -67,7 +73,45 @@ contract LossManager is
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
-    // --- Admin via AccessManager ---
+    // ================= core =================
+
+    // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
+    function applyLoss(
+        uint256 usdcLoss
+    ) external whenNotPaused nonReentrant restricted {
+        if (usdcLoss == 0) revert ZeroAmount();
+        if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC)
+            revert LimitExceeded();
+
+        uint256 remaining = usdcLoss * SCALE; // convert 6d to 18d
+        uint256 orderLen = trancheOrder.length;
+        uint256[] memory cuts = new uint256[](orderLen);
+
+        for (uint256 i = 0; i < orderLen && remaining > 0; i++) {
+            address trancheAddr = trancheOrder[i];
+            uint256 tvl = ITrancheLike(trancheAddr).totalAssets(); // mzUSD 18d on tranche
+            if (tvl == 0) continue;
+
+            uint256 toBurn = tvl < remaining ? tvl : remaining;
+            mzusd.burn(trancheAddr, toBurn);
+
+            cuts[i] = toBurn;
+            remaining -= toBurn;
+        }
+
+        if (remaining > 0) revert InsufficientCover(remaining);
+
+        // copy storage -> memory for event
+        address[] memory orderCopy = new address[](orderLen);
+        for (uint256 j = 0; j < orderLen; j++) {
+            orderCopy[j] = trancheOrder[j];
+        }
+
+        emit LossApplied(usdcLoss, usdcLoss * SCALE, orderCopy, cuts);
+    }
+
+    // ================= admin =================
+
     function setTrancheOrder(address[] memory order) external restricted {
         _setTrancheOrder(order);
     }
@@ -85,49 +129,20 @@ contract LossManager is
         _unpause();
     }
 
-    // --- Core ---
-    function applyLoss(
-        uint256 usdcLoss
-    ) external whenNotPaused nonReentrant restricted {
-        if (usdcLoss == 0) revert ZeroAmount();
-        if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC)
-            revert LimitExceeded();
-
-        uint256 remaining = usdcLoss * SCALE; // 18d
-        uint256 trancheOLength = trancheOrder.length;
-        uint256[] memory cuts = new uint256[](trancheOLength);
-
-        for (uint256 i; i < trancheOLength && remaining > 0; ++i) {
-            address trancheInOrder = trancheOrder[i];
-            uint256 tvl = ITrancheLike(trancheInOrder).totalAssets(); // 18d mzUSD held by tranche
-            if (tvl == 0) continue;
-
-            uint256 take = tvl < remaining ? tvl : remaining;
-            // burn directly from tranche address (LossManager must have burn-rights)
-            mzusd.burn(trancheInOrder, take);
-
-            cuts[i] = take;
-            remaining -= take;
-        }
-
-        if (remaining > 0) revert InsufficientCover(remaining);
-        emit LossApplied(usdcLoss, usdcLoss * SCALE, trancheOrder, cuts);
-    }
-
+    // ================= views =================
     function trancheOrderLength() external view returns (uint256) {
         return trancheOrder.length;
     }
 
-    // --- Internals ---
+    // ================= internals =================
     function _setTrancheOrder(address[] memory order) internal {
         if (order.length == 0) revert ZeroLength();
-        for (uint256 i; i < order.length; ++i) {
+        for (uint256 i = 0; i < order.length; i++) {
             if (order[i] == address(0)) revert ZeroAddress();
         }
         trancheOrder = order;
         emit TrancheOrderUpdated(order);
     }
 
-    // UUPS upgrade auth via AccessManager
     function _authorizeUpgrade(address) internal override restricted {}
 }
