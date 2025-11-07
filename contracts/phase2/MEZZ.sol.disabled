@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.30;
+
+/*
+ * MEZZ — MEZZanine token contract
+ * - Users deposit USDC → mint MEZZ at oracle price (discount optional) → auto-stake.
+ * - Buyback contracts donate MEZZ to staking (no sMEZZ minted).
+ */
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
+interface IOracle {
+    function latestPrice() external view returns (uint256); // 1e8 USD per MEZZ
+
+    function latestTimestamp() external view returns (uint256);
+}
+
+interface IStakingMEZZ {
+    function stakeFromMint(address user, uint256 mezzAmount) external;
+
+    function donateFrom(address from, uint256 mezzAmount) external;
+}
+
+contract MEZZ is
+    Initializable,
+    ERC20Upgradeable,
+    AccessManagedUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
+    using SafeERC20 for IERC20;
+
+    uint256 public constant BPS_DIVISOR = 10_000;
+
+    /* ─────────────── Core state ─────────────── */
+    IERC20 public usdc;
+    address public vault;
+    IStakingMEZZ public stakingContract;
+
+    /* ─────────────── Pricing ─────────────── */
+    IOracle public priceOracle;
+    uint256 public maxOracleDelay; // in seconds
+
+    uint256 public discountBps; // 0 = no discount, 10000 = 100% discount, 5000 = 50% discount, 500 = 5% discount
+    uint256 public depositLimit; // USDC per tx (0 = unlimited)
+
+    event Minted(
+        address indexed user,
+        uint256 usdcIn,
+        uint256 mezzOut,
+        uint256 oraclePrice
+    );
+    // event BuybackReceived(address indexed from, uint256 mezzAmount);
+    
+    error ZeroAmount();
+    error DepositOverLimit();
+    error OracleUnset();
+    error PriceZero();
+    error OracleStale();
+    error DiscountTooBig();
+    error BuybackZero();
+
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _usdc,
+        address _vault,
+        address _staking,
+        address _accessManager
+    ) external initializer {
+        __ERC20_init("MEZZ Token", "MEZZ");
+        __AccessManaged_init(_accessManager);
+        __Pausable_init();
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
+        usdc = IERC20(_usdc);
+        vault = _vault;
+        stakingContract = IStakingMEZZ(_staking);
+
+        maxOracleDelay = 1 hours;
+    }
+
+    /* ────────────────── User mint flow ────────────────── */
+    function deposit(uint256 usdcAmount) external whenNotPaused nonReentrant {
+        if (usdcAmount == 0) revert ZeroAmount();
+        if (depositLimit != 0 && usdcAmount > depositLimit)
+            revert DepositOverLimit();
+        if (address(priceOracle) == address(0)) revert OracleUnset();
+
+        /* 1) Transfer USDC to vault */
+        usdc.safeTransferFrom(msg.sender, vault, usdcAmount);
+
+        /* 2) Oracle price checks */
+        uint256 price = priceOracle.latestPrice(); // 1e8 USD / MEZZ
+        if (price == 0) revert PriceZero();
+        if (block.timestamp - priceOracle.latestTimestamp() > maxOracleDelay)
+            revert OracleStale();
+
+        /* 3) Calculate MEZZ amount */
+        uint8 usdcDec = IERC20Metadata(address(usdc)).decimals(); // usually 6
+        uint256 mezzAmount = (usdcAmount * 1e8 * 10 ** decimals()) /
+            price /
+            (10 ** usdcDec);
+
+        if (discountBps != 0) {
+            mezzAmount =
+                (mezzAmount * BPS_DIVISOR) /
+                (BPS_DIVISOR - discountBps);
+        }
+
+        /* 4) Mint & auto-stake */
+        _mint(address(this), mezzAmount);
+        _approve(address(this), address(stakingContract), mezzAmount);
+        stakingContract.stakeFromMint(msg.sender, mezzAmount);
+
+        emit Minted(msg.sender, usdcAmount, mezzAmount, price);
+    }
+
+    /* ────────────────── Admin setters ────────────────── */
+    function setOracle(address _oracle) external restricted {
+        priceOracle = IOracle(_oracle);
+    }
+
+    function setMaxOracleDelay(uint256 _sec) external restricted {
+        maxOracleDelay = _sec;
+    }
+
+    function setDiscount(uint256 _bps) external restricted {
+        if (_bps >= BPS_DIVISOR) revert DiscountTooBig();
+        discountBps = _bps;
+    }
+
+    function setDepositLimit(uint256 _lim) external restricted {
+        depositLimit = _lim;
+    }
+
+    function pause() external restricted {
+        _pause();
+    }
+
+    function unpause() external restricted {
+        _unpause();
+    }
+
+    /* ─────────────── UUPS ─────────────── */
+    function _authorizeUpgrade(
+        address newImpl
+    ) internal override restricted {}
+}
