@@ -82,7 +82,7 @@ contract FeeEscrow is
     function claim(address to) external nonReentrant whenNotPaused {
         if (to == address(0)) revert ZeroAddress();
 
-        LockInfo storage info = locks[msg.sender];
+        LockInfo storage info = locks[_msgSender()];
         if (info.amount == 0) revert NothingToClaim();
 
         uint256 currentEpoch = vault.currentEpochId();
@@ -92,7 +92,7 @@ contract FeeEscrow is
         info.amount = 0;
 
         mzusd.safeTransfer(to, amount);
-        emit Claimed(msg.sender, amount);
+        emit Claimed(_msgSender(), amount);
     }
 
     function pause() external restricted {
