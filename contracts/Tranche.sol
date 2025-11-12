@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface IVaultEpochSource {
     function currentEpochId() external view returns (uint256);
@@ -13,13 +15,13 @@ interface IVaultEpochSource {
 
 // @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
-contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
+contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     uint256 public constant BASIS_POINTS = 10_000;
 
-    address public immutable vault;
-    uint256 public immutable trancheId;
+    address public vault;
+    uint256 public trancheId;
 
     uint256 public unstakeDelayEpochs;
 
@@ -66,7 +68,11 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
     error NothingToClaim();
     error ZeroAddress();
 
-    constructor(
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         IERC20 assetToken,
         address vaultAddress,
         uint256 trancheIdentifier,
@@ -76,12 +82,16 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         address accessManager,
         bool polJuniorMode,
         address polPayoutAddress
-    )
-        ERC20(name_, symbol_)
-        ERC4626(assetToken)
-        AccessManaged(accessManager)
-    {
+    ) external initializer {
         if (vaultAddress == address(0) || polPayoutAddress == address(0) || accessManager == address(0)) revert ZeroAddress();
+
+        __ERC20_init(name_, symbol_);
+        __ERC4626_init(assetToken);
+        __AccessManaged_init(accessManager);
+        __ReentrancyGuard_init();
+        __Pausable_init();
+        __UUPSUpgradeable_init();
+
         vault = vaultAddress;
         trancheId = trancheIdentifier;
         unstakeDelayEpochs = initialUnstakeDelayEpochs;
@@ -124,17 +134,17 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         uint256 shares
     ) external whenNotPaused nonReentrant {
         if (isPolJunior) revert InvalidAmount();
-        if (shares == 0 || balanceOf(msg.sender) < shares) revert InvalidAmount();
+        if (shares == 0 || balanceOf(_msgSender()) < shares) revert InvalidAmount();
 
         uint256 currentVaultEpoch = IVaultEpochSource(vault).currentEpochId();
         uint256 targetEpoch = currentVaultEpoch + unstakeDelayEpochs;
 
         umbrellaSharesByEpoch[targetEpoch] += shares;
-        userSharesByEpoch[msg.sender][targetEpoch] += shares;
+        userSharesByEpoch[_msgSender()][targetEpoch] += shares;
 
-        _transfer(msg.sender, address(this), shares);
+        _transfer(_msgSender(), address(this), shares);
 
-        emit UnstakeRequested(msg.sender, shares, currentVaultEpoch, targetEpoch);
+        emit UnstakeRequested(_msgSender(), shares, currentVaultEpoch, targetEpoch);
     }
 
     function finalizeEpoch(uint256 epochId)
@@ -165,7 +175,7 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
     }
 
     function claim(uint256 epochId) external nonReentrant whenNotPaused {
-        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
+        uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
@@ -175,11 +185,11 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
         // assets are stored on this contract and only transferred out on claim
         uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
-        userSharesByEpoch[msg.sender][epochId] = 0;
+        userSharesByEpoch[_msgSender()][epochId] = 0;
 
-        IERC20(asset()).safeTransfer(msg.sender, userAssets);
+        IERC20(asset()).safeTransfer(_msgSender(), userAssets);
 
-        emit WithdrawalClaimed(msg.sender, epochId, userAssets);
+        emit WithdrawalClaimed(_msgSender(), epochId, userAssets);
     }
 
     function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
@@ -220,4 +230,8 @@ contract Tranche is ERC4626, AccessManaged, ReentrancyGuard, Pausable {
             revert DepositLimitExceeded(amount, finalLimit);
         }
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
+
+    uint256[50] private __gap;
 }
