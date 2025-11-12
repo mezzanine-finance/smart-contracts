@@ -40,7 +40,7 @@ const config: HardhatUserConfig = {
               },
             },
           },
-          // evmVersion: "paris" // Example.
+          evmVersion: "cancun",
         },
       },
       // { version: "0.7.6" }
