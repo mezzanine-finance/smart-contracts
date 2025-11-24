@@ -23,6 +23,8 @@ interface IReservoir {
 
 interface ITranche {
     function totalAssets() external view returns (uint256);
+    function notifyYield(uint256 amount) external;
+
 }
 
 interface IFeeEscrow {
@@ -160,7 +162,6 @@ contract Vault is
         feeLockEpochs = 2;
     }
 
-    // ================= core =================
 
     function withdraw(
         address to,
@@ -228,7 +229,6 @@ contract Vault is
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
     }
 
-    // ================= admin =================
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         reservoir = IReservoir(_reservoir);
@@ -335,7 +335,6 @@ contract Vault is
         _unpause();
     }
 
-    // ================= views =================
 
     function tranchesLength() external view returns (uint256) {
         return tranches.length;
@@ -354,7 +353,6 @@ contract Vault is
         return trancheLossOrder;
     }
 
-    // ================= internals =================
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         if (block.timestamp < epochStart + minEpochDuration)
             revert EpochTooSoon();
@@ -449,6 +447,7 @@ contract Vault is
             if (score == 0) continue;
             uint256 part = (amountForTranches * score) / totalScore;
             IERC20(address(mzusd)).safeTransfer(tranches[i].tranche, part);
+            ITranche(tranches[i].tranche).notifyYield(part);
             allocated += part;
         }
 
