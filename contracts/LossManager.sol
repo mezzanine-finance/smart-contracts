@@ -73,7 +73,6 @@ contract LossManager is
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
-    // ================= core =================
 
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
     function applyLoss(
@@ -110,7 +109,6 @@ contract LossManager is
         emit LossApplied(usdcLoss, usdcLoss * SCALE, orderCopy, cuts);
     }
 
-    // ================= admin =================
 
     function setTrancheOrder(address[] memory order) external restricted {
         _setTrancheOrder(order);
@@ -129,12 +127,10 @@ contract LossManager is
         _unpause();
     }
 
-    // ================= views =================
     function trancheOrderLength() external view returns (uint256) {
         return trancheOrder.length;
     }
 
-    // ================= internals =================
     function _setTrancheOrder(address[] memory order) internal {
         if (order.length == 0) revert ZeroLength();
         for (uint256 i = 0; i < order.length; i++) {

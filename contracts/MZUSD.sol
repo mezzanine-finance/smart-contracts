@@ -43,12 +43,14 @@ contract MZUSD is
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
     event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
+    event SetVault(address vault);
 
     error ZeroAmount();
     error ZeroAddress();
     error InsufficientBalance();
     error InsufficientLiquidity();
     error GlobalHourlyCapExceeded();
+
 
     constructor() {
         _disableInitializers();
@@ -57,10 +59,9 @@ contract MZUSD is
     function initialize(
         address accessManager,
         address _usdc,
-        address _vault,
         uint256 _hourlyLimitUSDC
     ) external initializer {
-        if (accessManager == address(0) || _usdc == address(0) || _vault == address(0)) {
+        if (accessManager == address(0) || _usdc == address(0)) {
             revert ZeroAddress();
         }
 
@@ -71,7 +72,6 @@ contract MZUSD is
         __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
-        vault = IVault(_vault);
         globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
         windowStartTimestamp = uint64(block.timestamp);
     }
@@ -115,14 +115,6 @@ contract MZUSD is
         emit Withdrawal(_msgSender(), amountMZ, usdcOut);
     }
 
-    // function mint(address to, uint256 amount) external restricted {
-    //     _mint(to, amount);
-    // }
-
-    // function burn(address from, uint256 amount) external restricted {
-    //     _burn(from, amount);
-    // }
-
     function pause() external restricted {
         _pause();
     }
@@ -134,6 +126,12 @@ contract MZUSD is
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
+    }
+
+    function setVault(address _vault) external restricted { 
+        if (_vault == address(0)) revert ZeroAddress();
+        vault = IVault(_vault);
+        emit SetVault(address(vault));
     }
 
     function getRemainingGlobalHourlyCap()
@@ -201,6 +199,4 @@ contract MZUSD is
     }
 
     function _authorizeUpgrade(address) internal override restricted {}
-
-    uint256[40] private __gap;
 }

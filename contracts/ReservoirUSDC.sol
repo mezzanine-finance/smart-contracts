@@ -54,10 +54,10 @@ contract ReservoirUSDC is
     }
 
     function initialize(
-        address usdc_,
+        address _usdc,
         address accessManager
     ) external initializer {
-        if (usdc_ == address(0) || accessManager == address(0)) {
+        if (_usdc == address(0) || accessManager == address(0)) {
             revert ZeroAddress();
         }
 
@@ -65,7 +65,7 @@ contract ReservoirUSDC is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
-        usdc = IERC20(usdc_);
+        usdc = IERC20(_usdc);
     }
 
     /// @notice Vault calls this when it wants to park USDC here.
@@ -98,7 +98,4 @@ contract ReservoirUSDC is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override restricted {}
-
-    // extra gap in case we miscalculated future fields
-    uint256[45] private __gap;
 }
