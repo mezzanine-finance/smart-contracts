@@ -10,21 +10,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
 import "./interfaces/IVault.sol";
-
-interface IMZUSD is IERC20 {
-    function mint(address to, uint256 amount) external;
-}
+import "./interfaces/IMZUSD.sol";
 
 interface IReservoir {
     function deposit(uint256 amount) external;
-
     function withdraw(uint256 amount, address to) external;
 }
 
 interface ITranche {
     function totalAssets() external view returns (uint256);
     function notifyYield(uint256 amount) external;
-
 }
 
 interface IFeeEscrow {
@@ -44,7 +39,7 @@ contract Vault is
     AccessManagedUpgradeable
 {
     using SafeERC20 for IERC20;
-    
+
     struct TrancheInfo {
         address tranche;
         uint256 weightBps;
@@ -79,9 +74,6 @@ contract Vault is
     IFeeEscrow public feeEscrow;
     uint256 public feeLockEpochs;
 
-    // loss waterfall
-    uint256[] public trancheLossOrder;
-
     event FeesUpdated(
         uint256 performanceBps,
         address performanceReceiver,
@@ -108,12 +100,7 @@ contract Vault is
     event ReservoirUpdated(address newReservoir);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event FeeEscrowUpdated(address escrow, uint256 feeLockEpochs);
-    event TrancheLossOrderUpdated(uint256[] newOrder);
-    event LossApplied(
-        uint256 requestedLoss,
-        uint256 appliedLoss,
-        uint256 leftover
-    );
+    event MinEpochDurationSet(uint256 minEpochDuration);
 
     error ZeroAmount();
     error InsufficientUSDC();
@@ -162,11 +149,11 @@ contract Vault is
         feeLockEpochs = 2;
     }
 
-
+    //@dev usage by MZUSD to withdraw USDC for redemptions
     function withdraw(
         address to,
         uint256 amount
-    ) external whenNotPaused nonReentrant restricted {
+    ) external nonReentrant whenNotPaused restricted {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -179,7 +166,8 @@ contract Vault is
         emit WithdrawnUSDCFromVault(to, amount);
     }
 
-    function rebalance() external whenNotPaused {
+    //@dev using for rebalancing USDC between vault and reservoir
+    function rebalance() external nonReentrant whenNotPaused restricted {
         uint256 idle = usdc.balanceOf(address(this));
         uint256 low = (idleBufferUSDC * (BPS - hysteresisBps)) / BPS;
         uint256 high = (idleBufferUSDC * (BPS + hysteresisBps)) / BPS;
@@ -199,14 +187,14 @@ contract Vault is
         emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
     }
 
+    //@dev using for distribute yield to tranches
     function distributeYield(
         uint256 usdcReported
-    ) external whenNotPaused nonReentrant restricted {
+    ) external nonReentrant whenNotPaused restricted {
         if (usdcReported == 0) revert ZeroAmount();
         if (tranches.length == 0) revert NoTranchesAdded();
 
         uint256 newEpochId = _advanceEpochAndValidate();
-
         uint256 mintedGross = usdcReported * 1e12;
 
         (
@@ -229,6 +217,7 @@ contract Vault is
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
     }
 
+    //-----Setters-----
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         reservoir = IReservoir(_reservoir);
@@ -248,6 +237,7 @@ contract Vault is
         uint256 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted {
+        //todo question - summary fee could be > BPS?
         if (_performanceFeeBps > BPS || _protocolFeeBps > BPS)
             revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
@@ -310,6 +300,8 @@ contract Vault is
     }
 
     function setBuffer(uint256 target, uint256 bandBps) external restricted {
+        if (bandBps > BPS) revert TooBigBps();
+        if (target == 0) revert ZeroAmount();
         idleBufferUSDC = target;
         hysteresisBps = bandBps;
         emit BufferUpdated(target, bandBps);
@@ -325,6 +317,7 @@ contract Vault is
             epochStart = block.timestamp;
             emit EpochAdvanced(currentEpochId, epochStart);
         }
+        emit MinEpochDurationSet(_minEpochDuration);
     }
 
     function pause() external restricted {
@@ -334,7 +327,6 @@ contract Vault is
     function unpause() external restricted {
         _unpause();
     }
-
 
     function tranchesLength() external view returns (uint256) {
         return tranches.length;
@@ -349,8 +341,33 @@ contract Vault is
         high = (idleBufferUSDC * (BPS + hysteresisBps)) / BPS;
     }
 
-    function getTrancheLossOrder() external view returns (uint256[] memory) {
-        return trancheLossOrder;
+    function getTrancheInfo(
+        uint256 idx
+    ) external view returns (address tranche, uint256 weightBps, bool enabled) {
+        TrancheInfo memory t = tranches[idx];
+        return (t.tranche, t.weightBps, t.enabled);
+    }
+
+    function getFeesConfig()
+        external
+        view
+        returns (
+            uint256 _perfBps,
+            address _perfReceiver,
+            uint256 _protBps,
+            address _protReceiver,
+            address _feeEscrow,
+            uint256 _feeLockEpochs
+        )
+    {
+        return (
+            performanceFeeBps,
+            performanceFeeReceiver,
+            protocolFeeBps,
+            protocolFeeReceiver,
+            address(feeEscrow),
+            feeLockEpochs
+        );
     }
 
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
@@ -362,6 +379,7 @@ contract Vault is
         return currentEpochId;
     }
 
+    //todo optimize
     function _mintAndLockFees(
         uint256 mintedGross,
         uint256 epochId
