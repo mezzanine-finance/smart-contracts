@@ -9,9 +9,10 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
-
+import "./interfaces/IMZUSD.sol";
 import "./interfaces/IVault.sol";
 
+//todo approve + transfer 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
 contract MZUSD is
@@ -20,10 +21,10 @@ contract MZUSD is
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
     UUPSUpgradeable,
-    AccessManagedUpgradeable
+    AccessManagedUpgradeable,
+    IMZUSD
 {
     using SafeERC20 for IERC20;
-
 
     IERC20 public usdc;
     IVault public vault;
@@ -75,7 +76,9 @@ contract MZUSD is
         globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
         windowStartTimestamp = uint64(block.timestamp);
     }
-
+    
+    //todo check vault zero address
+    //todo restricted for all func
     /// @notice deposit USDC and mint MZUSD 1:1
     function deposit(uint256 amountUSDC) external whenNotPaused nonReentrant {
         if (amountUSDC == 0) revert ZeroAmount();
@@ -123,6 +126,10 @@ contract MZUSD is
         _unpause();
     }
 
+    function mint(address to, uint256 amount) external restricted {
+        _mint(to, amount);
+    }
+
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
@@ -134,6 +141,9 @@ contract MZUSD is
         emit SetVault(address(vault));
     }
 
+    //todo 1hour change to variable
+    //todo 3rd variable + discussion about return 0 or max if cap disabled
+    //todo maybe for limit - max or 1
     function getRemainingGlobalHourlyCap()
         external
         view
@@ -156,6 +166,7 @@ contract MZUSD is
         return amountUSDC * SCALE;
     }
 
+    //todo rename 
     function previewWithdrawal(uint256 amountMZ)
         external
         pure
@@ -164,6 +175,8 @@ contract MZUSD is
         usdcOut = amountMZ / SCALE;
         dustMZ = amountMZ % SCALE;
     }
+
+    //todo add preview withdrawal large info function
 
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
@@ -183,6 +196,7 @@ contract MZUSD is
         }
     }
 
+    //todo 1hour change to variable
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalHourlyRedemptionCapUSDC;
         if (cap == 0) return;
