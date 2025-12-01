@@ -5,6 +5,7 @@ import {
   impersonateAccount,
   setBalance,
   takeSnapshot,
+  time,
 } from "@nomicfoundation/hardhat-network-helpers";
 import type { SnapshotRestorer } from "@nomicfoundation/hardhat-network-helpers";
 import {
@@ -290,8 +291,7 @@ describe("MZUSD <-> USDC conversion", () => {
     ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
 
     // Move time forward by 1 hour to reset the rolling window
-    await network.provider.send("evm_increaseTime", [3600]);
-    await network.provider.send("evm_mine");
+    await time.increase(3600);
 
     // Now the same withdrawal should succeed
     const tx2 = await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
@@ -372,7 +372,6 @@ describe("MZUSD <-> USDC conversion", () => {
       .connect(deployer)
       .depositOnly(mzusd.target, usdc.target, helperPreDepositUSDC);
     await txHPre.wait();
-
     //TX5: helper withdrawThenDeposit (W -> D) 60 MZ, 60 USDC
 
     const helperWTD_MZ = to18(60n);
@@ -495,7 +494,6 @@ describe("MZUSD <-> USDC conversion", () => {
 
     const vaultBalanceAfter = await usdc.balanceOf(vault.target);
     expect(vaultBalanceAfter).to.equal(0n);
-
     // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
     await expect(
       mzusd.connect(alice).requestWithdrawal(to18(50n))
@@ -540,14 +538,13 @@ describe("MZUSD <-> USDC conversion", () => {
     expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
 
     // Scenario 3: Move time forward by 1 hour + 1 second, new window, full cap
-    await network.provider.send("evm_increaseTime", [3601]);
-    await network.provider.send("evm_mine");
+    await time.increase(3601);
 
-    const latestBlock = await ethers.provider.getBlock("latest");
+    const latestTs = await time.latest();
     [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
 
     expect(remaining).to.equal(capUSDC);
-    expect(windowStart).to.equal(latestBlock!.timestamp);
+    expect(windowStart).to.equal(BigInt(latestTs));
 
     // Preview helpers
 
