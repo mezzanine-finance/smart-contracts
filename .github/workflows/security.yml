@@ -1,43 +1,42 @@
 name: security
 
 on:
-  pull_request:
-    branches: [ main, develop ]
+    pull_request:
+        branches: [main, develop]
 
 jobs:
-  aderyn-and-slither:
-    runs-on: ubuntu-latest
+    aderyn-and-slither:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+            - name: Use Node.js 22
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
 
-      - name: Install deps
-        run: npm ci
+            - name: Install deps
+              run: npm ci
 
-      - name: Compile
-        run: npm run compile
+            - name: Compile
+              run: npm run compile
 
-      - name: Aderyn Check
-        uses: Cyfrin/aderyn-ci@v0
-        with:
+            - name: Aderyn Check
+              uses: Cyfrin/aderyn-ci@v0
+              with:
+                  fail-on: medium
+                  warn-on: low
 
-          fail-on: medium
-          warn-on: low
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+            - name: Install Slither
+              run: pip install slither-analyzer
 
-      - name: Install Slither
-        run: pip install slither-analyzer
-
-      - name: Run Slither
-        run: npm run slither
+            - name: Run Slither
+              run: npm run slither

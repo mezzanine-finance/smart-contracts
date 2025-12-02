@@ -43,10 +43,13 @@
     },
     "lint-staged": {
         "**/*.sol": [
-            "prettier --write"
+            "prettier --write",
+            "solhint --fix",
+            "hardhat check"
         ],
         "**/*.{js,ts}": [
-            "prettier --write"
+            "prettier --write",
+            "eslint --fix"
         ]
     },
     "engines": {

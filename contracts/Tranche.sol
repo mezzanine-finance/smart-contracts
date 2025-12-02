@@ -15,6 +15,7 @@ interface IVaultEpochSource {
 }
 
 // @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
+// solhint-disable-next-line max-line-length
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
 // @dev Added linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 contract Tranche is
