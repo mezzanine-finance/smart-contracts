@@ -6,11 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract MZUSDNettingHelper {
     // Simple deposit to preload MZUSD balance for this helper
-    function depositOnly(
-        address mzusd,
-        address usdc,
-        uint256 depositUSDC
-    ) external {
+    function depositOnly(address mzusd, address usdc, uint256 depositUSDC) external {
         IERC20(usdc).approve(mzusd, depositUSDC);
         MZUSD(mzusd).deposit(depositUSDC);
     }
@@ -27,7 +23,7 @@ contract MZUSDNettingHelper {
         MZUSD(mzusd).requestWithdrawal(withdrawMZ);
     }
 
-    // W -> D 
+    // W -> D
     function withdrawThenDeposit(
         address mzusd,
         address usdc,

@@ -34,9 +34,7 @@ interface IMZUSD is IERC20 {
         returns (uint256 remainingUSDC, uint256 windowStart);
 
     /// @notice preview how much MZ will be minted for given USDC
-    function calculateDeposit(
-        uint256 amountUSDC
-    ) external pure returns (uint256 mintMZ);
+    function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ);
 
     /// @notice preview USDC out and dust for given MZ amount
     function calculateWithdrawalAmounts(

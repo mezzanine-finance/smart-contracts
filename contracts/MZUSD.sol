@@ -12,10 +12,10 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "./interfaces/IMZUSD.sol";
 import "./interfaces/IVault.sol";
 
-//todo approve + transfer 
+//todo approve + transfer
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
- contract MZUSD is
+contract MZUSD is
     Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
@@ -57,8 +57,7 @@ import "./interfaces/IVault.sol";
     error ZeroCap();
     error ZeroDuration();
 
-
-     constructor() {
+    constructor() {
         _disableInitializers();
     }
 
@@ -82,7 +81,7 @@ import "./interfaces/IVault.sol";
         windowStartTimestamp = uint64(block.timestamp);
         redemptionWindowDuration = 1 hours;
     }
-    
+
     /// @notice deposit USDC and mint MZUSD 1:1
     function deposit(uint256 amountUSDC) external nonReentrant whenNotPaused restricted {
         if (vault == IVault(address(0))) revert ZeroAddress();
@@ -141,7 +140,7 @@ import "./interfaces/IVault.sol";
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
 
-    function setVault(address _vault) external restricted { 
+    function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         vault = IVault(_vault);
         emit SetVault(address(vault));
@@ -188,8 +187,10 @@ import "./interfaces/IVault.sol";
         return amountUSDC * SCALE;
     }
 
-   /// @notice Pure calculator - converts MZUSD amount to USDC and dust.
-     function calculateWithdrawalAmounts(uint256 amountMZ) public pure returns (uint256 usdcOut, uint256 dustMZ) {
+    /// @notice Pure calculator - converts MZUSD amount to USDC and dust.
+    function calculateWithdrawalAmounts(
+        uint256 amountMZ
+    ) public pure returns (uint256 usdcOut, uint256 dustMZ) {
         usdcOut = amountMZ / SCALE;
         dustMZ = amountMZ % SCALE;
     }
@@ -198,62 +199,71 @@ import "./interfaces/IVault.sol";
         return MZ_DECIMALS;
     }
 
-    function previewWithdrawalFlat(uint256 amountMZ) external view
-    returns (
-        uint256 requestedMZ,
-        uint256 userBalanceMZ,
-        bool hasEnoughMZ,
-        uint256 usdcOut,
-        uint256 dustMZ,
-        uint256 vaultLiquidityUSDC,
-        bool hasSufficientLiquidity,
-        uint256 globalCapUSDC,
-        uint256 windowStart,
-        uint256 windowEnd,
-        uint256 windowUsedUSDC_,
-        uint256 windowRemainingUSDC,
-        bool isGlobalCapZero,
-        bool wouldExceedGlobalCap
-    ) {
-    requestedMZ = amountMZ;
+    function previewWithdrawalFlat(
+        uint256 amountMZ
+    )
+        external
+        view
+        returns (
+            uint256 requestedMZ,
+            uint256 userBalanceMZ,
+            bool hasEnoughMZ,
+            uint256 usdcOut,
+            uint256 dustMZ,
+            uint256 vaultLiquidityUSDC,
+            bool hasSufficientLiquidity,
+            uint256 globalCapUSDC,
+            uint256 windowStart,
+            uint256 windowEnd,
+            uint256 windowUsedUSDC_,
+            uint256 windowRemainingUSDC,
+            bool isGlobalCapZero,
+            bool wouldExceedGlobalCap
+        )
+    {
+        requestedMZ = amountMZ;
 
-    userBalanceMZ = balanceOf(_msgSender());
-    hasEnoughMZ = userBalanceMZ >= amountMZ;
+        userBalanceMZ = balanceOf(_msgSender());
+        hasEnoughMZ = userBalanceMZ >= amountMZ;
 
-    (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);
+        (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);
 
-    if (address(vault) != address(0)) {
-        vaultLiquidityUSDC = usdc.balanceOf(address(vault));
-    } else {
-        vaultLiquidityUSDC = 0;
-    }
-    hasSufficientLiquidity = vaultLiquidityUSDC >= usdcOut;
+        if (address(vault) != address(0)) {
+            vaultLiquidityUSDC = usdc.balanceOf(address(vault));
+        } else {
+            vaultLiquidityUSDC = 0;
+        }
+        hasSufficientLiquidity = vaultLiquidityUSDC >= usdcOut;
 
-    globalCapUSDC = globalHourlyRedemptionCapUSDC;
-    isGlobalCapZero = (globalCapUSDC == 0);
+        globalCapUSDC = globalHourlyRedemptionCapUSDC;
+        isGlobalCapZero = (globalCapUSDC == 0);
 
-    (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
+        (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
 
-    uint256 storedUsed = windowUsedUSDC;
-    if (globalCapUSDC > 0 && globalCapUSDC != type(uint256).max && windowRemainingUSDC <= globalCapUSDC) {
-        windowUsedUSDC_ = globalCapUSDC - windowRemainingUSDC;
-    } else {
-        windowUsedUSDC_ = storedUsed;
-    }
+        uint256 storedUsed = windowUsedUSDC;
+        if (
+            globalCapUSDC > 0 &&
+            globalCapUSDC != type(uint256).max &&
+            windowRemainingUSDC <= globalCapUSDC
+        ) {
+            windowUsedUSDC_ = globalCapUSDC - windowRemainingUSDC;
+        } else {
+            windowUsedUSDC_ = storedUsed;
+        }
 
-    if (redemptionWindowDuration == 0) {
-        windowEnd = windowStart;
-    } else {
-        windowEnd = windowStart + redemptionWindowDuration;
-    }
+        if (redemptionWindowDuration == 0) {
+            windowEnd = windowStart;
+        } else {
+            windowEnd = windowStart + redemptionWindowDuration;
+        }
 
-    if (globalCapUSDC == 0) {
-        wouldExceedGlobalCap = (usdcOut > 0);
-    } else if (globalCapUSDC == type(uint256).max) {
-        wouldExceedGlobalCap = false;
-    } else {
-        wouldExceedGlobalCap = (usdcOut > windowRemainingUSDC);
-    }
+        if (globalCapUSDC == 0) {
+            wouldExceedGlobalCap = (usdcOut > 0);
+        } else if (globalCapUSDC == type(uint256).max) {
+            wouldExceedGlobalCap = false;
+        } else {
+            wouldExceedGlobalCap = (usdcOut > windowRemainingUSDC);
+        }
     }
 
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {

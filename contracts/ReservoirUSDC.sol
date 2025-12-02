@@ -53,10 +53,7 @@ contract ReservoirUSDC is
         _disableInitializers();
     }
 
-    function initialize(
-        address _usdc,
-        address accessManager
-    ) external initializer {
+    function initialize(address _usdc, address accessManager) external initializer {
         if (_usdc == address(0) || accessManager == address(0)) {
             revert ZeroAddress();
         }
@@ -76,10 +73,7 @@ contract ReservoirUSDC is
     }
 
     /// @notice Vault calls this when it wants to pull USDC back.
-    function withdraw(
-        uint256 amount,
-        address to
-    ) external override restricted nonReentrant {
+    function withdraw(uint256 amount, address to) external override restricted nonReentrant {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 
@@ -95,7 +89,5 @@ contract ReservoirUSDC is
         return usdc.balanceOf(address(this));
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override restricted {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

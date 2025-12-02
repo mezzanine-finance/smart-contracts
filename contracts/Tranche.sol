@@ -72,11 +72,7 @@ contract Tranche is
         uint256 requestEpoch,
         uint256 targetEpoch
     );
-    event EpochFinalized(
-        uint256 indexed epochId,
-        uint256 sharesBurned,
-        uint256 assetsFinal
-    );
+    event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
     event PolJuniorUpdated(bool enabled, address payout);
@@ -122,7 +118,9 @@ contract Tranche is
             vaultAddress == address(0) ||
             polPayoutAddress == address(0) ||
             accessManager == address(0)
-        ) revert ZeroAddress();
+        ) {
+            revert ZeroAddress();
+        }
 
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
@@ -248,9 +246,7 @@ contract Tranche is
         shares = super.deposit(assets, receiver);
     }
 
-    function requestWithdrawal(
-        uint256 shares
-    ) external whenNotPaused nonReentrant {
+    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
         if (isPolJunior) revert InvalidAmount();
         if (shares == 0 || balanceOf(_msgSender()) < shares) revert InvalidAmount();
 
@@ -265,12 +261,7 @@ contract Tranche is
         emit UnstakeRequested(_msgSender(), shares, currentVaultEpoch, targetEpoch);
     }
 
-    function finalizeEpoch(uint256 epochId)
-        external
-        nonReentrant
-        whenNotPaused
-        restricted
-    {
+    function finalizeEpoch(uint256 epochId) external nonReentrant whenNotPaused restricted {
         uint256 currentVaultEpoch = IVaultEpochSource(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -302,8 +293,7 @@ contract Tranche is
 
         // user keeps tranche exposure until this moment because shares stayed on tranche
         // assets are stored on this contract and only transferred out on claim
-        uint256 userAssets =
-            (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
+        uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
         userSharesByEpoch[_msgSender()][epochId] = 0;
 
@@ -319,11 +309,7 @@ contract Tranche is
         emit UnstakeDelayUpdated(epochsDelay);
     }
 
-    function setDepositLimits(
-        bool enabled,
-        uint256 cap,
-        uint256 tvlBps
-    ) external restricted {
+    function setDepositLimits(bool enabled, uint256 cap, uint256 tvlBps) external restricted {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
         depositLimitEnabled = enabled;
         maxDepositCap = cap;
@@ -351,9 +337,5 @@ contract Tranche is
         }
     }
 
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        restricted
-    {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }
