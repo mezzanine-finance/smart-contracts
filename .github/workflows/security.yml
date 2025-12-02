@@ -2,7 +2,7 @@ name: security
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [ main, develop ]
 
 jobs:
   aderyn-and-slither:
@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
 
       - name: Install deps
         run: npm ci
@@ -24,37 +24,17 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Run Aderyn
-        run: |
-          npx aderyn \
-            --output reports/aderyn.md
-
-      - name: Fail if Aderyn found Medium+ issues
-        run: |
-          REPORT="reports/aderyn.md"
-
-          if [ ! -f "$REPORT" ]; then
-            echo "Aderyn report not found at $REPORT"
-            exit 1
-          fi
-
-          if grep -qE '^## (High|Medium) Issues' "$REPORT"; then
-            echo "Aderyn found High/Medium issues. Failing CI."
-            exit 1
-          else
-            echo "Aderyn: no Medium+ issues ✅"
-          fi
-
-      - name: Upload Aderyn report
-        uses: actions/upload-artifact@v4
+      - name: Aderyn Check
+        uses: Cyfrin/aderyn-ci@v0
         with:
-          name: aderyn-report
-          path: reports/aderyn.md
+
+          fail-on: medium
+          warn-on: low
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install Slither
         run: pip install slither-analyzer

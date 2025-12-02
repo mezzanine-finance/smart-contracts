@@ -1,110 +1,97 @@
-import { ethers, upgrades, network, run } from "hardhat";
-import { parseUnits } from "ethers";
+import {ethers, upgrades, network, run} from "hardhat";
+import {parseUnits} from "ethers";
 import {
-  loadDeployments,
-  saveDeployments,
-  recordDeployment,
-  getLatestDeployment,
+    loadDeployments,
+    saveDeployments,
+    recordDeployment,
+    getLatestDeployment,
 } from "./utils/deployments";
-import { DEPLOY_INFO } from "./deployInfo";
+import {DEPLOY_INFO} from "./deployInfo";
 
-async function verifyContract(
-  address: string,
-  constructorArguments: any[] = []
-) {
-  if (network.name === "hardhat") {
-    console.log("Skipping verification on hardhat network");
-    return;
-  }
+async function verifyContract(address: string, constructorArguments: any[] = []) {
+    if (network.name === "hardhat") {
+        console.log("Skipping verification on hardhat network");
+        return;
+    }
 
-  try {
-    console.log(`Verifying contract at ${address}...`);
-    await run("verify:verify", {
-      address,
-      constructorArguments,
-    });
-    console.log("Verification successful ✅");
-  } catch (error: any) {
-    console.log(
-      "Verification failed or already verified:",
-      error?.message ?? error
-    );
-  }
+    try {
+        console.log(`Verifying contract at ${address}...`);
+        await run("verify:verify", {
+            address,
+            constructorArguments,
+        });
+        console.log("Verification successful ✅");
+    } catch (error: any) {
+        console.log("Verification failed or already verified:", error?.message ?? error);
+    }
 }
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
-  const netName = network.name;
+    const [deployer] = await ethers.getSigners();
+    const netName = network.name;
 
-  const info = DEPLOY_INFO[netName];
-  if (!info) {
-    throw new Error(`DeployInfo not found for network: ${netName}`);
-  }
-
-  console.log("=== Deploy MZUSD (UUPS proxy) ===");
-  console.log("Network:", netName);
-  console.log("Deployer:", deployer.address);
-
-  const deployments = loadDeployments();
-
-  const usdcAddress = info.usdc;
-  const accessManagerRecord = getLatestDeployment(
-    deployments,
-    netName,
-    "AccessManager"
-  );
-  const accessManagerAddress = accessManagerRecord?.address;
-
-  if (!accessManagerAddress) {
-    throw new Error(
-      "AccessManager not deployed for this network. Deploy it first."
-    );
-  }
-
-  const hourlyCapHuman = info.mzusdHourlyCap;
-  const hourlyCapUSDC = parseUnits(hourlyCapHuman, 6);
-
-  console.log("USDC:", usdcAddress);
-  console.log("AccessManager:", accessManagerAddress);
-  console.log("Hourly cap (USDC):", hourlyCapHuman);
-
-  upgrades.silenceWarnings();
-
-  const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-  const mzusd = await upgrades.deployProxy(
-    MZUSDFactory,
-    [accessManagerAddress, usdcAddress, hourlyCapUSDC],
-    {
-      kind: "uups",
-      initializer: "initialize",
-      unsafeAllow: ["constructor"],
+    const info = DEPLOY_INFO[netName];
+    if (!info) {
+        throw new Error(`DeployInfo not found for network: ${netName}`);
     }
-  );
-  const tx = mzusd.deploymentTransaction();
-  await mzusd.waitForDeployment();
 
-  const proxyAddress = await mzusd.getAddress();
-  const implAddress =
-    await upgrades.erc1967.getImplementationAddress(proxyAddress);
+    console.log("=== Deploy MZUSD (UUPS proxy) ===");
+    console.log("Network:", netName);
+    console.log("Deployer:", deployer.address);
 
-  console.log("MZUSD proxy deployed at:", proxyAddress);
-  console.log("MZUSD implementation:", implAddress);
+    const deployments = loadDeployments();
 
-  recordDeployment(deployments, netName, "MZUSD", {
-    address: proxyAddress,
-    implementation: implAddress,
-    txHash: tx?.hash,
-    deployedAt: new Date().toISOString(),
-  });
+    const usdcAddress = info.usdc;
+    const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const accessManagerAddress = accessManagerRecord?.address;
 
-  // Verify implementation (proxy verification is optional)
-  await verifyContract(implAddress);
+    if (!accessManagerAddress) {
+        throw new Error("AccessManager not deployed for this network. Deploy it first.");
+    }
 
-  saveDeployments(deployments);
-  console.log("Deployments file updated");
+    const hourlyCapHuman = info.mzusdHourlyCap;
+    const hourlyCapUSDC = parseUnits(hourlyCapHuman, 6);
+
+    console.log("USDC:", usdcAddress);
+    console.log("AccessManager:", accessManagerAddress);
+    console.log("Hourly cap (USDC):", hourlyCapHuman);
+
+    upgrades.silenceWarnings();
+
+    const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+    const mzusd = await upgrades.deployProxy(
+        MZUSDFactory,
+        [accessManagerAddress, usdcAddress, hourlyCapUSDC],
+        {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor"],
+        }
+    );
+    const tx = mzusd.deploymentTransaction();
+    await mzusd.waitForDeployment();
+
+    const proxyAddress = await mzusd.getAddress();
+    const implAddress = await upgrades.erc1967.getImplementationAddress(proxyAddress);
+
+    console.log("MZUSD proxy deployed at:", proxyAddress);
+    console.log("MZUSD implementation:", implAddress);
+
+    recordDeployment(deployments, netName, "MZUSD", {
+        address: proxyAddress,
+        implementation: implAddress,
+        txHash: tx?.hash,
+        deployedAt: new Date().toISOString(),
+    });
+
+    // Verify implementation (proxy verification is optional)
+    await verifyContract(implAddress);
+
+    saveDeployments(deployments);
+    console.log("Deployments file updated");
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
+    console.error(err);
+    process.exitCode = 1;
 });

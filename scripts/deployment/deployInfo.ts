@@ -1,27 +1,26 @@
+export interface DeployInfo {
+    // address of real (or mock) USDC for this network
+    usdc: string;
 
-export type DeployInfo = {
-  // address of real (or mock) USDC for this network
-  usdc: string;
+    // who will be the admin of AccessManager
+    accessManagerAdmin: string;
 
-  // who will be the admin of AccessManager
-  accessManagerAdmin: string;
-
-  // global hourly cap for MZUSD in USDC (without 6 decimals)
-  // for example 1_000_000 = 1_000_000 USDC, 0 = cap disabled
-  mzusdHourlyCap: string;
-};
+    // global hourly cap for MZUSD in USDC (without 6 decimals)
+    // for example 1_000_000 = 1_000_000 USDC, 0 = cap disabled
+    mzusdHourlyCap: string;
+}
 
 export const DEPLOY_INFO: Record<string, DeployInfo> = {
-  mainnet: {
-    usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC mainnet
-    accessManagerAdmin: "0xYourAdminAddressHere",
-    mzusdHourlyCap: "1000000", // 1m USDC per hour
-  },
+    mainnet: {
+        usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC mainnet
+        accessManagerAdmin: "0xYourAdminAddressHere",
+        mzusdHourlyCap: "1000000", // 1m USDC per hour
+    },
 
-  // example for testnet
-  sepolia: {
-    usdc: "0xYourMockOrUSDCOnSepolia",
-    accessManagerAdmin: "0xYourSepoliaAdmin",
-    mzusdHourlyCap: "0",
-  },
+    // example for testnet
+    sepolia: {
+        usdc: "0xYourMockOrUSDCOnSepolia",
+        accessManagerAdmin: "0xYourSepoliaAdmin",
+        mzusdHourlyCap: "0",
+    },
 };

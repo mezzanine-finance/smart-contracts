@@ -1,602 +1,569 @@
-import { expect } from "chai";
-import { ethers, upgrades, network } from "hardhat";
-import { parseUnits, Signer } from "ethers";
+import {expect} from "chai";
+import {ethers, upgrades, network} from "hardhat";
+import {parseUnits, Signer} from "ethers";
 import {
-  impersonateAccount,
-  setBalance,
-  takeSnapshot,
-  time,
+    impersonateAccount,
+    setBalance,
+    takeSnapshot,
+    time,
 } from "@nomicfoundation/hardhat-network-helpers";
-import type { SnapshotRestorer } from "@nomicfoundation/hardhat-network-helpers";
-import {
-  MZUSD,
-  Vault,
-  ReservoirUSDC,
-  IERC20,
-  MZUSDNettingHelper,
-} from "../typechain-types";
+import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
+import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
 
-const to6 = (value: string | number | bigint) =>
-  parseUnits(value.toString(), 6);
-const to18 = (value: string | number | bigint) =>
-  parseUnits(value.toString(), 18);
+const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
+const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
 
 const maxUint256 = (1n << 256n) - 1n;
 
 async function imp(addr: any) {
-  // Give the whale 10 ETH for gas
-  await setBalance(addr, to18(10));
-  await impersonateAccount(addr);
-  return ethers.getSigner(addr);
+    // Give the whale 10 ETH for gas
+    await setBalance(addr, to18(10));
+    await impersonateAccount(addr);
+    return ethers.getSigner(addr);
 }
 
 describe("MZUSD <-> USDC conversion", () => {
-  let snapshot: SnapshotRestorer;
-
-  let deployer: any;
-  let alice: any;
-  let bob: any;
-  let charlie: any;
-  let dave: any;
-
-  let accessManager: any;
-  let vault: Vault;
-  let mzusd: MZUSD;
-  let usdc: IERC20;
-  let reservoir: ReservoirUSDC;
-  let nettingHelper: any;
-
-  before(async () => {
-    [deployer, alice, bob, charlie, dave] = await ethers.getSigners();
-
-    usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
-    upgrades.silenceWarnings();
-
-    await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
-
-    const AccessManagerFactory = await ethers.getContractFactory(
-      "AccessManager",
-      deployer
-    );
-    accessManager = await AccessManagerFactory.deploy(deployer.address);
-    await accessManager.waitForDeployment();
-
-    const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-    mzusd = await upgrades.deployProxy(
-      MZUSDFactory,
-      [
-        accessManager.target,
-        MAINNET_USDC,
-        0, // _hourlyLimitUSDC (0 = limit is off)
-      ],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor"],
-      }
-    );
-
-    const ReservoirFactory = await ethers.getContractFactory(
-      "ReservoirUSDC",
-      deployer
-    );
-    reservoir = await upgrades.deployProxy(
-      ReservoirFactory,
-      [MAINNET_USDC, accessManager.target],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor"],
-      }
-    );
-
-    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-    vault = await upgrades.deployProxy(
-      VaultFactory,
-      [MAINNET_USDC, mzusd.target, reservoir.target, accessManager.target],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor"],
-      }
-    );
-
-    const NettingHelperFactory = await ethers.getContractFactory(
-      "MZUSDNettingHelper",
-      deployer
-    );
-    nettingHelper = await NettingHelperFactory.deploy();
-    await nettingHelper.waitForDeployment();
-
-    await expect(mzusd.setVault(vault.target))
-      .to.emit(mzusd, "SetVault")
-      .withArgs(vault.target);
-    await expect(mzusd.setGlobalHourlyRedemptionCap(to6(1_000_000n)))
-      .to.emit(mzusd, "GlobalHourlyRedemptionCapUpdated")
-      .withArgs(to6(1_000_000n)); // 1 million USDC per hour
-
-    // AccessManager wiring for Vault.withdraw -> MZUSD
-    const withdrawSelector = vault.interface.getFunction("withdraw")!.selector;
-
-    // now vault.withdraw requires VAULT_WITHDRAW_ROLE
-    await accessManager.setTargetFunctionRole(
-      vault.target,
-      [withdrawSelector],
-      VAULT_WITHDRAW_ROLE
-    );
-
-    // grant VAULT_WITHDRAW_ROLE to MZUSD in AccessManager
-    await accessManager.grantRole(
-      VAULT_WITHDRAW_ROLE,
-      mzusd.target,
-      0 // executionDelay
-    );
-
-    snapshot = await takeSnapshot();
-  });
+    let snapshot: SnapshotRestorer;
+
+    let deployer: any;
+    let alice: any;
+    let bob: any;
+    let charlie: any;
+    let dave: any;
+
+    let accessManager: any;
+    let vault: Vault;
+    let mzusd: MZUSD;
+    let usdc: IERC20;
+    let reservoir: ReservoirUSDC;
+    let nettingHelper: any;
+
+    before(async () => {
+        [deployer, alice, bob, charlie, dave] = await ethers.getSigners();
+
+        usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        upgrades.silenceWarnings();
+
+        await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
+
+        const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
+        accessManager = await AccessManagerFactory.deploy(deployer.address);
+        await accessManager.waitForDeployment();
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                MAINNET_USDC,
+                0, // _hourlyLimitUSDC (0 = limit is off)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+            }
+        );
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = await upgrades.deployProxy(
+            ReservoirFactory,
+            [MAINNET_USDC, accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+            }
+        );
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = await upgrades.deployProxy(
+            VaultFactory,
+            [MAINNET_USDC, mzusd.target, reservoir.target, accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+            }
+        );
+
+        const NettingHelperFactory = await ethers.getContractFactory(
+            "MZUSDNettingHelper",
+            deployer
+        );
+        nettingHelper = await NettingHelperFactory.deploy();
+        await nettingHelper.waitForDeployment();
+
+        await expect(mzusd.setVault(vault.target))
+            .to.emit(mzusd, "SetVault")
+            .withArgs(vault.target);
+        await expect(mzusd.setGlobalHourlyRedemptionCap(to6(1_000_000n)))
+            .to.emit(mzusd, "GlobalHourlyRedemptionCapUpdated")
+            .withArgs(to6(1_000_000n)); // 1 million USDC per hour
+
+        // AccessManager wiring for Vault.withdraw -> MZUSD
+        const withdrawSelector = vault.interface.getFunction("withdraw").selector;
+
+        // now vault.withdraw requires VAULT_WITHDRAW_ROLE
+        await accessManager.setTargetFunctionRole(
+            vault.target,
+            [withdrawSelector],
+            VAULT_WITHDRAW_ROLE
+        );
+
+        // grant VAULT_WITHDRAW_ROLE to MZUSD in AccessManager
+        await accessManager.grantRole(
+            VAULT_WITHDRAW_ROLE,
+            mzusd.target,
+            0 // executionDelay
+        );
+
+        snapshot = await takeSnapshot();
+    });
+
+    afterEach(async () => {
+        await snapshot.restore();
+    });
 
-  afterEach(async () => {
-    await snapshot.restore();
-  });
+    it("Should deposit USDC and receive MZUSD", async () => {
+        const expectedMZAmount = to18(133n);
+        const depositAmountUSDC = to6(133n);
 
-  it("Should deposit USDC and receive MZUSD", async () => {
-    const expectedMZAmount = to18(133n);
-    const depositAmountUSDC = to6(133n);
+        // Fund Alice via the whale
+        const whale = await imp(USDC_WHALE);
 
-    // Fund Alice via the whale
-    const whale = await imp(USDC_WHALE);
+        const whaleUSDCBefore = await usdc.balanceOf(USDC_WHALE);
+        expect(whaleUSDCBefore).to.be.gt(depositAmountUSDC, "Not enough USDC balance in the whale");
 
-    const whaleUSDCBefore = await usdc.balanceOf(USDC_WHALE);
-    expect(whaleUSDCBefore).to.be.gt(
-      depositAmountUSDC,
-      "Not enough USDC balance in the whale"
-    );
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
 
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-    const aliceUSDCBefore = await usdc.balanceOf(alice.address);
-    const vaultUSDCBefore = await usdc.balanceOf(vault.target);
-    const aliceMZBefore = await mzusd.balanceOf(alice.address);
+        const aliceUSDCBefore = await usdc.balanceOf(alice.address);
+        const vaultUSDCBefore = await usdc.balanceOf(vault.target);
+        const aliceMZBefore = await mzusd.balanceOf(alice.address);
 
-    expect(aliceUSDCBefore).to.equal(depositAmountUSDC);
-    expect(aliceMZBefore).to.equal(0n);
+        expect(aliceUSDCBefore).to.equal(depositAmountUSDC);
+        expect(aliceMZBefore).to.equal(0n);
 
-    // Deposit by Alice
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    const tx = await mzusd.connect(alice).deposit(depositAmountUSDC);
-    await tx.wait();
+        // Deposit by Alice
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        const tx = await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await tx.wait();
 
-    await expect(tx)
-      .to.emit(mzusd, "Deposit")
-      .withArgs(alice.address, depositAmountUSDC, expectedMZAmount);
+        await expect(tx)
+            .to.emit(mzusd, "Deposit")
+            .withArgs(alice.address, depositAmountUSDC, expectedMZAmount);
 
-    const aliceUSDCAfter = await usdc.balanceOf(alice.address);
-    const vaultUSDCAfter = await usdc.balanceOf(vault.target);
-    const aliceMZAfter = await mzusd.balanceOf(alice.address);
+        const aliceUSDCAfter = await usdc.balanceOf(alice.address);
+        const vaultUSDCAfter = await usdc.balanceOf(vault.target);
+        const aliceMZAfter = await mzusd.balanceOf(alice.address);
 
-    // Alice's USDC were spent
-    expect(aliceUSDCAfter).to.equal(0n);
+        // Alice's USDC were spent
+        expect(aliceUSDCAfter).to.equal(0n);
 
-    // Vault received the USDC
-    expect(vaultUSDCAfter - vaultUSDCBefore).to.equal(depositAmountUSDC);
+        // Vault received the USDC
+        expect(vaultUSDCAfter - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
-    // Alice received MZUSD 1:1 to USDC in 18 decimals.
-    expect(aliceMZAfter - aliceMZBefore).to.equal(expectedMZAmount);
-  });
+        // Alice received MZUSD 1:1 to USDC in 18 decimals.
+        expect(aliceMZAfter - aliceMZBefore).to.equal(expectedMZAmount);
+    });
 
-  it("Should burn MZUSD and withdraw USDC back to the user", async () => {
-    const depositAmountUSDC = to6(173n);
-    const expectedMZAmount = to18(173n);
+    it("Should burn MZUSD and withdraw USDC back to the user", async () => {
+        const depositAmountUSDC = to6(173n);
+        const expectedMZAmount = to18(173n);
 
-    // Fund Alice via the whale
-    const whale = await imp(USDC_WHALE);
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        // Fund Alice via the whale
+        const whale = await imp(USDC_WHALE);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
 
-    // Attempt to withdraw without balance
-    await expect(
-      mzusd.connect(alice).requestWithdrawal(to18(1n))
-    ).to.be.revertedWithCustomError(mzusd, "InsufficientBalance");
+        // Attempt to withdraw without balance
+        await expect(
+            mzusd.connect(alice).requestWithdrawal(to18(1n))
+        ).to.be.revertedWithCustomError(mzusd, "InsufficientBalance");
 
-    // Sanity checks before deposit
-    const aliceUSDCBefore = await usdc.balanceOf(alice.address);
-    const aliceMZBefore = await mzusd.balanceOf(alice.address);
-    const vaultUSDCBefore = await usdc.balanceOf(vault.target);
+        // Sanity checks before deposit
+        const aliceUSDCBefore = await usdc.balanceOf(alice.address);
+        const aliceMZBefore = await mzusd.balanceOf(alice.address);
+        const vaultUSDCBefore = await usdc.balanceOf(vault.target);
 
-    expect(aliceUSDCBefore).to.equal(depositAmountUSDC);
-    expect(aliceMZBefore).to.equal(0n);
+        expect(aliceUSDCBefore).to.equal(depositAmountUSDC);
+        expect(aliceMZBefore).to.equal(0n);
 
-    // Alice deposits USDC -> receives MZUSD
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    await mzusd.connect(alice).deposit(depositAmountUSDC);
+        // Alice deposits USDC -> receives MZUSD
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
 
-    const aliceUSDCAfterDeposit = await usdc.balanceOf(alice.address);
-    const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
-    const vaultUSDCAfterDeposit = await usdc.balanceOf(vault.target);
+        const aliceUSDCAfterDeposit = await usdc.balanceOf(alice.address);
+        const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
+        const vaultUSDCAfterDeposit = await usdc.balanceOf(vault.target);
 
-    expect(aliceUSDCAfterDeposit).to.equal(0n);
-    expect(aliceMZAfterDeposit).to.equal(expectedMZAmount);
-    expect(vaultUSDCAfterDeposit - vaultUSDCBefore).to.equal(depositAmountUSDC);
+        expect(aliceUSDCAfterDeposit).to.equal(0n);
+        expect(aliceMZAfterDeposit).to.equal(expectedMZAmount);
+        expect(vaultUSDCAfterDeposit - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
-    await expect(
-      mzusd.connect(alice).requestWithdrawal(0n)
-    ).to.be.revertedWithCustomError(mzusd, "ZeroAmount");
+        await expect(mzusd.connect(alice).requestWithdrawal(0n)).to.be.revertedWithCustomError(
+            mzusd,
+            "ZeroAmount"
+        );
 
-    // Request withdrawal of full MZ balance
-    const tx = await mzusd
-      .connect(alice)
-      .requestWithdrawal(aliceMZAfterDeposit);
-    await tx.wait();
+        // Request withdrawal of full MZ balance
+        const tx = await mzusd.connect(alice).requestWithdrawal(aliceMZAfterDeposit);
+        await tx.wait();
 
-    await expect(tx)
-      .to.emit(mzusd, "Withdrawal")
-      .withArgs(alice.address, aliceMZAfterDeposit, depositAmountUSDC);
+        await expect(tx)
+            .to.emit(mzusd, "Withdrawal")
+            .withArgs(alice.address, aliceMZAfterDeposit, depositAmountUSDC);
 
-    await expect(tx)
-      .to.emit(vault, "WithdrawnUSDCFromVault")
-      .withArgs(alice.address, depositAmountUSDC);
+        await expect(tx)
+            .to.emit(vault, "WithdrawnUSDCFromVault")
+            .withArgs(alice.address, depositAmountUSDC);
 
-    const aliceUSDCAfterWithdraw = await usdc.balanceOf(alice.address);
-    const aliceMZAfterWithdraw = await mzusd.balanceOf(alice.address);
-    const vaultUSDCAfterWithdraw = await usdc.balanceOf(vault.target);
+        const aliceUSDCAfterWithdraw = await usdc.balanceOf(alice.address);
+        const aliceMZAfterWithdraw = await mzusd.balanceOf(alice.address);
+        const vaultUSDCAfterWithdraw = await usdc.balanceOf(vault.target);
 
-    // Alice got her USDC back and burned all MZUSD
-    expect(aliceMZAfterWithdraw).to.equal(0n);
-    expect(aliceUSDCAfterWithdraw).to.equal(depositAmountUSDC);
+        // Alice got her USDC back and burned all MZUSD
+        expect(aliceMZAfterWithdraw).to.equal(0n);
+        expect(aliceUSDCAfterWithdraw).to.equal(depositAmountUSDC);
 
-    // Vault lost exactly the withdrawn amount
-    expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(
-      depositAmountUSDC
-    );
-  });
+        // Vault lost exactly the withdrawn amount
+        expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(depositAmountUSDC);
+    });
 
-  it("Should enforce the global hourly redemption cap", async () => {
-    // Set a small hourly cap: 150 USDC
-    const capUSDC = to6(150n);
-    await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+    it("Should enforce the global hourly redemption cap", async () => {
+        // Set a small hourly cap: 150 USDC
+        const capUSDC = to6(150n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
-    const depositAmountUSDC = to6(200n);
+        const depositAmountUSDC = to6(200n);
 
-    // Fund Alice
-    const whale = await imp(USDC_WHALE);
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        // Fund Alice
+        const whale = await imp(USDC_WHALE);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
 
-    // Deposit 200 USDC -> 200 MZUSD
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    await mzusd.connect(alice).deposit(depositAmountUSDC);
+        // Deposit 200 USDC -> 200 MZUSD
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
 
-    const aliceMZBalance = await mzusd.balanceOf(alice.address);
-    expect(aliceMZBalance).to.equal(to18(200n));
+        const aliceMZBalance = await mzusd.balanceOf(alice.address);
+        expect(aliceMZBalance).to.equal(to18(200n));
 
-    // First withdrawal: 100 USDC (within cap)
-    const firstWithdrawMZ = to18(100n);
-    const firstWithdrawUSDC = to6(100n);
+        // First withdrawal: 100 USDC (within cap)
+        const firstWithdrawMZ = to18(100n);
+        const firstWithdrawUSDC = to6(100n);
 
-    const tx1 = await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
-    await tx1.wait();
+        const tx1 = await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
+        await tx1.wait();
 
-    await expect(tx1)
-      .to.emit(mzusd, "Withdrawal")
-      .withArgs(alice.address, firstWithdrawMZ, firstWithdrawUSDC);
+        await expect(tx1)
+            .to.emit(mzusd, "Withdrawal")
+            .withArgs(alice.address, firstWithdrawMZ, firstWithdrawUSDC);
 
-    // Second withdrawal in the same hour: 60 USDC -> should exceed the 150 USDC cap
-    const secondWithdrawMZ = to18(60n);
-
-    await expect(
-      mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ)
-    ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
-
-    // Move time forward by 1 hour to reset the rolling window
-    await time.increase(3600);
-
-    // Now the same withdrawal should succeed
-    const tx2 = await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
-    await tx2.wait();
-
-    await expect(tx2)
-      .to.emit(mzusd, "Withdrawal")
-      .withArgs(alice.address, secondWithdrawMZ, to6(60n));
-  });
-
-  it("Should handle complex flows with multiple users and helper netting patterns", async () => {
-    // Hourly cap: 500 USDC
-    const capUSDC = to6(500n);
-    await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
-
-    const whale = await imp(USDC_WHALE);
-
-    // Fund Alice, Bob and helper with USDC
-    const aliceUSDC = to6(400n);
-    const bobUSDC = to6(300n);
-    const helperUSDC = to6(300n);
-
-    await usdc.connect(whale).transfer(alice.address, aliceUSDC);
-    await usdc.connect(whale).transfer(bob.address, bobUSDC);
-    await usdc.connect(whale).transfer(nettingHelper.target, helperUSDC);
-
-    //TX1: Alice deposits 400 USDC (no cap usage)
-
-    await usdc.connect(alice).approve(mzusd.target, aliceUSDC);
-    await mzusd.connect(alice).deposit(aliceUSDC);
-
-    let [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(remainingCap).to.equal(
-      capUSDC,
-      "Deposit should not consume the hourly cap"
-    );
-
-    //TX2: Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
-
-    const aliceWithdraw1MZ = to18(150n);
-    const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ);
-    await txA1.wait();
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(capUSDC - remainingCap).to.equal(
-      to6(150n),
-      "Alice first withdrawal should consume 150 USDC of the cap"
-    );
-
-    //TX3: Bob deposits 300 USDC (no cap usage)
-
-    await usdc.connect(bob).approve(mzusd.target, bobUSDC);
-    await mzusd.connect(bob).deposit(bobUSDC);
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(capUSDC - remainingCap).to.equal(
-      to6(150n),
-      "Bob deposit should not touch the cap"
-    );
-
-    //TX4: Bob withdraws 70 MZUSD -> 70 USDC
-
-    const bobWithdraw1MZ = to18(70n);
-    const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ);
-    await txB1.wait();
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    // total used so far: 150 (Alice) + 70 (Bob) = 220
-    expect(capUSDC - remainingCap).to.equal(
-      to6(220n),
-      "Alice + Bob withdrawals should consume 220 USDC in total"
-    );
-
-    //Helper preload: depositOnly 200 USDC -> 200 MZUSD (no cap usage)
-
-    const helperPreDepositUSDC = to6(200n);
-    const txHPre = await nettingHelper
-      .connect(deployer)
-      .depositOnly(mzusd.target, usdc.target, helperPreDepositUSDC);
-    await txHPre.wait();
-    //TX5: helper withdrawThenDeposit (W -> D) 60 MZ, 60 USDC
-
-    const helperWTD_MZ = to18(60n);
-    const helperWTD_DepUSDC = to6(60n);
-
-    const txH1 = await nettingHelper
-      .connect(deployer)
-      .withdrawThenDeposit(
-        mzusd.target,
-        usdc.target,
-        helperWTD_MZ,
-        helperWTD_DepUSDC
-      );
-    await txH1.wait();
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    // total used now: 220 + 60 = 280
-    expect(capUSDC - remainingCap).to.equal(
-      to6(280n),
-      "W->D pattern should add 60 USDC to the cap"
-    );
-
-    //TX6: helper withdrawDepositWithdraw (W=40, D=50, W=70)
-    //
-    // In USDC terms:
-    //   step1: withdraw 40, txDeposited=0 -> effective1 = 40
-    //   step2: deposit 50, txDeposited=50
-    //   step3: withdraw 70, txDeposited=50 -> effective2 = 20
-    // So this tx adds 40 + 20 = 60 USDC to the cap.
-
-    const w1MZ = to18(40n);
-    const depUSDC = to6(50n);
-    const w2MZ = to18(70n);
-
-    const txH2 = await nettingHelper
-      .connect(deployer)
-      .withdrawDepositWithdraw(mzusd.target, usdc.target, w1MZ, depUSDC, w2MZ);
-    await txH2.wait();
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    // total used now: 280 + 60 = 340
-    expect(capUSDC - remainingCap).to.equal(
-      to6(340n),
-      "W->D->W pattern should add another 60 USDC to the cap"
-    );
-
-    //TX7: Alice withdraws another 150 MZUSD -> 150 USDC
-
-    const aliceWithdraw2MZ = to18(150n);
-    const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ);
-    await txA2.wait();
-
-    [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-    // total used: 340 + 150 = 490
-    expect(capUSDC - remainingCap).to.equal(
-      to6(490n),
-      "Second Alice withdrawal should bring total usage to 490 USDC"
-    );
-
-    // Extra helper atomic netting: TX7.5
-    // deposit 100 USDC and withdraw 90 MZUSD in a single tx.
-    // In USDC terms:
-    //   deposit = 100
-    //   usdcOut = 90
-    //   txDeposited (100) >= usdcOut (90) -> _applyAtomicNetting returns 0
-    // So this tx MUST NOT consume any additional hourly cap.
-
-    const helperNetDepositUSDC = to6(100n);
-    const helperNetWithdrawMZ = to18(90n);
-
-    // top up helper just in case
-    await usdc
-      .connect(whale)
-      .transfer(nettingHelper.target, helperNetDepositUSDC);
-
-    const [capBeforeNetting] = await mzusd.getRemainingGlobalHourlyCap();
-
-    const txHN = await nettingHelper
-      .connect(deployer)
-      .depositAndWithdraw(
-        mzusd.target,
-        usdc.target,
-        helperNetDepositUSDC,
-        helperNetWithdrawMZ
-      );
-    await txHN.wait();
-
-    const [capAfterNetting] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(capAfterNetting).to.equal(
-      capBeforeNetting,
-      "Atomic D>W netting (depositAndWithdraw) should not consume the cap"
-    );
-
-    //TX8: Bob tries to withdraw 20 MZUSD -> 20 USDC
-    // 490 + 20 > 500 =>
-    // must revert on GlobalHourlyCapExceeded
-
-    const bobWithdraw2MZ = to18(20n);
-    await expect(
-      mzusd.connect(bob).requestWithdrawal(bobWithdraw2MZ)
-    ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
-  });
-
-  it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
-    const depositAmountUSDC = to6(50n);
-
-    // Fund Alice and deposit into MZUSD (Usdc goes to Vault)
-    const whale = await imp(USDC_WHALE);
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    await mzusd.connect(alice).deposit(depositAmountUSDC);
-
-    // Empty the Vault's USDC by transferring it out to Bob
-    const vaultSigner = await imp(vault.target);
-    const vaultBalance = await usdc.balanceOf(vault.target);
-    expect(vaultBalance).to.equal(depositAmountUSDC);
-
-    await usdc.connect(vaultSigner).transfer(bob.address, vaultBalance);
-
-    const vaultBalanceAfter = await usdc.balanceOf(vault.target);
-    expect(vaultBalanceAfter).to.equal(0n);
-    // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
-    await expect(
-      mzusd.connect(alice).requestWithdrawal(to18(50n))
-    ).to.be.revertedWithCustomError(mzusd, "InsufficientLiquidity");
-  });
-
-  it("Should correctly compute remaining global hourly cap and preview functions", async () => {
-    // Scenario 1: cap = 0 => unlimited
-    await mzusd.setGlobalHourlyRedemptionCap(0);
-
-    let [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
-    const storedWindowStart = await mzusd.windowStartTimestamp();
-
-    expect(remaining).to.equal(maxUint256);
-    expect(windowStart).to.equal(storedWindowStart);
-
-    // Scenario 2: cap > 0, window is active, usage < cap and == cap
-    const capUSDC = to6(150n);
-    await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
-
-    const whale = await imp(USDC_WHALE);
-    const depositAmountUSDC = to6(200n);
-
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    await mzusd.connect(alice).deposit(depositAmountUSDC);
-
-    // First withdrawal: 40 USDC
-    const w1MZ = to18(40n);
-    await mzusd.connect(alice).requestWithdrawal(w1MZ);
-
-    [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(remaining).to.equal(capUSDC - to6(40n));
-    expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
-
-    // Second withdrawal: 110 USDC -> should reach the cap because 40 + 110 = 150
-    const w2MZ = to18(110n);
-    await mzusd.connect(alice).requestWithdrawal(w2MZ);
-
-    [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(remaining).to.equal(0n);
-    expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
-
-    // Scenario 3: Move time forward by 1 hour + 1 second, new window, full cap
-    await time.increase(3601);
-
-    const latestTs = await time.latest();
-    [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
-
-    expect(remaining).to.equal(capUSDC);
-    expect(windowStart).to.equal(BigInt(latestTs));
-
-    // Preview helpers
-
-    // previewDeposit: 123 USDC -> 123 MZUSD в 18 decimals
-    const previewMint = await mzusd.previewDeposit(to6(123n));
-    expect(previewMint).to.equal(to18(123n));
-
-    // previewWithdrawal: amountMZ with dust
-    const amountMZ = to18(10n) + 123n; // 10 USDC + 123 dust
-    const [usdcOut, dustMZ] = await mzusd.previewWithdrawal(amountMZ);
-
-    expect(usdcOut).to.equal(to6(10n)); // 10 USDC
-    expect(dustMZ).to.equal(123n);
-
-    // decimals check
-    const decimals = await mzusd.decimals();
-    expect(decimals).to.equal(18);
-  });
-
-  it("Should allow deposits and withdrawals when hourly cap is zero (cap disabled)", async () => {
-    // Disable hourly cap
-    await mzusd.setGlobalHourlyRedemptionCap(0);
-
-    const whale = await imp(USDC_WHALE);
-    const depositAmountUSDC = to6(300n); // 300 USDC
-
-    // Fund Alice and deposit into MZUSD
-    await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-    await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-    await mzusd.connect(alice).deposit(depositAmountUSDC);
-
-    const aliceMZ = await mzusd.balanceOf(alice.address);
-    expect(aliceMZ).to.equal(to18(300n));
-
-    // Getter should report infinite remaining cap when cap is disabled
-    const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(remainingBefore).to.equal(maxUint256);
-
-    const firstWithdrawMZ = to18(200n); // 200 USDC
-    const secondWithdrawMZ = to18(100n); // 100 USDC
-
-    await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
-    await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
-
-    const aliceMZAfter = await mzusd.balanceOf(alice.address);
-    const aliceUSDCAfter = await usdc.balanceOf(alice.address);
-
-    expect(aliceMZAfter).to.equal(0n);
-    expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
-
-    const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
-    expect(remainingAfter).to.equal(maxUint256);
-  });
+        // Second withdrawal in the same hour: 60 USDC -> should exceed the 150 USDC cap
+        const secondWithdrawMZ = to18(60n);
+
+        await expect(
+            mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ)
+        ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
+
+        // Move time forward by 1 hour to reset the rolling window
+        await time.increase(3600);
+
+        // Now the same withdrawal should succeed
+        const tx2 = await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
+        await tx2.wait();
+
+        await expect(tx2)
+            .to.emit(mzusd, "Withdrawal")
+            .withArgs(alice.address, secondWithdrawMZ, to6(60n));
+    });
+
+    it("Should handle complex flows with multiple users and helper netting patterns", async () => {
+        // Hourly cap: 500 USDC
+        const capUSDC = to6(500n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+
+        const whale = await imp(USDC_WHALE);
+
+        // Fund Alice, Bob and helper with USDC
+        const aliceUSDC = to6(400n);
+        const bobUSDC = to6(300n);
+        const helperUSDC = to6(300n);
+
+        await usdc.connect(whale).transfer(alice.address, aliceUSDC);
+        await usdc.connect(whale).transfer(bob.address, bobUSDC);
+        await usdc.connect(whale).transfer(nettingHelper.target, helperUSDC);
+
+        //TX1: Alice deposits 400 USDC (no cap usage)
+
+        await usdc.connect(alice).approve(mzusd.target, aliceUSDC);
+        await mzusd.connect(alice).deposit(aliceUSDC);
+
+        let [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remainingCap).to.equal(capUSDC, "Deposit should not consume the hourly cap");
+
+        //TX2: Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
+
+        const aliceWithdraw1MZ = to18(150n);
+        const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ);
+        await txA1.wait();
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(capUSDC - remainingCap).to.equal(
+            to6(150n),
+            "Alice first withdrawal should consume 150 USDC of the cap"
+        );
+
+        //TX3: Bob deposits 300 USDC (no cap usage)
+
+        await usdc.connect(bob).approve(mzusd.target, bobUSDC);
+        await mzusd.connect(bob).deposit(bobUSDC);
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(capUSDC - remainingCap).to.equal(to6(150n), "Bob deposit should not touch the cap");
+
+        //TX4: Bob withdraws 70 MZUSD -> 70 USDC
+
+        const bobWithdraw1MZ = to18(70n);
+        const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ);
+        await txB1.wait();
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        // total used so far: 150 (Alice) + 70 (Bob) = 220
+        expect(capUSDC - remainingCap).to.equal(
+            to6(220n),
+            "Alice + Bob withdrawals should consume 220 USDC in total"
+        );
+
+        //Helper preload: depositOnly 200 USDC -> 200 MZUSD (no cap usage)
+
+        const helperPreDepositUSDC = to6(200n);
+        const txHPre = await nettingHelper
+            .connect(deployer)
+            .depositOnly(mzusd.target, usdc.target, helperPreDepositUSDC);
+        await txHPre.wait();
+        //TX5: helper withdrawThenDeposit (W -> D) 60 MZ, 60 USDC
+
+        const helperWTD_MZ = to18(60n);
+        const helperWTD_DepUSDC = to6(60n);
+
+        const txH1 = await nettingHelper
+            .connect(deployer)
+            .withdrawThenDeposit(mzusd.target, usdc.target, helperWTD_MZ, helperWTD_DepUSDC);
+        await txH1.wait();
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        // total used now: 220 + 60 = 280
+        expect(capUSDC - remainingCap).to.equal(
+            to6(280n),
+            "W->D pattern should add 60 USDC to the cap"
+        );
+
+        //TX6: helper withdrawDepositWithdraw (W=40, D=50, W=70)
+        //
+        // In USDC terms:
+        //   step1: withdraw 40, txDeposited=0 -> effective1 = 40
+        //   step2: deposit 50, txDeposited=50
+        //   step3: withdraw 70, txDeposited=50 -> effective2 = 20
+        // So this tx adds 40 + 20 = 60 USDC to the cap.
+
+        const w1MZ = to18(40n);
+        const depUSDC = to6(50n);
+        const w2MZ = to18(70n);
+
+        const txH2 = await nettingHelper
+            .connect(deployer)
+            .withdrawDepositWithdraw(mzusd.target, usdc.target, w1MZ, depUSDC, w2MZ);
+        await txH2.wait();
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        // total used now: 280 + 60 = 340
+        expect(capUSDC - remainingCap).to.equal(
+            to6(340n),
+            "W->D->W pattern should add another 60 USDC to the cap"
+        );
+
+        //TX7: Alice withdraws another 150 MZUSD -> 150 USDC
+
+        const aliceWithdraw2MZ = to18(150n);
+        const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ);
+        await txA2.wait();
+
+        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        // total used: 340 + 150 = 490
+        expect(capUSDC - remainingCap).to.equal(
+            to6(490n),
+            "Second Alice withdrawal should bring total usage to 490 USDC"
+        );
+
+        // Extra helper atomic netting: TX7.5
+        // deposit 100 USDC and withdraw 90 MZUSD in a single tx.
+        // In USDC terms:
+        //   deposit = 100
+        //   usdcOut = 90
+        //   txDeposited (100) >= usdcOut (90) -> _applyAtomicNetting returns 0
+        // So this tx MUST NOT consume any additional hourly cap.
+
+        const helperNetDepositUSDC = to6(100n);
+        const helperNetWithdrawMZ = to18(90n);
+
+        // top up helper just in case
+        await usdc.connect(whale).transfer(nettingHelper.target, helperNetDepositUSDC);
+
+        const [capBeforeNetting] = await mzusd.getRemainingGlobalHourlyCap();
+
+        const txHN = await nettingHelper
+            .connect(deployer)
+            .depositAndWithdraw(
+                mzusd.target,
+                usdc.target,
+                helperNetDepositUSDC,
+                helperNetWithdrawMZ
+            );
+        await txHN.wait();
+
+        const [capAfterNetting] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(capAfterNetting).to.equal(
+            capBeforeNetting,
+            "Atomic D>W netting (depositAndWithdraw) should not consume the cap"
+        );
+
+        //TX8: Bob tries to withdraw 20 MZUSD -> 20 USDC
+        // 490 + 20 > 500 =>
+        // must revert on GlobalHourlyCapExceeded
+
+        const bobWithdraw2MZ = to18(20n);
+        await expect(
+            mzusd.connect(bob).requestWithdrawal(bobWithdraw2MZ)
+        ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
+    });
+
+    it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
+        const depositAmountUSDC = to6(50n);
+
+        // Fund Alice and deposit into MZUSD (Usdc goes to Vault)
+        const whale = await imp(USDC_WHALE);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        // Empty the Vault's USDC by transferring it out to Bob
+        const vaultSigner = await imp(vault.target);
+        const vaultBalance = await usdc.balanceOf(vault.target);
+        expect(vaultBalance).to.equal(depositAmountUSDC);
+
+        await usdc.connect(vaultSigner).transfer(bob.address, vaultBalance);
+
+        const vaultBalanceAfter = await usdc.balanceOf(vault.target);
+        expect(vaultBalanceAfter).to.equal(0n);
+        // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
+        await expect(
+            mzusd.connect(alice).requestWithdrawal(to18(50n))
+        ).to.be.revertedWithCustomError(mzusd, "InsufficientLiquidity");
+    });
+
+    it("Should correctly compute remaining global hourly cap and preview functions", async () => {
+        // Scenario 1: cap = 0 => unlimited
+        await mzusd.setGlobalHourlyRedemptionCap(0);
+
+        let [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        const storedWindowStart = await mzusd.windowStartTimestamp();
+
+        expect(remaining).to.equal(maxUint256);
+        expect(windowStart).to.equal(storedWindowStart);
+
+        // Scenario 2: cap > 0, window is active, usage < cap and == cap
+        const capUSDC = to6(150n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+
+        const whale = await imp(USDC_WHALE);
+        const depositAmountUSDC = to6(200n);
+
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        // First withdrawal: 40 USDC
+        const w1MZ = to18(40n);
+        await mzusd.connect(alice).requestWithdrawal(w1MZ);
+
+        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remaining).to.equal(capUSDC - to6(40n));
+        expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
+
+        // Second withdrawal: 110 USDC -> should reach the cap because 40 + 110 = 150
+        const w2MZ = to18(110n);
+        await mzusd.connect(alice).requestWithdrawal(w2MZ);
+
+        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remaining).to.equal(0n);
+        expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
+
+        // Scenario 3: Move time forward by 1 hour + 1 second, new window, full cap
+        await time.increase(3601);
+
+        const latestTs = await time.latest();
+        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+
+        expect(remaining).to.equal(capUSDC);
+        expect(windowStart).to.equal(BigInt(latestTs));
+
+        // Preview helpers
+
+        // previewDeposit: 123 USDC -> 123 MZUSD в 18 decimals
+        const previewMint = await mzusd.previewDeposit(to6(123n));
+        expect(previewMint).to.equal(to18(123n));
+
+        // previewWithdrawal: amountMZ with dust
+        const amountMZ = to18(10n) + 123n; // 10 USDC + 123 dust
+        const [usdcOut, dustMZ] = await mzusd.previewWithdrawal(amountMZ);
+
+        expect(usdcOut).to.equal(to6(10n)); // 10 USDC
+        expect(dustMZ).to.equal(123n);
+
+        // decimals check
+        const decimals = await mzusd.decimals();
+        expect(decimals).to.equal(18);
+    });
+
+    it("Should allow deposits and withdrawals when hourly cap is zero (cap disabled)", async () => {
+        // Disable hourly cap
+        await mzusd.setGlobalHourlyRedemptionCap(0);
+
+        const whale = await imp(USDC_WHALE);
+        const depositAmountUSDC = to6(300n); // 300 USDC
+
+        // Fund Alice and deposit into MZUSD
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        const aliceMZ = await mzusd.balanceOf(alice.address);
+        expect(aliceMZ).to.equal(to18(300n));
+
+        // Getter should report infinite remaining cap when cap is disabled
+        const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remainingBefore).to.equal(maxUint256);
+
+        const firstWithdrawMZ = to18(200n); // 200 USDC
+        const secondWithdrawMZ = to18(100n); // 100 USDC
+
+        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
+        await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
+
+        const aliceMZAfter = await mzusd.balanceOf(alice.address);
+        const aliceUSDCAfter = await usdc.balanceOf(alice.address);
+
+        expect(aliceMZAfter).to.equal(0n);
+        expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
+
+        const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remainingAfter).to.equal(maxUint256);
+    });
 });
