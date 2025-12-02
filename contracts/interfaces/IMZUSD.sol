@@ -13,12 +13,13 @@ interface IMZUSD is IERC20 {
 
     /// @notice pause / unpause user actions
     function pause() external;
+
     function unpause() external;
 
     // @notice usage restricted to Vault; mint assets to Tranche + fee lock
     function mint(address to, uint256 amount) external;
 
-    /// @notice set global hourly redemption cap (USDC, 6 decimals); 0 = disabled
+    /// @notice set global hourly redemption cap (USDC, 6 decimals)
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external;
 
     /// @notice set vault address
@@ -33,12 +34,34 @@ interface IMZUSD is IERC20 {
         returns (uint256 remainingUSDC, uint256 windowStart);
 
     /// @notice preview how much MZ will be minted for given USDC
-    function previewDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ);
+    function calculateDeposit(
+        uint256 amountUSDC
+    ) external pure returns (uint256 mintMZ);
 
     /// @notice preview USDC out and dust for given MZ amount
-    function previewWithdrawal(uint256 amountMZ)
-        external
-        pure
-        returns (uint256 usdcOut, uint256 dustMZ);
+    function calculateWithdrawalAmounts(
+        uint256 amountMZ
+    ) external pure returns (uint256 usdcOut, uint256 dustMZ);
 
+    function previewWithdrawalFlat(
+        uint256 amountMZ
+    )
+        external
+        view
+        returns (
+            uint256 requestedMZ,
+            uint256 userBalanceMZ,
+            bool hasEnoughMZ,
+            uint256 usdcOut,
+            uint256 dustMZ,
+            uint256 vaultLiquidityUSDC,
+            bool hasSufficientLiquidity,
+            uint256 globalCapUSDC,
+            uint256 windowStart,
+            uint256 windowEnd,
+            uint256 windowUsedUSDC_,
+            uint256 windowRemainingUSDC,
+            bool isGlobalCapZero,
+            bool wouldExceedGlobalCap
+        );
 }

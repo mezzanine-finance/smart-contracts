@@ -15,7 +15,7 @@ import "./interfaces/IVault.sol";
 //todo approve + transfer 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
-contract MZUSD is
+ contract MZUSD is
     Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
@@ -37,6 +37,8 @@ contract MZUSD is
     uint256 public globalHourlyRedemptionCapUSDC;
     uint64 public windowStartTimestamp;
     uint256 public windowUsedUSDC;
+    /// @notice duration of redemption window in seconds (e.g. 1 hours)
+    uint256 public redemptionWindowDuration;
 
     /// @notice per-tx deposits for atomic netting
     uint256 transient _txDepositedUSDC;
@@ -45,15 +47,18 @@ contract MZUSD is
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
     event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
     event SetVault(address vault);
+    event RedemptionWindowDurationUpdated(uint256 newDuration);
 
     error ZeroAmount();
     error ZeroAddress();
     error InsufficientBalance();
     error InsufficientLiquidity();
     error GlobalHourlyCapExceeded();
+    error ZeroCap();
+    error ZeroDuration();
 
 
-    constructor() {
+     constructor() {
         _disableInitializers();
     }
 
@@ -75,12 +80,12 @@ contract MZUSD is
         usdc = IERC20(_usdc);
         globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
         windowStartTimestamp = uint64(block.timestamp);
+        redemptionWindowDuration = 1 hours;
     }
     
-    //todo check vault zero address
-    //todo restricted for all func
     /// @notice deposit USDC and mint MZUSD 1:1
-    function deposit(uint256 amountUSDC) external whenNotPaused nonReentrant {
+    function deposit(uint256 amountUSDC) external nonReentrant whenNotPaused restricted {
+        if (vault == IVault(address(0))) revert ZeroAddress();
         if (amountUSDC == 0) revert ZeroAmount();
 
         _txDepositedUSDC += amountUSDC;
@@ -96,7 +101,7 @@ contract MZUSD is
     /// @notice request withdrawal of MZUSD for USDC
     /// @dev v1: executes instantly if vault has liquidity
     /// @dev v2: can be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external whenNotPaused nonReentrant {
+    function requestWithdrawal(uint256 amountMZ) external nonReentrant whenNotPaused restricted {
         if (amountMZ == 0) revert ZeroAmount();
         if (balanceOf(_msgSender()) < amountMZ) revert InsufficientBalance();
 
@@ -131,6 +136,7 @@ contract MZUSD is
     }
 
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
+        if (newCapUSDC == 0) revert ZeroCap();
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
@@ -141,45 +147,113 @@ contract MZUSD is
         emit SetVault(address(vault));
     }
 
-    //todo 1hour change to variable
-    //todo 3rd variable + discussion about return 0 or max if cap disabled
-    //todo maybe for limit - max or 1
+    function setRedemptionWindowDuration(uint256 newDuration) external restricted {
+        if (newDuration == 0) revert ZeroDuration();
+        redemptionWindowDuration = newDuration;
+
+        // If the current window is already longer than the new duration,
+        // start a fresh window from "now" so that the shorter window
+        // semantics are applied immediately.
+        if (block.timestamp >= uint256(windowStartTimestamp) + newDuration) {
+            windowStartTimestamp = uint64(block.timestamp);
+            windowUsedUSDC = 0;
+        }
+        emit RedemptionWindowDurationUpdated(newDuration);
+    }
+
     function getRemainingGlobalHourlyCap()
-        external
+        public
         view
         returns (uint256 remainingUSDC, uint256 windowStart)
     {
-        if (globalHourlyRedemptionCapUSDC == 0) {
-            return (type(uint256).max, windowStartTimestamp);
+        uint256 cap = globalHourlyRedemptionCapUSDC;
+
+        // If cap is explicitly zero, treat it as "no redemptions allowed" for this view:
+        // remaining = 0. For "no limit", callers should configure cap as type(uint256).max.
+        if (cap == 0) {
+            return (0, windowStartTimestamp);
         }
-        if (block.timestamp >= uint256(windowStartTimestamp) + 1 hours) {
-            return (globalHourlyRedemptionCapUSDC, uint256(block.timestamp));
+
+        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
+            // New window would start on next withdrawal; expose full cap and current timestamp.
+            return (cap, uint256(block.timestamp));
         }
+
         uint256 spent = windowUsedUSDC;
-        remainingUSDC = spent >= globalHourlyRedemptionCapUSDC
-            ? 0
-            : globalHourlyRedemptionCapUSDC - spent;
+        remainingUSDC = spent >= cap ? 0 : cap - spent;
         return (remainingUSDC, windowStartTimestamp);
     }
 
-    function previewDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
+    function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
         return amountUSDC * SCALE;
     }
 
-    //todo rename 
-    function previewWithdrawal(uint256 amountMZ)
-        external
-        pure
-        returns (uint256 usdcOut, uint256 dustMZ)
-    {
+   /// @notice Pure calculator - converts MZUSD amount to USDC and dust.
+     function calculateWithdrawalAmounts(uint256 amountMZ) public pure returns (uint256 usdcOut, uint256 dustMZ) {
         usdcOut = amountMZ / SCALE;
         dustMZ = amountMZ % SCALE;
     }
 
-    //todo add preview withdrawal large info function
-
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
+    }
+
+    function previewWithdrawalFlat(uint256 amountMZ) external view
+    returns (
+        uint256 requestedMZ,
+        uint256 userBalanceMZ,
+        bool hasEnoughMZ,
+        uint256 usdcOut,
+        uint256 dustMZ,
+        uint256 vaultLiquidityUSDC,
+        bool hasSufficientLiquidity,
+        uint256 globalCapUSDC,
+        uint256 windowStart,
+        uint256 windowEnd,
+        uint256 windowUsedUSDC_,
+        uint256 windowRemainingUSDC,
+        bool isGlobalCapZero,
+        bool wouldExceedGlobalCap
+    ) {
+    requestedMZ = amountMZ;
+
+    userBalanceMZ = balanceOf(_msgSender());
+    hasEnoughMZ = userBalanceMZ >= amountMZ;
+
+    (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);
+
+    if (address(vault) != address(0)) {
+        vaultLiquidityUSDC = usdc.balanceOf(address(vault));
+    } else {
+        vaultLiquidityUSDC = 0;
+    }
+    hasSufficientLiquidity = vaultLiquidityUSDC >= usdcOut;
+
+    globalCapUSDC = globalHourlyRedemptionCapUSDC;
+    isGlobalCapZero = (globalCapUSDC == 0);
+
+    (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
+
+    uint256 storedUsed = windowUsedUSDC;
+    if (globalCapUSDC > 0 && globalCapUSDC != type(uint256).max && windowRemainingUSDC <= globalCapUSDC) {
+        windowUsedUSDC_ = globalCapUSDC - windowRemainingUSDC;
+    } else {
+        windowUsedUSDC_ = storedUsed;
+    }
+
+    if (redemptionWindowDuration == 0) {
+        windowEnd = windowStart;
+    } else {
+        windowEnd = windowStart + redemptionWindowDuration;
+    }
+
+    if (globalCapUSDC == 0) {
+        wouldExceedGlobalCap = (usdcOut > 0);
+    } else if (globalCapUSDC == type(uint256).max) {
+        wouldExceedGlobalCap = false;
+    } else {
+        wouldExceedGlobalCap = (usdcOut > windowRemainingUSDC);
+    }
     }
 
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {
@@ -196,12 +270,16 @@ contract MZUSD is
         }
     }
 
-    //todo 1hour change to variable
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalHourlyRedemptionCapUSDC;
-        if (cap == 0) return;
 
-        if (block.timestamp >= uint256(windowStartTimestamp) + 1 hours) {
+        // Cap == 0 now means "zero allowed" (hard stop). For "no limit", use type(uint256).max.
+        if (cap == 0) {
+            if (usdcAmount > 0) revert GlobalHourlyCapExceeded();
+            return;
+        }
+
+        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
             windowStartTimestamp = uint64(block.timestamp);
             windowUsedUSDC = 0;
         }
