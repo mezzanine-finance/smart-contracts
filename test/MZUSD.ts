@@ -490,7 +490,7 @@ describe("MZUSD <-> USDC conversion", () => {
         // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
         await expect(
             mzusd.connect(alice).requestWithdrawal(to18(50n))
-        ).to.be.revertedWithCustomError(mzusd, "InsufficientLiquidity");
+        ).to.be.revertedWithCustomError(mzusd, "InsufficientLiquidityOnVault");
     });
 
     it("Should correctly compute remaining global hourly cap and preview functions", async () => {

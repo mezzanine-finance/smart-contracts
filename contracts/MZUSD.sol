@@ -53,6 +53,7 @@ contract MZUSD is
     error ZeroAddress();
     error InsufficientBalance();
     error InsufficientLiquidity();
+    error InsufficientLiquidityOnVault();
     error GlobalHourlyCapExceeded();
     error ZeroCap();
     error ZeroDuration();
@@ -115,7 +116,7 @@ contract MZUSD is
         _burn(_msgSender(), amountMZ);
 
         uint256 vaultBal = usdc.balanceOf(address(vault));
-        if (vaultBal < usdcOut) revert InsufficientLiquidity();
+        if (vaultBal < usdcOut) revert InsufficientLiquidityOnVault();
 
         vault.withdraw(_msgSender(), usdcOut);
 
