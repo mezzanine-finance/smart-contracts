@@ -14,6 +14,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typech
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
+const MZUSD_USER_ROLE = 2n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -122,6 +123,31 @@ describe("MZUSD <-> USDC conversion", () => {
             mzusd.target,
             0 // executionDelay
         );
+
+        // AccessManager wiring for MZUSD user-facing restricted functions
+        const depositSelector = mzusd.interface.getFunction("deposit").selector;
+        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
+
+        // Assign USER role for deposit / requestWithdrawal
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [depositSelector, requestWithdrawalSelector],
+            MZUSD_USER_ROLE
+        );
+
+        // Grant MZUSD_USER_ROLE to all actors that call deposit/requestWithdrawal in tests
+        const userRoleGrantees = [
+            deployer.address,
+            alice.address,
+            bob.address,
+            charlie.address,
+            dave.address,
+            nettingHelper.target,
+        ];
+
+        for (const grantee of userRoleGrantees) {
+            await accessManager.grantRole(MZUSD_USER_ROLE, grantee, 0);
+        }
 
         snapshot = await takeSnapshot();
     });
@@ -468,8 +494,8 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should correctly compute remaining global hourly cap and preview functions", async () => {
-        // Scenario 1: cap = 0 => unlimited
-        await mzusd.setGlobalHourlyRedemptionCap(0);
+        // Scenario 1: cap = maxUint256 => unlimited
+        await mzusd.setGlobalHourlyRedemptionCap(maxUint256);
 
         let [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
         const storedWindowStart = await mzusd.windowStartTimestamp();
@@ -515,13 +541,13 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Preview helpers
 
-        // previewDeposit: 123 USDC -> 123 MZUSD в 18 decimals
-        const previewMint = await mzusd.previewDeposit(to6(123n));
+        // calculateDeposit: 123 USDC -> 123 MZUSD in 18 decimals
+        const previewMint = await mzusd.calculateDeposit(to6(123n));
         expect(previewMint).to.equal(to18(123n));
 
-        // previewWithdrawal: amountMZ with dust
+        // calculateWithdrawalAmounts: amountMZ with dust
         const amountMZ = to18(10n) + 123n; // 10 USDC + 123 dust
-        const [usdcOut, dustMZ] = await mzusd.previewWithdrawal(amountMZ);
+        const [usdcOut, dustMZ] = await mzusd.calculateWithdrawalAmounts(amountMZ);
 
         expect(usdcOut).to.equal(to6(10n)); // 10 USDC
         expect(dustMZ).to.equal(123n);
@@ -531,9 +557,127 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(decimals).to.equal(18);
     });
 
+    it("Should correctly preview withdrawal flat data including cap and liquidity", async () => {
+        // Set a finite hourly cap so we can observe usage
+        const capUSDC = to6(150n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+
+        const whale = await imp(USDC_WHALE);
+
+        // Fund Alice and deposit 200 USDC -> 200 MZUSD
+        const depositAmountUSDC = to6(200n);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
+        expect(aliceMZAfterDeposit).to.equal(to18(200n));
+
+        // First real withdrawal: 60 USDC (consumes part of cap)
+        const firstWithdrawMZ = to18(60n);
+        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
+
+        // After this withdrawal, cap usage should be 60 USDC
+        const [remainingCapAfterFirst] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(capUSDC - remainingCapAfterFirst).to.equal(to6(60n));
+
+        // Now preview withdrawing 100 USDC + small dust
+        const previewAmountMZ = to18(100n) + 123n; // 100 USDC equivalent + 123 dust
+
+        const [
+            requestedMZ,
+            userBalanceMZ,
+            hasEnoughMZ,
+            usdcOut,
+            dustMZ,
+            vaultLiquidityUSDC,
+            hasSufficientLiquidity,
+            globalCapUSDC,
+            windowStart,
+            windowEnd,
+            windowUsedUSDC_,
+            windowRemainingUSDC,
+            isGlobalCapZero,
+            wouldExceedGlobalCap,
+        ] = await mzusd.connect(alice).previewWithdrawalFlat(previewAmountMZ);
+
+        const aliceMZCurrent = await mzusd.balanceOf(alice.address);
+        const vaultUSDCBalance = await usdc.balanceOf(vault.target);
+        const redemptionDuration = await mzusd.redemptionWindowDuration();
+
+        // Basic fields
+        expect(requestedMZ).to.equal(previewAmountMZ);
+        expect(userBalanceMZ).to.equal(aliceMZCurrent);
+        expect(hasEnoughMZ).to.equal(true);
+
+        // Conversion and dust
+        expect(usdcOut).to.equal(to6(100n));
+        expect(dustMZ).to.equal(123n);
+
+        // Vault liquidity and liquidity flag
+        expect(vaultLiquidityUSDC).to.equal(vaultUSDCBalance);
+        expect(hasSufficientLiquidity).to.equal(true);
+
+        // Global cap fields
+        expect(globalCapUSDC).to.equal(capUSDC);
+        expect(isGlobalCapZero).to.equal(false);
+
+        // Cap usage and remaining window
+        const expectedUsedUSDC = to6(60n);
+        const expectedRemainingUSDC = capUSDC - expectedUsedUSDC;
+        expect(windowRemainingUSDC).to.equal(expectedRemainingUSDC);
+        expect(windowUsedUSDC_).to.equal(expectedUsedUSDC);
+
+        // Window start/end relationship
+        expect(windowEnd).to.equal(windowStart + redemptionDuration);
+
+        // Since 100 USDC > remaining 90 USDC, this preview should report exceeding the cap
+        expect(wouldExceedGlobalCap).to.equal(true);
+
+        // Now switch to "no practical cap" with maxUint256 and check the view adapts
+        await mzusd.setGlobalHourlyRedemptionCap(maxUint256);
+
+        const [
+            ,
+            ,
+            ,
+            usdcOut2,
+            dustMZ2,
+            vaultLiquidityUSDC2,
+            hasSufficientLiquidity2,
+            globalCapUSDC2,
+            windowStart2,
+            windowEnd2,
+            windowUsedUSDC2,
+            windowRemainingUSDC2,
+            isGlobalCapZero2,
+            wouldExceedGlobalCap2,
+        ] = await mzusd.connect(alice).previewWithdrawalFlat(previewAmountMZ);
+
+        // Core conversion stays the same
+        expect(usdcOut2).to.equal(usdcOut);
+        expect(dustMZ2).to.equal(dustMZ);
+        expect(vaultLiquidityUSDC2).to.equal(vaultLiquidityUSDC);
+        expect(hasSufficientLiquidity2).to.equal(true);
+
+        // Cap is now effectively infinite
+        expect(globalCapUSDC2).to.equal(maxUint256);
+        expect(isGlobalCapZero2).to.equal(false);
+
+        // Remaining cap is maxUint256 minus whatever has already been used in the current window
+        expect(windowRemainingUSDC2).to.equal(maxUint256 - expectedUsedUSDC);
+        expect(windowUsedUSDC2).to.equal(expectedUsedUSDC);
+
+        // Window timing relationship still holds
+        expect(windowEnd2).to.equal(windowStart2 + redemptionDuration);
+
+        // With max cap, preview should never flag exceeding the cap
+        expect(wouldExceedGlobalCap2).to.equal(false);
+    });
+
     it("Should allow deposits and withdrawals when hourly cap is zero (cap disabled)", async () => {
-        // Disable hourly cap
-        await mzusd.setGlobalHourlyRedemptionCap(0);
+        // Effectively disable cap by setting it to maxUint256 (no practical limit)
+        await mzusd.setGlobalHourlyRedemptionCap(maxUint256);
 
         const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(300n); // 300 USDC
@@ -564,6 +708,193 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
 
         const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
-        expect(remainingAfter).to.equal(maxUint256);
+        expect(remainingAfter).to.equal(maxUint256 - depositAmountUSDC);
+    });
+
+    it("Should validate redemption window duration updates and reject zero", async () => {
+        // Zero duration is not allowed
+        await expect(mzusd.setRedemptionWindowDuration(0)).to.be.revertedWithCustomError(
+            mzusd,
+            "ZeroDuration"
+        );
+
+        // Update to 2 hours and check storage + event
+        const newDuration = 2 * 60 * 60; // 2 hours
+
+        await expect(mzusd.setRedemptionWindowDuration(newDuration))
+            .to.emit(mzusd, "RedemptionWindowDurationUpdated")
+            .withArgs(newDuration);
+
+        const storedDuration = await mzusd.redemptionWindowDuration();
+        expect(storedDuration).to.equal(newDuration);
+    });
+
+    it("Should reset window usage when shortening redemption duration past current window", async () => {
+        // Set a finite cap to observe remaining/used values
+        const capUSDC = to6(200n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+
+        const whale = await imp(USDC_WHALE);
+
+        // Alice deposits 200 USDC -> 200 MZUSD
+        const depositAmountUSDC = to6(200n);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        // Alice withdraws 80 USDC -> consumes part of the cap
+        const withdrawMZ = to18(80n);
+        await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
+
+        // Capture window state after withdrawal
+        const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const usedBefore = capUSDC - remainingBefore;
+        const windowStartBefore = await mzusd.windowStartTimestamp();
+        const durationBefore = await mzusd.redemptionWindowDuration();
+
+        expect(usedBefore).to.equal(to6(80n));
+        expect(durationBefore).to.equal(60 * 60); // initial 1h window
+
+        // Increase window duration to 2h - this should NOT reset window
+        const longerDuration = 2 * 60 * 60;
+        await mzusd.setRedemptionWindowDuration(longerDuration);
+
+        const windowStartLong = await mzusd.windowStartTimestamp();
+        const usedLong = await mzusd.windowUsedUSDC();
+        const storedDurationLong = await mzusd.redemptionWindowDuration();
+
+        expect(storedDurationLong).to.equal(longerDuration);
+        expect(windowStartLong).to.equal(windowStartBefore);
+        expect(usedLong).to.equal(usedBefore);
+
+        // Move time forward so that the current window is older than the shorter duration
+        await time.increase(2000); // > 10 minutes (600s) which we will set next
+
+        // Shorten duration to 10 minutes; since the window is already older than that,
+        // the setter should reset window start and usage.
+        const shorterDuration = 10 * 60; // 10 minutes
+        await mzusd.setRedemptionWindowDuration(shorterDuration);
+
+        const storedDurationShort = await mzusd.redemptionWindowDuration();
+        const windowStartAfter = await mzusd.windowStartTimestamp();
+        const usedAfter = await mzusd.windowUsedUSDC();
+        const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
+
+        expect(storedDurationShort).to.equal(shorterDuration);
+
+        const latestTs = await time.latest();
+        expect(windowStartAfter).to.equal(BigInt(latestTs));
+
+        expect(usedAfter).to.equal(0n);
+        expect(remainingAfter).to.equal(capUSDC);
+    });
+
+    it("Should keep previewWithdrawalFlat aligned with cap getter and window duration", async () => {
+        // 1) Set a finite cap and consume part of it
+        const capUSDC = to6(200n);
+        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+
+        const whale = await imp(USDC_WHALE);
+
+        // Alice deposits 200 USDC -> 200 MZUSD
+        const depositAmountUSDC = to6(200n);
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        // Alice withdraws 80 USDC -> consumes part of the cap
+        const withdrawMZ = to18(80n);
+        await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
+
+        // Check state via small getter
+        let [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const usedBefore = capUSDC - remainingBefore;
+        const durationBefore = await mzusd.redemptionWindowDuration();
+
+        expect(usedBefore).to.equal(to6(80n));
+        expect(durationBefore).to.equal(60 * 60); // default 1h window
+
+        // 2) Big getter: preview for 150 USDC (more than remaining = 120)
+        const previewAmountMZ = to18(150n);
+
+        const [
+            ,
+            ,
+            ,
+            usdcOut1,
+            ,
+            ,
+            ,
+            globalCapUSDC1,
+            windowStartPrev1,
+            windowEndPrev1,
+            windowUsedUSDC1,
+            windowRemainingUSDC1,
+            isGlobalCapZero1,
+            wouldExceedGlobalCap1,
+        ] = await mzusd.connect(alice).previewWithdrawalFlat(previewAmountMZ);
+
+        // Conversion
+        expect(usdcOut1).to.equal(to6(150n));
+
+        // Cup and zero flag
+        expect(globalCapUSDC1).to.equal(capUSDC);
+        expect(isGlobalCapZero1).to.equal(false);
+
+        expect(windowRemainingUSDC1).to.equal(remainingBefore);
+        expect(windowUsedUSDC1).to.equal(usedBefore);
+        expect(windowStartPrev1).to.equal(windowStartBefore);
+        expect(windowEndPrev1).to.equal(windowStartPrev1 + durationBefore);
+
+        // 150 > 200 - 80 = 120 -> true
+        expect(wouldExceedGlobalCap1).to.equal(true);
+
+        // 3) Make the window old and shortening the duration
+        await time.increase(2000); // > 10 minutes
+        const shorterDuration = 10 * 60; // 10 min
+
+        await mzusd.setRedemptionWindowDuration(shorterDuration);
+
+        const storedDurationShort = await mzusd.redemptionWindowDuration();
+        expect(storedDurationShort).to.equal(shorterDuration);
+
+        // Small getter should see a NEW window with full cap
+        const [remainingAfter, windowStartAfter] = await mzusd.getRemainingGlobalHourlyCap();
+        expect(remainingAfter).to.equal(capUSDC);
+
+        // 4) Big getter again with the same amount
+        const [
+            ,
+            ,
+            ,
+            usdcOut2,
+            ,
+            ,
+            ,
+            globalCapUSDC2,
+            windowStartPrev2,
+            windowEndPrev2,
+            windowUsedUSDC2,
+            windowRemainingUSDC2,
+            isGlobalCapZero2,
+            wouldExceedGlobalCap2,
+        ] = await mzusd.connect(alice).previewWithdrawalFlat(previewAmountMZ);
+
+        // Conversion stays the same
+        expect(usdcOut2).to.equal(usdcOut1);
+        expect(globalCapUSDC2).to.equal(capUSDC);
+        expect(isGlobalCapZero2).to.equal(false);
+
+        // Now preview should report full remaining and zero used
+        // remaining = full cap, used = 0 (view-level)
+        expect(windowRemainingUSDC2).to.equal(capUSDC);
+        expect(windowUsedUSDC2).to.equal(0n);
+
+        // start/end in big getter must match small getter with new duration
+        expect(windowStartPrev2).to.equal(windowStartAfter);
+        expect(windowEndPrev2).to.equal(windowStartPrev2 + storedDurationShort);
+
+        // With full cap, 150 no longer exceeds the limit
+        expect(wouldExceedGlobalCap2).to.equal(false);
     });
 });
