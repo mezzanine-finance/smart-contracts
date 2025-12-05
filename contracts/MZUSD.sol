@@ -115,6 +115,10 @@ contract MZUSD is
         emit Withdrawal(_msgSender(), amountMZ, usdcOut);
     }
 
+     function mint(address to, uint256 amount) external restricted {
+        _mint(to, amount);
+    }
+
     function pause() external restricted {
         _pause();
     }
