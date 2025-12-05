@@ -10,7 +10,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
 import "./interfaces/IVault.sol";
-import "./interfaces/IMZUSD.sol";
+
+interface IMZUSD {
+    function mint(address to, uint256 amount) external;
+}
 
 interface IReservoir {
     function deposit(uint256 amount) external;
