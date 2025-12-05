@@ -8,8 +8,10 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
-import "./interfaces/IMZUSD.sol";
-import "./interfaces/IVault.sol";
+
+interface IVault {
+    function withdraw(address to, uint256 amountUSDC) external;
+}
 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
@@ -18,8 +20,7 @@ contract MZUSD is
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
-    AccessManagedUpgradeable,
-    IMZUSD
+    AccessManagedUpgradeable
 {
     using SafeERC20 for IERC20;
 
