@@ -807,7 +807,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
         // Check state via small getter
-        let [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalHourlyCap();
         const usedBefore = capUSDC - remainingBefore;
         const durationBefore = await mzusd.redemptionWindowDuration();
 

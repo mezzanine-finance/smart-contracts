@@ -291,7 +291,6 @@ contract MZUSD is
         windowUsedUSDC = newTotal;
     }
 
-    
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
     /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
     ///      `upgradeToAndCall` function, so static analyzers treat this contract as

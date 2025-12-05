@@ -3,7 +3,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { HardhatUserConfig } from "hardhat/config";
+import {HardhatUserConfig} from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomiclabs/hardhat-solhint";
 import "solidity-coverage";
@@ -70,7 +70,7 @@ const config: HardhatUserConfig = {
     },
     etherscan: {
         apiKey: {
-            buildbear: "verifyContract"
+            buildbear: "verifyContract",
         },
         customChains: [
             {
@@ -78,10 +78,10 @@ const config: HardhatUserConfig = {
                 chainId: 31337,
                 urls: {
                     apiURL: "https://rpc.buildbear.io/verify/etherscan/male-shatterstar-286313ca",
-                    browserURL: "https://explorer.buildbear.io/male-shatterstar-286313ca"
-                }
-            }
-        ]
+                    browserURL: "https://explorer.buildbear.io/male-shatterstar-286313ca",
+                },
+            },
+        ],
     },
     // sourcify: {
     //     enabled: true,

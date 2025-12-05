@@ -1,14 +1,12 @@
-import { ethers, upgrades, network, run } from "hardhat";
-import { parseUnits } from "ethers";
+import {ethers, upgrades, network, run} from "hardhat";
+import {parseUnits} from "ethers";
 import {
     loadDeployments,
     saveDeployments,
     recordDeployment,
     getLatestDeployment,
 } from "./utils/deployments";
-import { DEPLOY_INFO } from "./deployInfo";
-
-
+import {DEPLOY_INFO} from "./deployInfo";
 
 async function verifyContract(address: string, constructorArguments: any[] = []) {
     if (network.name === "hardhat") {
@@ -85,7 +83,6 @@ async function main() {
         txHash: tx?.hash,
         deployedAt: new Date().toISOString(),
     });
-
 
     console.log("\nConfiguring AccessManager roles for MZUSD (PUBLIC_ROLE)...");
     const accessManager = await ethers.getContractAt(
