@@ -1,12 +1,14 @@
-import {ethers, upgrades, network, run} from "hardhat";
-import {parseUnits} from "ethers";
+import { ethers, upgrades, network, run } from "hardhat";
+import { parseUnits } from "ethers";
 import {
     loadDeployments,
     saveDeployments,
     recordDeployment,
     getLatestDeployment,
 } from "./utils/deployments";
-import {DEPLOY_INFO} from "./deployInfo";
+import { DEPLOY_INFO } from "./deployInfo";
+
+
 
 async function verifyContract(address: string, constructorArguments: any[] = []) {
     if (network.name === "hardhat") {
@@ -83,6 +85,27 @@ async function main() {
         txHash: tx?.hash,
         deployedAt: new Date().toISOString(),
     });
+
+
+    console.log("\nConfiguring AccessManager roles for MZUSD (PUBLIC_ROLE)...");
+    const accessManager = await ethers.getContractAt(
+        "AccessManager",
+        accessManagerAddress,
+        deployer
+    );
+    const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
+
+    const depositSelector = MZUSDFactory.interface.getFunction("deposit")!.selector;
+    const requestWithdrawalSelector =
+        MZUSDFactory.interface.getFunction("requestWithdrawal")!.selector;
+
+    const txSetPublicRole = await accessManager.setTargetFunctionRole(
+        proxyAddress,
+        [depositSelector, requestWithdrawalSelector],
+        PUBLIC_ROLE
+    );
+    await txSetPublicRole.wait();
+    console.log("setTargetFunctionRole for deposit/requestWithdrawal -> PUBLIC_ROLE done");
 
     // Verify implementation (proxy verification is optional)
     await verifyContract(implAddress);

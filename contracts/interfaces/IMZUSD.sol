@@ -11,11 +11,6 @@ interface IMZUSD is IERC20 {
     /// @notice request withdrawal of MZUSD for USDC
     function requestWithdrawal(uint256 amountMZ) external;
 
-    /// @notice pause / unpause user actions
-    function pause() external;
-
-    function unpause() external;
-
     // @notice usage restricted to Vault; mint assets to Tranche + fee lock
     function mint(address to, uint256 amount) external;
 

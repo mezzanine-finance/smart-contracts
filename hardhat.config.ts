@@ -3,7 +3,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import {HardhatUserConfig} from "hardhat/config";
+import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomiclabs/hardhat-solhint";
 import "solidity-coverage";
@@ -57,6 +57,11 @@ const config: HardhatUserConfig = {
                 enabled: enableForking,
             },
         },
+        buildbear: {
+            url: "https://rpc.buildbear.io/male-shatterstar-286313ca",
+            chainId: 31337,
+            accounts: envs.DEV_ACCOUNT ? [envs.DEV_ACCOUNT] : [],
+        },
         sepolia: {
             url: envs.SEPOLIA_RPC ?? "",
             chainId: 11155111,
@@ -65,9 +70,23 @@ const config: HardhatUserConfig = {
     },
     etherscan: {
         apiKey: {
-            sepolia: envs.ETHERSCAN_API_KEY ?? "",
+            buildbear: "verifyContract"
         },
+        customChains: [
+            {
+                network: "buildbear",
+                chainId: 31337,
+                urls: {
+                    apiURL: "https://rpc.buildbear.io/verify/etherscan/male-shatterstar-286313ca",
+                    browserURL: "https://explorer.buildbear.io/male-shatterstar-286313ca"
+                }
+            }
+        ]
     },
+    // sourcify: {
+    //     enabled: true,
+    //     apiUrl: "https://rpc.buildbear.io/verify/sourcify/server/male-shatterstar-286313ca",
+    // },
     docgen: {
         pages: "files",
         exclude: ["deprecated/"],

@@ -5,7 +5,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
@@ -19,7 +18,6 @@ contract MZUSD is
     Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
-    PausableUpgradeable,
     UUPSUpgradeable,
     AccessManagedUpgradeable,
     IMZUSD
@@ -74,7 +72,6 @@ contract MZUSD is
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __Pausable_init();
         __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
@@ -84,7 +81,7 @@ contract MZUSD is
     }
 
     /// @notice deposit USDC and mint MZUSD 1:1
-    function deposit(uint256 amountUSDC) external nonReentrant whenNotPaused restricted {
+    function deposit(uint256 amountUSDC) external nonReentrant restricted {
         if (vault == IVault(address(0))) revert ZeroAddress();
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -101,7 +98,7 @@ contract MZUSD is
     /// @notice request withdrawal of MZUSD for USDC
     /// @dev v1: executes instantly if vault has liquidity
     /// @dev v2: can be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external nonReentrant whenNotPaused restricted {
+    function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
         if (amountMZ == 0) revert ZeroAmount();
         if (balanceOf(_msgSender()) < amountMZ) revert InsufficientBalance();
 
@@ -121,14 +118,6 @@ contract MZUSD is
         vault.withdraw(_msgSender(), usdcOut);
 
         emit Withdrawal(_msgSender(), amountMZ, usdcOut);
-    }
-
-    function pause() external restricted {
-        _pause();
-    }
-
-    function unpause() external restricted {
-        _unpause();
     }
 
     function mint(address to, uint256 amount) external restricted {

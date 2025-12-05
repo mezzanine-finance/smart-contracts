@@ -23,4 +23,10 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
         accessManagerAdmin: "0xYourSepoliaAdmin",
         mzusdHourlyCap: "0",
     },
+
+    buildbear: {
+        usdc: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        accessManagerAdmin: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
+        mzusdHourlyCap: "1000000",
+    }
 };
