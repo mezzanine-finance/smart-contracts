@@ -11,7 +11,6 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "./interfaces/IMZUSD.sol";
 import "./interfaces/IVault.sol";
 
-//todo approve + transfer
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
 contract MZUSD is
@@ -55,6 +54,7 @@ contract MZUSD is
     error GlobalHourlyCapExceeded();
     error ZeroCap();
     error ZeroDuration();
+    error EthTransferFailed();
 
     constructor() {
         _disableInitializers();
@@ -288,6 +288,27 @@ contract MZUSD is
         if (newTotal > cap) revert GlobalHourlyCapExceeded();
 
         windowUsedUSDC = newTotal;
+    }
+
+    
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed();
     }
 
     function _authorizeUpgrade(address) internal override restricted {}
