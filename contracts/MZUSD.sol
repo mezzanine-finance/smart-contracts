@@ -2,8 +2,8 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -22,16 +22,15 @@ contract MZUSD is
     UUPSUpgradeable,
     AccessManagedUpgradeable
 {
-    using SafeERC20 for IERC20;
-
-    IERC20 public usdc;
+    IERC20 public immutable usdc;
     IVault public vault;
 
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
+    uint256 public constant MAX_WITHDRAW_DUST_MZ = 1e6;
 
-    /// @notice global hourly redemption cap in USDC (6 decimals); 0 = disabled
+    /// @notice global hourly redemption cap in USDC (6 decimals); 0 = disabled (no redemptions)
     uint256 public globalHourlyRedemptionCapUSDC;
     uint64 public windowStartTimestamp;
     uint256 public windowUsedUSDC;
@@ -49,24 +48,28 @@ contract MZUSD is
 
     error ZeroAmount();
     error ZeroAddress();
-    error InsufficientBalance();
-    error InsufficientLiquidity();
-    error InsufficientLiquidityOnVault();
-    error GlobalHourlyCapExceeded();
     error ZeroCap();
     error ZeroDuration();
-    error EthTransferFailed();
+    error SameValue();
+    error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
+    error NonIntegralWithdrawalAmount(uint256 amountMZ, uint256 usdcOut, uint256 dustMZ);
+    error SlippageTooHigh(uint256 actualOutUSDC, uint256 minAmountOutUSDC);
+    error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
+    error InvalidUSDCDecimals(uint8 actualDecimals);
+    error EthTransferFailed(address to, uint256 attemptedAmount);
 
-    constructor() {
+    constructor(address _usdc) {
+        if (_usdc == address(0)) revert ZeroAddress();
+
+        uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
+        if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
+
+        usdc = IERC20(_usdc);
         _disableInitializers();
     }
 
-    function initialize(
-        address accessManager,
-        address _usdc,
-        uint256 _hourlyLimitUSDC
-    ) external initializer {
-        if (accessManager == address(0) || _usdc == address(0)) {
+    function initialize(address accessManager, uint256 _hourlyLimitUSDC) external initializer {
+        if (accessManager == address(0)) {
             revert ZeroAddress();
         }
 
@@ -75,7 +78,6 @@ contract MZUSD is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
-        usdc = IERC20(_usdc);
         globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
         windowStartTimestamp = uint64(block.timestamp);
         redemptionWindowDuration = 1 hours;
@@ -83,62 +85,76 @@ contract MZUSD is
 
     /// @notice deposit USDC and mint MZUSD 1:1
     function deposit(uint256 amountUSDC) external nonReentrant restricted {
-        if (vault == IVault(address(0))) revert ZeroAddress();
+        if (address(vault) == address(0)) revert ZeroAddress();
         if (amountUSDC == 0) revert ZeroAmount();
+
+        address sender = _msgSender();
 
         _txDepositedUSDC += amountUSDC;
 
-        usdc.safeTransferFrom(_msgSender(), address(vault), amountUSDC);
+        // USDC is a well-behaved ERC20; direct transferFrom is safe here.
+        usdc.transferFrom(sender, address(vault), amountUSDC);
 
         uint256 mintAmount = amountUSDC * SCALE;
-        _mint(_msgSender(), mintAmount);
+        _mint(sender, mintAmount);
 
-        emit Deposit(_msgSender(), amountUSDC, mintAmount);
+        emit Deposit(sender, amountUSDC, mintAmount);
     }
 
     /// @notice request withdrawal of MZUSD for USDC
-    /// @dev v1: executes instantly if vault has liquidity
+    /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: can be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
+    function requestWithdrawal(
+        uint256 amountMZ,
+        uint256 minAmountOutUSDC
+    ) external nonReentrant restricted {
         if (amountMZ == 0) revert ZeroAmount();
-        if (balanceOf(_msgSender()) < amountMZ) revert InsufficientBalance();
 
-        uint256 usdcOut = amountMZ / SCALE;
-        if (usdcOut == 0) revert InsufficientLiquidity();
+        address sender = _msgSender();
+
+        (uint256 usdcOut, uint256 dustMZ) = calculateWithdrawalAmounts(amountMZ);
+        if (dustMZ > MAX_WITHDRAW_DUST_MZ)
+            revert NonIntegralWithdrawalAmount(amountMZ, usdcOut, dustMZ);
+
+        if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
+        if (usdcOut < minAmountOutUSDC) revert SlippageTooHigh(usdcOut, minAmountOutUSDC);
 
         uint256 effectiveForLimit = _applyAtomicNetting(usdcOut);
         if (effectiveForLimit != 0) {
             _checkAndConsumeGlobalCap(effectiveForLimit);
         }
 
-        _burn(_msgSender(), amountMZ);
+        _burn(sender, amountMZ);
 
-        uint256 vaultBal = usdc.balanceOf(address(vault));
-        if (vaultBal < usdcOut) revert InsufficientLiquidityOnVault();
+        // Let Vault handle its own liquidity (including Reservoir pulls).
+        vault.withdraw(sender, usdcOut);
 
-        vault.withdraw(_msgSender(), usdcOut);
-
-        emit Withdrawal(_msgSender(), amountMZ, usdcOut);
+        emit Withdrawal(sender, amountMZ, usdcOut);
     }
 
+    //todo redo to mintFees or limits
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
 
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
         if (newCapUSDC == 0) revert ZeroCap();
+        if (globalHourlyRedemptionCapUSDC == newCapUSDC) revert SameValue();
         globalHourlyRedemptionCapUSDC = newCapUSDC;
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
 
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
+        if (address(vault) == _vault) revert SameValue();
         vault = IVault(_vault);
         emit SetVault(address(vault));
     }
 
     function setRedemptionWindowDuration(uint256 newDuration) external restricted {
         if (newDuration == 0) revert ZeroDuration();
+        if (redemptionWindowDuration == newDuration) revert SameValue();
+
         redemptionWindowDuration = newDuration;
 
         // If the current window is already longer than the new duration,
@@ -276,7 +292,7 @@ contract MZUSD is
 
         // Cap == 0 now means "zero allowed" (hard stop). For "no limit", use type(uint256).max.
         if (cap == 0) {
-            if (usdcAmount > 0) revert GlobalHourlyCapExceeded();
+            if (usdcAmount > 0) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
             return;
         }
 
@@ -286,7 +302,7 @@ contract MZUSD is
         }
 
         uint256 newTotal = windowUsedUSDC + usdcAmount;
-        if (newTotal > cap) revert GlobalHourlyCapExceeded();
+        if (newTotal > cap) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
 
         windowUsedUSDC = newTotal;
     }
@@ -308,7 +324,7 @@ contract MZUSD is
         }
 
         (bool ok, ) = to.call{value: amount}("");
-        if (!ok) revert EthTransferFailed();
+        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     function _authorizeUpgrade(address) internal override restricted {}
