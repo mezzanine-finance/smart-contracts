@@ -5,7 +5,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
@@ -38,41 +37,50 @@ contract Vault is
     IVault,
     AccessManagedUpgradeable
 {
-    using SafeERC20 for IERC20;
-
     struct TrancheInfo {
         address tranche;
-        uint256 weightBps;
+        uint16 weightBps;
         bool enabled;
     }
+
+    uint256 public constant BPS = 10_000;
+    uint256 public constant MZUSD_SCALE = 1e12;
+    uint256 public constant MAX_FEE_LOCK_EPOCHS = 365;
+    uint256 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
+    uint256 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
+    uint256 public constant MAX_TRANCHES = 50;
+
     TrancheInfo[] public tranches;
     mapping(address => bool) public isTranche;
 
-    uint256 public constant BPS = 10_000;
-
-    IERC20 public usdc;
+    IERC20 public immutable usdc;
     IMZUSD public mzusd;
     IReservoir public reservoir;
 
-    uint256 public idleBufferUSDC;
-    uint256 public hysteresisBps;
-
     address public insurance;
-    uint256 public insuranceBps;
-
-    uint256 public performanceFeeBps;
-    uint256 public protocolFeeBps;
     address public performanceFeeReceiver;
     address public protocolFeeReceiver;
 
-    // epochs
+    IFeeEscrow public feeEscrow;
+
+    uint256 public idleBufferUSDC;
     uint256 public currentEpochId;
-    uint256 public epochStart;
-    uint256 public minEpochDuration;
+
+    // precomputed buffer bounds
+    uint256 public bufferLowUSDC;
+    uint256 public bufferHighUSDC;
+
+    // epochs
+    uint64 public epochStart;
+    uint64 public minEpochDuration;
 
     // fee locking
-    IFeeEscrow public feeEscrow;
-    uint256 public feeLockEpochs;
+    uint64 public feeLockEpochs;
+
+    uint16 public hysteresisBps;
+    uint16 public insuranceBps;
+    uint16 public performanceFeeBps;
+    uint16 public protocolFeeBps;
 
     // loss waterfall
     uint256[] public trancheLossOrder;
@@ -108,19 +116,23 @@ contract Vault is
     error TrancheIndexOOB();
     error ZeroAddress();
     error EpochTooSoon();
+    error InvalidEpochDuration();
+    error FeeLockEpochsTooBig();
+    error TooManyTranches();
+    error SameValue();
 
-    constructor() {
+    constructor(address _usdc) {
+        if (_usdc == address(0)) revert ZeroAddress();
+        usdc = IERC20(_usdc);
         _disableInitializers();
     }
 
     function initialize(
-        address _usdc,
         address _mzusd,
         address _reservoir,
         address accessManager
     ) external initializer {
         if (
-            _usdc == address(0) ||
             _mzusd == address(0) ||
             _reservoir == address(0) ||
             accessManager == address(0)
@@ -133,7 +145,6 @@ contract Vault is
         __Pausable_init();
         __ReentrancyGuard_init();
 
-        usdc = IERC20(_usdc);
         mzusd = IMZUSD(_mzusd);
         reservoir = IReservoir(_reservoir);
 
@@ -141,10 +152,12 @@ contract Vault is
         hysteresisBps = 500;
 
         currentEpochId = 1;
-        epochStart = block.timestamp;
+        epochStart = uint64(block.timestamp);
         minEpochDuration = 1 days;
 
         feeLockEpochs = 2;
+
+        _updateBufferBounds();
     }
 
     function withdraw(address to, uint256 amount) external whenNotPaused nonReentrant restricted {
@@ -155,15 +168,15 @@ contract Vault is
         if (idle < amount) {
             reservoir.withdraw(amount - idle, address(this));
         }
-        if (usdc.balanceOf(address(this)) < amount) revert InsufficientUSDC();
-        usdc.safeTransfer(to, amount);
+        // USDC transfer will revert if balance is insufficient
+        usdc.transfer(to, amount);
         emit WithdrawnUSDCFromVault(to, amount);
     }
 
     function rebalance() external whenNotPaused {
         uint256 idle = usdc.balanceOf(address(this));
-        uint256 low = (idleBufferUSDC * (BPS - hysteresisBps)) / BPS;
-        uint256 high = (idleBufferUSDC * (BPS + hysteresisBps)) / BPS;
+        uint256 low = bufferLowUSDC;
+        uint256 high = bufferHighUSDC;
 
         uint256 sent;
         uint256 pulled;
@@ -186,7 +199,7 @@ contract Vault is
 
         uint256 newEpochId = _advanceEpochAndValidate();
 
-        uint256 mintedGross = usdcReported * 1e12;
+        uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintAndLockFees(
             mintedGross,
@@ -209,13 +222,14 @@ contract Vault is
 
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
+        if (address(reservoir) == _reservoir) revert SameValue();
         reservoir = IReservoir(_reservoir);
         emit ReservoirUpdated(_reservoir);
     }
 
     function setMZUSD(address _mzusd) external restricted {
         if (_mzusd == address(0)) revert ZeroAddress();
-        if (address(mzusd) == _mzusd) return;
+        if (address(mzusd) == _mzusd) revert SameValue();
         mzusd = IMZUSD(_mzusd);
         emit MZUSDChanged(_mzusd);
     }
@@ -230,9 +244,9 @@ contract Vault is
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0)) revert ZeroAddress();
         if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0)) revert ZeroAddress();
 
-        performanceFeeBps = _performanceFeeBps;
+        performanceFeeBps = uint16(_performanceFeeBps);
         performanceFeeReceiver = _performanceFeeReceiver;
-        protocolFeeBps = _protocolFeeBps;
+        protocolFeeBps = uint16(_protocolFeeBps);
         protocolFeeReceiver = _protocolFeeReceiver;
 
         emit FeesUpdated(
@@ -245,46 +259,60 @@ contract Vault is
 
     function setFeeEscrow(address _escrow, uint256 _feeLockEpochs) external restricted {
         if (_escrow == address(0)) revert ZeroAddress();
+        if (_feeLockEpochs > MAX_FEE_LOCK_EPOCHS) revert FeeLockEpochsTooBig();
         feeEscrow = IFeeEscrow(_escrow);
-        feeLockEpochs = _feeLockEpochs;
+        feeLockEpochs = uint64(_feeLockEpochs);
         emit FeeEscrowUpdated(_escrow, _feeLockEpochs);
     }
 
-    function addTranche(address tranche, uint256 weightBps, bool enabled) external restricted {
-        if (tranche == address(0)) revert ZeroAddress();
-        if (isTranche[tranche]) revert TrancheExists();
-        tranches.push(TrancheInfo(tranche, weightBps, enabled));
-        isTranche[tranche] = true;
-        emit TrancheRegistered(tranche, weightBps, enabled);
+    function addTranche(TrancheInfo calldata info) external restricted {
+        if (info.tranche == address(0)) revert ZeroAddress();
+        if (isTranche[info.tranche]) revert TrancheExists();
+        if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
+        if (info.weightBps > BPS) revert TooBigBps();
+
+        tranches.push(TrancheInfo(info.tranche, info.weightBps, info.enabled));
+        isTranche[info.tranche] = true;
+        emit TrancheRegistered(info.tranche, info.weightBps, info.enabled);
     }
 
     function updateTranche(uint256 idx, uint256 weightBps, bool enabled) external restricted {
         if (idx >= tranches.length) revert TrancheIndexOOB();
-        tranches[idx].weightBps = weightBps;
+        if (weightBps > BPS) revert TooBigBps();
+        tranches[idx].weightBps = uint16(weightBps);
         tranches[idx].enabled = enabled;
         emit TrancheUpdated(idx, weightBps, enabled);
     }
 
     function setInsurance(address _insurance, uint256 bps) external restricted {
-        if (bps > BPS) revert TooBigBps();
         if (_insurance == address(0)) revert ZeroAddress();
+        if (_insurance == insurance) revert SameValue();
+        if (bps > BPS) revert TooBigBps();
         insurance = _insurance;
-        insuranceBps = bps;
+        insuranceBps = uint16(bps);
         emit InsuranceUpdated(_insurance, bps);
     }
 
     function setBuffer(uint256 target, uint256 bandBps) external restricted {
+        if (bandBps > BPS) revert TooBigBps();
         idleBufferUSDC = target;
-        hysteresisBps = bandBps;
+        hysteresisBps = uint16(bandBps);
+        _updateBufferBounds();
         emit BufferUpdated(target, bandBps);
     }
 
     function setEpochConfig(uint256 _minEpochDuration, bool resetStart) external restricted {
-        if (_minEpochDuration == 0) revert ZeroAmount();
-        minEpochDuration = _minEpochDuration;
+        if (
+            _minEpochDuration < MIN_EPOCH_DURATION_LIMIT ||
+            _minEpochDuration > MAX_EPOCH_DURATION_LIMIT
+        ) {
+            revert InvalidEpochDuration();
+        }
+        minEpochDuration = uint64(_minEpochDuration);
         if (resetStart) {
-            epochStart = block.timestamp;
-            emit EpochAdvanced(currentEpochId, epochStart);
+            uint256 ts = block.timestamp;
+            epochStart = uint64(ts);
+            emit EpochAdvanced(currentEpochId, ts);
         }
     }
 
@@ -305,8 +333,7 @@ contract Vault is
     }
 
     function bufferBounds() external view returns (uint256 low, uint256 high) {
-        low = (idleBufferUSDC * (BPS - hysteresisBps)) / BPS;
-        high = (idleBufferUSDC * (BPS + hysteresisBps)) / BPS;
+        return (bufferLowUSDC, bufferHighUSDC);
     }
 
     function getTrancheLossOrder() external view returns (uint256[] memory) {
@@ -314,11 +341,41 @@ contract Vault is
     }
 
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
-        if (block.timestamp < epochStart + minEpochDuration) revert EpochTooSoon();
-        currentEpochId += 1;
-        epochStart = block.timestamp;
-        emit EpochAdvanced(currentEpochId, epochStart);
-        return currentEpochId;
+        uint256 ts = block.timestamp;
+        uint256 duration = minEpochDuration;
+
+        if (ts < uint256(epochStart) + duration) revert EpochTooSoon();
+
+        uint256 epochId = currentEpochId + 1;
+        currentEpochId = epochId;
+        epochStart = uint64(ts);
+
+        emit EpochAdvanced(epochId, ts);
+        return epochId;
+    }
+
+    function _handleFee(
+        uint16 bps,
+        address receiver,
+        uint256 mintedGross,
+        uint256 epochId
+    ) internal returns (uint256 feeAmount) {
+        if (bps == 0 || receiver == address(0)) {
+            return 0;
+        }
+
+        feeAmount = (mintedGross * bps) / BPS;
+        if (feeAmount == 0) {
+            return 0;
+        }
+
+        IFeeEscrow escrow = feeEscrow;
+        if (address(escrow) != address(0)) {
+            mzusd.mint(address(escrow), feeAmount);
+            escrow.lock(receiver, feeAmount, epochId + feeLockEpochs);
+        } else {
+            mzusd.mint(receiver, feeAmount);
+        }
     }
 
     function _mintAndLockFees(
@@ -328,37 +385,20 @@ contract Vault is
         internal
         returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
     {
-        mintedForAllocation = mintedGross;
+        performanceFeeMZUSD = _handleFee(
+            performanceFeeBps,
+            performanceFeeReceiver,
+            mintedGross,
+            epochId
+        );
+        protocolFeeMZUSD = _handleFee(
+            protocolFeeBps,
+            protocolFeeReceiver,
+            mintedGross,
+            epochId
+        );
 
-        if (performanceFeeBps > 0 && performanceFeeReceiver != address(0)) {
-            performanceFeeMZUSD = (mintedGross * performanceFeeBps) / BPS;
-            if (performanceFeeMZUSD > 0) {
-                if (address(feeEscrow) != address(0)) {
-                    mzusd.mint(address(feeEscrow), performanceFeeMZUSD);
-                    feeEscrow.lock(
-                        performanceFeeReceiver,
-                        performanceFeeMZUSD,
-                        epochId + feeLockEpochs
-                    );
-                } else {
-                    mzusd.mint(performanceFeeReceiver, performanceFeeMZUSD);
-                }
-                mintedForAllocation -= performanceFeeMZUSD;
-            }
-        }
-
-        if (protocolFeeBps > 0 && protocolFeeReceiver != address(0)) {
-            protocolFeeMZUSD = (mintedGross * protocolFeeBps) / BPS;
-            if (protocolFeeMZUSD > 0) {
-                if (address(feeEscrow) != address(0)) {
-                    mzusd.mint(address(feeEscrow), protocolFeeMZUSD);
-                    feeEscrow.lock(protocolFeeReceiver, protocolFeeMZUSD, epochId + feeLockEpochs);
-                } else {
-                    mzusd.mint(protocolFeeReceiver, protocolFeeMZUSD);
-                }
-                mintedForAllocation -= protocolFeeMZUSD;
-            }
-        }
+        mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
 
     function _allocateYieldToTranches(
@@ -366,10 +406,14 @@ contract Vault is
     ) internal returns (uint256 actuallyAllocated) {
         uint256 amountForTranches = allocatableMZUSD;
 
-        if (insurance != address(0) && insuranceBps > 0) {
-            uint256 cut = (amountForTranches * insuranceBps) / BPS;
+        address insurance_ = insurance;
+        uint16 insuranceBps_ = insuranceBps;
+        IERC20 mzusdToken = IERC20(address(mzusd));
+
+        if (insurance_ != address(0) && insuranceBps_ > 0) {
+            uint256 cut = (amountForTranches * insuranceBps_) / BPS;
             if (cut > 0) {
-                IERC20(address(mzusd)).safeTransfer(insurance, cut);
+                mzusdToken.transfer(insurance_, cut);
                 amountForTranches -= cut;
             }
         }
@@ -379,11 +423,18 @@ contract Vault is
         uint256 totalWeightsBps;
         uint256[] memory scores = new uint256[](trancheCount);
 
+        address firstEnabledTranche;
+
         for (uint256 i = 0; i < trancheCount; i++) {
-            TrancheInfo memory t = tranches[i];
+            TrancheInfo storage t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
+
+            if (firstEnabledTranche == address(0)) {
+                firstEnabledTranche = t.tranche;
+            }
+
             uint256 tvl = ITranche(t.tranche).totalAssets();
-            uint256 score = t.weightBps * tvl;
+            uint256 score = uint256(t.weightBps) * tvl;
             scores[i] = score;
             totalScore += score;
             totalWeightsBps += t.weightBps;
@@ -396,24 +447,40 @@ contract Vault is
         for (uint256 i = 0; i < trancheCount; i++) {
             uint256 score = scores[i];
             if (score == 0) continue;
+
+            TrancheInfo storage t = tranches[i];
             uint256 part = (amountForTranches * score) / totalScore;
-            IERC20(address(mzusd)).safeTransfer(tranches[i].tranche, part);
-            ITranche(tranches[i].tranche).notifyYield(part);
+            mzusdToken.transfer(t.tranche, part);
+            ITranche(t.tranche).notifyYield(part);
             allocated += part;
         }
 
         if (amountForTranches > allocated) {
-            address dustRecipient = insurance != address(0) ? insurance : _firstEnabledTranche();
-            IERC20(address(mzusd)).safeTransfer(dustRecipient, amountForTranches - allocated);
+            address dustRecipient = insurance_ != address(0) ? insurance_ : firstEnabledTranche;
+            if (dustRecipient == address(0)) {
+                dustRecipient = address(this);
+            }
+            mzusdToken.transfer(dustRecipient, amountForTranches - allocated);
         }
 
         return amountForTranches;
     }
 
+    function _updateBufferBounds() internal {
+        uint256 buffer = idleBufferUSDC;
+        uint16 bandBps = hysteresisBps;
+
+        uint256 low = (buffer * (BPS - bandBps)) / BPS;
+        uint256 high = (buffer * (BPS + bandBps)) / BPS;
+
+        bufferLowUSDC = low;
+        bufferHighUSDC = high;
+    }
+
     function _approveIfNeeded(IERC20 token, address spender, uint256 amount) internal {
         uint256 currentAllowance = token.allowance(address(this), spender);
         if (currentAllowance < amount) {
-            token.safeIncreaseAllowance(spender, amount - currentAllowance);
+            token.approve(spender, amount);
         }
     }
 
