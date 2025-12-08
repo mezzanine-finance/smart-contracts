@@ -95,7 +95,7 @@ const config: HardhatUserConfig = {
         except: ["mocks/", "deprecated/"],
     },
     abiExporter: {
-        except: ["interfaces/", "mocks/", "deprecated/"],
+        except: ["interfaces/", "mocks/", "deprecated/", "test/", "@openzeppelin/"],
         spacing: 4,
     },
     mocha: {
