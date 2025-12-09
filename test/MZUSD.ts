@@ -72,16 +72,12 @@ describe("MZUSD <-> USDC conversion", () => {
         );
 
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = await upgrades.deployProxy(
-            ReservoirFactory,
-            [accessManager.target],
-            {
-                kind: "uups",
-                initializer: "initialize", 
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        );
+        reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        });
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = await upgrades.deployProxy(
@@ -209,9 +205,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
 
         // Attempt to withdraw without balance
-        await expect(
-            mzusd.connect(alice).requestWithdrawal(to18(1n), 0n)
-        ).to.be.reverted;
+        await expect(mzusd.connect(alice).requestWithdrawal(to18(1n), 0n)).to.be.reverted;
 
         // Sanity checks before deposit
         const aliceUSDCBefore = await usdc.balanceOf(alice.address);
@@ -490,9 +484,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const vaultBalanceAfter = await usdc.balanceOf(vault.target);
         expect(vaultBalanceAfter).to.equal(0n);
         // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
-        await expect(
-            mzusd.connect(alice).requestWithdrawal(to18(50n), 0n)
-        ).to.be.reverted;
+        await expect(mzusd.connect(alice).requestWithdrawal(to18(50n), 0n)).to.be.reverted;
     });
 
     it("Should correctly compute remaining global hourly cap and preview functions", async () => {
@@ -898,5 +890,80 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // With full cap, 150 no longer exceeds the limit
         expect(wouldExceedGlobalCap2).to.equal(false);
+    });
+
+    it("Should revert with TooSmallWithdrawalAmount for tiny MZUSD withdrawals", async () => {
+        // Ensure Alice has some MZUSD balance
+        const whale = await imp(USDC_WHALE);
+        const depositAmountUSDC = to6(1n); // 1 USDC
+
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        // Use a withdrawal amount that is below 1 USDC equivalent but within the allowed dust range
+        const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
+        const tooSmallAmountMZ = dustLimit;
+
+        // usdcOut will be 0 for this amount, so TooSmallWithdrawalAmount should trigger
+        await expect(mzusd.connect(alice).requestWithdrawal(tooSmallAmountMZ, 0n))
+            .to.be.revertedWithCustomError(mzusd, "TooSmallWithdrawalAmount")
+            .withArgs(tooSmallAmountMZ, 0n);
+    });
+
+    it("Should revert with NonIntegralWithdrawalAmount when dust exceeds limit", async () => {
+        const whale = await imp(USDC_WHALE);
+        const depositAmountUSDC = to6(100n); // 100 USDC
+
+        // Fund Alice and deposit into MZUSD so she has enough balance
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
+        const targetUSDC = 10n;
+
+        // amountMZ = 10 USDC + dustLimit + dust little over the limit
+        const dust = dustLimit + 1n;
+        const amountMZ = to18(targetUSDC) + dust;
+
+        // usdcOut = 10 USDC in 6 decimals
+        const expectedUsdcOut = to6(targetUSDC);
+
+        await expect(mzusd.connect(alice).requestWithdrawal(amountMZ, 0n))
+            .to.be.revertedWithCustomError(mzusd, "NonIntegralWithdrawalAmount")
+            .withArgs(amountMZ, expectedUsdcOut, dust);
+    });
+
+    it("Should enforce minAmountOutUSDC slippage parameter", async () => {
+        const whale = await imp(USDC_WHALE);
+        const depositAmountUSDC = to6(100n); // 100 USDC
+
+        // Alice deposits 100 USDC --> 100 MZUSD
+        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
+        await mzusd.connect(alice).deposit(depositAmountUSDC);
+
+        const withdrawAmountMZ = to18(50n); // 50 USDC equivalent
+        const expectedUsdcOut = to6(50n);
+
+        // minAmountOut = bigger than expectedUsdcOut
+        const tooHighMin = to6(60n);
+
+        await expect(mzusd.connect(alice).requestWithdrawal(withdrawAmountMZ, tooHighMin))
+            .to.be.revertedWithCustomError(mzusd, "SlippageTooHigh")
+            .withArgs(expectedUsdcOut, tooHighMin);
+
+        // minAmountOut lower than actual — should pass
+        const acceptableMin = to6(40n);
+        const tx = await mzusd.connect(alice).requestWithdrawal(withdrawAmountMZ, acceptableMin);
+        await tx.wait();
+
+        const aliceUSDCBalance = await usdc.balanceOf(alice.address);
+        const aliceMZBalance = await mzusd.balanceOf(alice.address);
+
+        // Alice receives 50 USDC and keeps 50 MZUSD
+        expect(aliceUSDCBalance).to.equal(expectedUsdcOut);
+        expect(aliceMZBalance).to.equal(to18(50n));
     });
 });
