@@ -919,7 +919,7 @@ describe("MZUSD <-> USDC conversion", () => {
     it("Should enforce minAmountOutUSDC slippage parameter", async () => {
         const depositAmountUSDC = to6(100n); // 100 USDC
 
-        // Alice deposits 100 USDC --> 100 MZUSD
+        // Alice deposits 100 USDC -> 100 MZUSD
         await fundAndDepositForAlice(depositAmountUSDC);
 
         const withdrawAmountMZ = to18(50n); // 50 USDC equivalent
@@ -932,7 +932,7 @@ describe("MZUSD <-> USDC conversion", () => {
             .to.be.revertedWithCustomError(mzusd, "SlippageTooHigh")
             .withArgs(expectedUsdcOut, tooHighMin);
 
-        // minAmountOut lower than actual — should pass
+        // minAmountOut lower than actual - should pass
         const acceptableMin = to6(40n);
         const tx = await mzusd.connect(alice).requestWithdrawal(withdrawAmountMZ, acceptableMin);
         await tx.wait();
@@ -943,5 +943,93 @@ describe("MZUSD <-> USDC conversion", () => {
         // Alice receives 50 USDC and keeps 50 MZUSD
         expect(aliceUSDCBalance).to.equal(expectedUsdcOut);
         expect(aliceMZBalance).to.equal(to18(50n));
+    });
+
+    it("Should treat zero cap as hard stop and reflect it in view helpers", async () => {
+        // Deploy a new MZUSD instance with zero cap
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        const mzusdZeroCap = await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                0, // _hourlyLimitUSDC = 0 -> cap == 0
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        );
+
+        // Allow Alice to requestWithdrawal on the new MZUSD instance
+        const requestWithdrawalSelector =
+            mzusdZeroCap.interface.getFunction("requestWithdrawal").selector;
+
+        await accessManager.setTargetFunctionRole(
+            mzusdZeroCap.target,
+            [requestWithdrawalSelector],
+            MZUSD_USER_ROLE
+        );
+        await accessManager.grantRole(MZUSD_USER_ROLE, alice.address, 0);
+
+        // small getter with cap == 0
+        const [remaining, smallWindowStart] = await mzusdZeroCap.getRemainingGlobalHourlyCap();
+        const storedStart = await mzusdZeroCap.windowStartTimestamp();
+
+        expect(remaining).to.equal(0n);
+        expect(smallWindowStart).to.equal(storedStart);
+
+        // previewWithdrawalFlat with 0 cap
+        const amountMZ = to18(10n); // 10 USDC equivalent
+
+        const [
+            requestedMZ,
+            userBalanceMZ,
+            hasEnoughMZ,
+            usdcOut,
+            dustMZ,
+            vaultLiquidityUSDC,
+            hasSufficientLiquidity,
+            globalCapUSDC,
+            windowStart,
+            windowEnd,
+            windowUsedUSDC_,
+            windowRemainingUSDC,
+            isGlobalCapZero,
+            wouldExceedGlobalCap,
+        ] = await mzusdZeroCap.connect(alice).previewWithdrawalFlat(amountMZ);
+
+        const redemptionDuration = await mzusdZeroCap.redemptionWindowDuration();
+
+        expect(requestedMZ).to.equal(amountMZ);
+        expect(userBalanceMZ).to.equal(0n);
+        expect(hasEnoughMZ).to.equal(false);
+
+        expect(usdcOut).to.equal(to6(10n));
+        expect(dustMZ).to.equal(0n);
+
+        expect(vaultLiquidityUSDC).to.equal(0n);
+        expect(hasSufficientLiquidity).to.equal(false);
+
+        expect(globalCapUSDC).to.equal(0n);
+        expect(isGlobalCapZero).to.equal(true);
+        expect(windowRemainingUSDC).to.equal(0n);
+        expect(windowUsedUSDC_).to.equal(0n);
+
+        expect(windowStart).to.equal(storedStart);
+        expect(windowEnd).to.equal(windowStart + redemptionDuration);
+
+        expect(wouldExceedGlobalCap).to.equal(true);
+
+        await expect(
+            mzusdZeroCap.connect(alice).requestWithdrawal(amountMZ, 0n)
+        ).to.be.revertedWithCustomError(mzusdZeroCap, "GlobalHourlyCapExceeded");
+    });
+
+    it("Should revert rescueETH for zero receiver", async () => {
+        await expect(
+            mzusd.connect(deployer).rescueETH("0x0000000000000000000000000000000000000000", 1n)
+        ).to.be.revertedWithCustomError(mzusd, "ZeroAddress");
     });
 });
