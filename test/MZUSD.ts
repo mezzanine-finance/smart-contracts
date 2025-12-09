@@ -44,6 +44,24 @@ describe("MZUSD <-> USDC conversion", () => {
     let reservoir: ReservoirUSDC;
     let nettingHelper: any;
 
+    // --- Helper functions for Alice funding and deposit ---
+    async function fundAliceWithUSDC(amountUSDC: bigint) {
+        const whale = await imp(USDC_WHALE);
+        await usdc.connect(whale).transfer(alice.address, amountUSDC);
+        return whale;
+    }
+
+    async function aliceDepositUSDC(amountUSDC: bigint) {
+        await usdc.connect(alice).approve(mzusd.target, amountUSDC);
+        const tx = await mzusd.connect(alice).deposit(amountUSDC);
+        await tx.wait();
+    }
+
+    async function fundAndDepositForAlice(amountUSDC: bigint) {
+        await fundAliceWithUSDC(amountUSDC);
+        await aliceDepositUSDC(amountUSDC);
+    }
+
     before(async () => {
         [deployer, alice, bob, charlie, dave] = await ethers.getSigners();
 
@@ -201,8 +219,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const expectedMZAmount = to18(173n);
 
         // Fund Alice via the whale
-        const whale = await imp(USDC_WHALE);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
+        await fundAliceWithUSDC(depositAmountUSDC);
 
         // Attempt to withdraw without balance
         await expect(mzusd.connect(alice).requestWithdrawal(to18(1n), 0n)).to.be.reverted;
@@ -216,8 +233,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceMZBefore).to.equal(0n);
 
         // Alice deposits USDC -> receives MZUSD
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await aliceDepositUSDC(depositAmountUSDC);
 
         const aliceUSDCAfterDeposit = await usdc.balanceOf(alice.address);
         const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
@@ -263,13 +279,8 @@ describe("MZUSD <-> USDC conversion", () => {
 
         const depositAmountUSDC = to6(200n);
 
-        // Fund Alice
-        const whale = await imp(USDC_WHALE);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-        // Deposit 200 USDC -> 200 MZUSD
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        // Fund Alice and deposit 200 USDC -> 200 MZUSD
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         const aliceMZBalance = await mzusd.balanceOf(alice.address);
         expect(aliceMZBalance).to.equal(to18(200n));
@@ -467,12 +478,8 @@ describe("MZUSD <-> USDC conversion", () => {
     it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
         const depositAmountUSDC = to6(50n);
 
-        // Fund Alice and deposit into MZUSD (Usdc goes to Vault)
-        const whale = await imp(USDC_WHALE);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        // Fund Alice and deposit into MZUSD (USDC goes to Vault)
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         // Empty the Vault's USDC by transferring it out to Bob
         const vaultSigner = await imp(vault.target);
@@ -501,12 +508,9 @@ describe("MZUSD <-> USDC conversion", () => {
         const capUSDC = to6(150n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
-        const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(200n);
 
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         // First withdrawal: 40 USDC
         const w1MZ = to18(40n);
@@ -556,13 +560,9 @@ describe("MZUSD <-> USDC conversion", () => {
         const capUSDC = to6(150n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
-        const whale = await imp(USDC_WHALE);
-
         // Fund Alice and deposit 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
         expect(aliceMZAfterDeposit).to.equal(to18(200n));
@@ -673,14 +673,10 @@ describe("MZUSD <-> USDC conversion", () => {
         // Effectively disable cap by setting it to maxUint256 (no practical limit)
         await mzusd.setGlobalHourlyRedemptionCap(maxUint256);
 
-        const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(300n); // 300 USDC
 
         // Fund Alice and deposit into MZUSD
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         const aliceMZ = await mzusd.balanceOf(alice.address);
         expect(aliceMZ).to.equal(to18(300n));
@@ -728,13 +724,9 @@ describe("MZUSD <-> USDC conversion", () => {
         const capUSDC = to6(200n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
-        const whale = await imp(USDC_WHALE);
-
         // Alice deposits 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         // Alice withdraws 80 USDC -> consumes part of the cap
         const withdrawMZ = to18(80n);
@@ -788,13 +780,9 @@ describe("MZUSD <-> USDC conversion", () => {
         const capUSDC = to6(200n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
-        const whale = await imp(USDC_WHALE);
-
         // Alice deposits 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         // Alice withdraws 80 USDC -> consumes part of the cap
         const withdrawMZ = to18(80n);
@@ -894,12 +882,8 @@ describe("MZUSD <-> USDC conversion", () => {
 
     it("Should revert with TooSmallWithdrawalAmount for tiny MZUSD withdrawals", async () => {
         // Ensure Alice has some MZUSD balance
-        const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(1n); // 1 USDC
-
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         // Use a withdrawal amount that is below 1 USDC equivalent but within the allowed dust range
         const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
@@ -912,13 +896,10 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should revert with NonIntegralWithdrawalAmount when dust exceeds limit", async () => {
-        const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(100n); // 100 USDC
 
         // Fund Alice and deposit into MZUSD so she has enough balance
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
         const targetUSDC = 10n;
@@ -936,13 +917,10 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should enforce minAmountOutUSDC slippage parameter", async () => {
-        const whale = await imp(USDC_WHALE);
         const depositAmountUSDC = to6(100n); // 100 USDC
 
         // Alice deposits 100 USDC --> 100 MZUSD
-        await usdc.connect(whale).transfer(alice.address, depositAmountUSDC);
-        await usdc.connect(alice).approve(mzusd.target, depositAmountUSDC);
-        await mzusd.connect(alice).deposit(depositAmountUSDC);
+        await fundAndDepositForAlice(depositAmountUSDC);
 
         const withdrawAmountMZ = to18(50n); // 50 USDC equivalent
         const expectedUsdcOut = to6(50n);
