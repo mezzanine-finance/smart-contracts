@@ -8,11 +8,6 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
-interface IReservoir {
-    function deposit(uint256 amount) external;
-
-    function withdraw(uint256 amount, address to) external;
-}
 
 interface IStrategy {
     function invest(uint256 amount) external returns (bool);
@@ -28,8 +23,7 @@ contract ReservoirUSDC is
     Initializable,
     AccessManagedUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable,
-    IReservoir
+    UUPSUpgradeable
 {
     IERC20 public immutable usdc;
 
@@ -62,14 +56,14 @@ contract ReservoirUSDC is
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(uint256 amount) external override restricted nonReentrant {
+    function deposit(uint256 amount) external restricted nonReentrant {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(_msgSender(), address(this), amount);
         emit Deposited(_msgSender(), amount);
     }
 
     /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.
-    function withdraw(uint256 amount, address to) external override restricted nonReentrant {
+    function withdraw(uint256 amount, address to) external restricted nonReentrant {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 
