@@ -132,11 +132,7 @@ contract Vault is
         address _reservoir,
         address accessManager
     ) external initializer {
-        if (
-            _mzusd == address(0) ||
-            _reservoir == address(0) ||
-            accessManager == address(0)
-        ) {
+        if (_mzusd == address(0) || _reservoir == address(0) || accessManager == address(0)) {
             revert ZeroAddress();
         }
 
@@ -391,12 +387,7 @@ contract Vault is
             mintedGross,
             epochId
         );
-        protocolFeeMZUSD = _handleFee(
-            protocolFeeBps,
-            protocolFeeReceiver,
-            mintedGross,
-            epochId
-        );
+        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross, epochId);
 
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
