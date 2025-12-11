@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+// solhint-disable-next-line max-line-length
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
@@ -35,12 +36,7 @@ contract LossManager is
     address[] public trancheOrder; // order to burn from
     uint256 public maxLossPerTxUSDC; // 0 = no limit
 
-    event LossApplied(
-        uint256 usdcLoss,
-        uint256 lossMZ,
-        address[] tranches,
-        uint256[] cutsMZ
-    );
+    event LossApplied(uint256 usdcLoss, uint256 lossMZ, address[] tranches, uint256[] cutsMZ);
     event TrancheOrderUpdated(address[] newOrder);
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
 
@@ -60,8 +56,7 @@ contract LossManager is
         address[] memory order,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
-        if (accessManager == address(0) || _mzusd == address(0))
-            revert ZeroAddress();
+        if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __Pausable_init();
@@ -73,14 +68,10 @@ contract LossManager is
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
-
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(
-        uint256 usdcLoss
-    ) external whenNotPaused nonReentrant restricted {
+    function applyLoss(uint256 usdcLoss) external whenNotPaused nonReentrant restricted {
         if (usdcLoss == 0) revert ZeroAmount();
-        if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC)
-            revert LimitExceeded();
+        if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
         uint256 remaining = usdcLoss * SCALE; // convert 6d to 18d
         uint256 orderLen = trancheOrder.length;
@@ -108,7 +99,6 @@ contract LossManager is
 
         emit LossApplied(usdcLoss, usdcLoss * SCALE, orderCopy, cuts);
     }
-
 
     function setTrancheOrder(address[] memory order) external restricted {
         _setTrancheOrder(order);

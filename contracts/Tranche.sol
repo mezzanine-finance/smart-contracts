@@ -10,7 +10,13 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./interfaces/IVault.sol";
 
-// @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode.
+interface IVaultEpochSource {
+    function currentEpochId() external view returns (uint256);
+    function minEpochDuration() external view returns (uint256);
+}
+
+// @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
+// solhint-disable-next-line max-line-length
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 contract Tranche is

@@ -1,5 +1,5 @@
-import type { UserConfig } from "@commitlint/types";
-import { RuleConfigSeverity } from "@commitlint/types";
+import type {UserConfig} from "@commitlint/types";
+import {RuleConfigSeverity} from "@commitlint/types";
 
 const Configuration: UserConfig = {
     extends: ["@commitlint/config-conventional"],
@@ -38,10 +38,10 @@ const Configuration: UserConfig = {
                 // (Only for tests). Adding of missing tests, fix or other changes of existing tests.
                 "test",
                 // A merger of branches in a version control, including rebasing.
-                "merge"
-            ]
-        ]
-    }
+                "merge",
+            ],
+        ],
+    },
 };
 
 export default Configuration;
