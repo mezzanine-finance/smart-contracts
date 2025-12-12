@@ -59,15 +59,12 @@ async function main() {
     upgrades.silenceWarnings();
 
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-    const mzusd = await upgrades.deployProxy(
-        MZUSDFactory,
-        [accessManagerAddress, usdcAddress, hourlyCapUSDC],
-        {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor"],
-        }
-    );
+    const mzusd = await upgrades.deployProxy(MZUSDFactory, [accessManagerAddress, hourlyCapUSDC], {
+        kind: "uups",
+        initializer: "initialize",
+        unsafeAllow: ["constructor", "state-variable-immutable"],
+        constructorArgs: [usdcAddress],
+    });
     const tx = mzusd.deploymentTransaction();
     await mzusd.waitForDeployment();
 

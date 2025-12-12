@@ -72,11 +72,12 @@ async function main() {
     const VaultFactory = await ethers.getContractFactory("Vault", deployer);
     const vault = await upgrades.deployProxy(
         VaultFactory,
-        [usdcAddress, mzusdAddress, reservoirAddress, accessManagerAddress],
+        [mzusdAddress, reservoirAddress, accessManagerAddress],
         {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor"],
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [usdcAddress],
         }
     );
     const tx = vault.deploymentTransaction();
