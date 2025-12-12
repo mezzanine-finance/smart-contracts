@@ -78,7 +78,7 @@ async function main() {
     });
 
     // Verify implementation
-    await verifyContract(implAddress);
+    await verifyContract(implAddress, [usdcAddress]);
 
     saveDeployments(deployments);
     console.log("Deployments file updated");

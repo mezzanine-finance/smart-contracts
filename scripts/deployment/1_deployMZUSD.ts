@@ -102,7 +102,7 @@ async function main() {
     console.log("setTargetFunctionRole for deposit/requestWithdrawal -> PUBLIC_ROLE done");
 
     // Verify implementation (proxy verification is optional)
-    await verifyContract(implAddress);
+    await verifyContract(implAddress, [usdcAddress]);
 
     saveDeployments(deployments);
     console.log("Deployments file updated");

@@ -58,7 +58,7 @@ const config: HardhatUserConfig = {
             },
         },
         buildbear: {
-            url: "https://rpc.buildbear.io/male-shatterstar-286313ca",
+            url: "https://rpc.buildbear.io/overall-electro-86c210d9",
             chainId: 31337,
             accounts: envs.DEV_ACCOUNT ? [envs.DEV_ACCOUNT] : [],
         },
@@ -72,16 +72,16 @@ const config: HardhatUserConfig = {
         apiKey: {
             buildbear: "verifyContract",
         },
-        customChains: [
-            {
-                network: "buildbear",
-                chainId: 31337,
-                urls: {
-                    apiURL: "https://rpc.buildbear.io/verify/etherscan/male-shatterstar-286313ca",
-                    browserURL: "https://explorer.buildbear.io/male-shatterstar-286313ca",
-                },
+    customChains: [
+        {
+            network: "buildbear",
+            chainId: 31337,
+            urls: {
+                apiURL: "https://rpc.buildbear.io/verify/etherscan/overall-electro-86c210d9",
+                browserURL: "https://explorer.buildbear.io/overall-electro-86c210d9",
             },
-        ],
+        },
+    ],
     },
     // sourcify: {
     //     enabled: true,
