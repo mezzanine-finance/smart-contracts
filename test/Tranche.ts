@@ -68,13 +68,13 @@ describe("Tranche", () => {
       MZUSDFactory,
       [
         accessManager.target,
-        MAINNET_USDC,
         0, // _hourlyLimitUSDC (0 = limit is off)
       ],
       {
         kind: "uups",
         initializer: "initialize",
-        unsafeAllow: ["constructor"],
+        unsafeAllow: ["constructor", "state-variable-immutable"],
+        constructorArgs: [MAINNET_USDC],
       }
     )) as unknown as MZUSD;
 
@@ -84,27 +84,26 @@ describe("Tranche", () => {
     );
     reservoir = (await upgrades.deployProxy(
       ReservoirFactory,
-      [MAINNET_USDC, accessManager.target],
+      [accessManager.target],
       {
         kind: "uups",
         initializer: "initialize",
-        unsafeAllow: ["constructor"],
+        unsafeAllow: ["constructor", "state-variable-immutable"],
+        constructorArgs: [MAINNET_USDC],
       }
     )) as unknown as ReservoirUSDC;
 
     const VaultFactory = await ethers.getContractFactory("Vault", deployer);
     vault = (await upgrades.deployProxy(
       VaultFactory,
-      [MAINNET_USDC, mzusd.target, reservoir.target, accessManager.target],
+      [mzusd.target, reservoir.target, accessManager.target],
       {
         kind: "uups",
         initializer: "initialize",
-        unsafeAllow: ["constructor"],
+        unsafeAllow: ["constructor", "state-variable-immutable"],
+        constructorArgs: [MAINNET_USDC]
       }
     )) as unknown as Vault;
-
-    // Wire MZUSD to Vault
-    await mzusd.setVault(vault.target);
 
     // Tranche
     const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -128,11 +127,42 @@ describe("Tranche", () => {
       }
     )) as unknown as Tranche;
 
-    // register tranche in vault for yield tests
-    await vault.addTranche(tranche.target, 10_000, true);
+    // ROLES & AccessManager wiring
 
-    //ROLES granting
-    // 1) Allow VAULT_ROLE to call MZUSD.mint()
+    const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
+    const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+
+    // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
+    const depositSelector = mzusd.interface.getFunction("deposit")!.selector;
+    const requestWithdrawalSelector =
+      mzusd.interface.getFunction("requestWithdrawal")!.selector;
+
+    await accessManager.setTargetFunctionRole(
+      mzusd.target,
+      [depositSelector, requestWithdrawalSelector],
+      PUBLIC_ROLE
+    );
+
+    // 2) Admin-only functions on MZUSD & Vault
+    const setVaultSelector = mzusd.interface.getFunction("setVault")!.selector;
+    const distributeYieldSelector =
+      vault.interface.getFunction("distributeYield")!.selector;
+    const addTrancheSelector =
+      vault.interface.getFunction("addTranche")!.selector;
+
+    await accessManager.setTargetFunctionRole(
+      mzusd.target,
+      [setVaultSelector],
+      ADMIN_ROLE
+    );
+
+    await accessManager.setTargetFunctionRole(
+      vault.target,
+      [distributeYieldSelector, addTrancheSelector],
+      ADMIN_ROLE
+    );
+
+    // 3) Vault role allowed to mint MZUSD and push yield to tranches
     const mintSelector = mzusd.interface.getFunction("mint")!.selector;
     await accessManager.setTargetFunctionRole(
       mzusd.target,
@@ -140,7 +170,6 @@ describe("Tranche", () => {
       VAULT_ROLE
     );
 
-    // 2) Allow VAULT_ROLE to call Tranche.notifyYield()
     const notifySelector =
       tranche.interface.getFunction("notifyYield")!.selector;
     await accessManager.setTargetFunctionRole(
@@ -149,12 +178,20 @@ describe("Tranche", () => {
       VAULT_ROLE
     );
 
-    // 3) Grant VAULT_ROLE to Vault
     await accessManager.grantRole(
       VAULT_ROLE,
       vault.target,
       0 // executionDelay
     );
+
+    // 4) Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
+    await mzusd.setVault(vault.target);
+
+    await vault.addTranche({
+      tranche: tranche.target,
+      weightBps: 10_000,
+      enabled: true,
+    });
 
     snapshot = await takeSnapshot();
   });

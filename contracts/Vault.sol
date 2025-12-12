@@ -33,7 +33,6 @@ contract Vault is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
-    IVault,
     AccessManagedUpgradeable
 {
     struct TrancheInfo {
@@ -402,7 +401,6 @@ contract Vault is
         }
     }
 
-    //todo optimize
     function _mintAndLockFees(
         uint256 mintedGross,
         uint256 epochId
