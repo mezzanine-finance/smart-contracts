@@ -11,11 +11,21 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface IVaultEpochSource {
     function currentEpochId() external view returns (uint256);
+    function minEpochDuration() external view returns (uint256);
 }
 
 // @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
+// solhint-disable-next-line max-line-length
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
-contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable, UUPSUpgradeable {
+// @dev Added linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
+contract Tranche is
+    Initializable,
+    ERC4626Upgradeable,
+    AccessManagedUpgradeable,
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     uint256 public constant BASIS_POINTS = 10_000;
@@ -29,8 +39,8 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
     uint256 public maxDepositCap;
     uint256 public maxDepositTvlBps;
 
+    // umbrella withdrawals
     mapping(uint256 => uint256) public umbrellaSharesByEpoch;
-
     mapping(address => mapping(uint256 => uint256)) public userSharesByEpoch;
 
     struct FinalizedEpoch {
@@ -43,22 +53,43 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
     bool public isPolJunior;
     address public polPayout;
 
+    // ======== YIELD STREAMING (linear distribution over epoch) ========
+
+    /// @notice Amount of yield (MZUSD) that is being streamed linearly into NAV.
+    /// @dev These tokens are already on the tranche balance, but not yet fully reflected in price per share.
+    uint256 public yieldStreamingAmount;
+
+    /// @notice Timestamp when current yield streaming started.
+    uint256 public yieldStreamStart;
+
+    /// @notice Timestamp when current yield streaming should finish (all yield accrued).
+    uint256 public yieldStreamEnd;
+
+    // ======== Events ========
+
     event UnstakeRequested(
         address indexed user,
         uint256 shares,
         uint256 requestEpoch,
         uint256 targetEpoch
     );
-    event EpochFinalized(
-        uint256 indexed epochId,
-        uint256 sharesBurned,
-        uint256 assetsFinal
-    );
+    event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
     event PolJuniorUpdated(bool enabled, address payout);
     event PolPayout(uint256 amount);
     event WithdrawalClaimed(address indexed user, uint256 indexed epochId, uint256 assets);
+
+    /// @notice Emitted when new yield is registered for linear streaming.
+    /// @dev `yieldAmount` must correspond to MZUSD already transferred to this tranche.
+    event YieldNotified(
+        uint256 indexed epochId,
+        uint256 yieldAmount,
+        uint256 streamStart,
+        uint256 streamEnd
+    );
+
+    // ======== Errors ========
 
     error InvalidAmount();
     error DepositLimitExceeded(uint256 attempted, uint256 limit);
@@ -67,6 +98,7 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
     error NotFinalized();
     error NothingToClaim();
     error ZeroAddress();
+    error YieldStreamActive(); // cannot override active yield stream
 
     constructor() {
         _disableInitializers();
@@ -83,7 +115,13 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         bool polJuniorMode,
         address polPayoutAddress
     ) external initializer {
-        if (vaultAddress == address(0) || polPayoutAddress == address(0) || accessManager == address(0)) revert ZeroAddress();
+        if (
+            vaultAddress == address(0) ||
+            polPayoutAddress == address(0) ||
+            accessManager == address(0)
+        ) {
+            revert ZeroAddress();
+        }
 
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
@@ -98,6 +136,8 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         isPolJunior = polJuniorMode;
         polPayout = polPayoutAddress;
     }
+
+    // ==================== Admin / POL ====================
 
     function pause() external restricted {
         _pause();
@@ -121,18 +161,93 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         emit PolJuniorUpdated(enabled, payout);
     }
 
+    // ==================== Linear yield streaming ====================
+
+    /// @notice Registers `yieldAmount` of MZUSD as yield to be streamed linearly over next epoch.
+    /// @dev Assumes `yieldAmount` tokens are already transferred to this contract (from Vault).
+    ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
+    /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
+    function notifyYield(uint256 yieldAmount) external restricted {
+        if (yieldAmount == 0) revert InvalidAmount();
+
+        // Do not allow overriding active stream (optional — можно снять, если хочешь перезапись)
+        if (yieldStreamingAmount != 0 && block.timestamp < yieldStreamEnd) {
+            revert YieldStreamActive();
+        }
+
+        uint256 duration = IVaultEpochSource(vault).minEpochDuration();
+        if (duration == 0) revert InvalidAmount();
+
+        yieldStreamingAmount = yieldAmount;
+        yieldStreamStart = block.timestamp;
+        yieldStreamEnd = block.timestamp + duration;
+
+        uint256 epochId = IVaultEpochSource(vault).currentEpochId();
+        emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
+    }
+
+    /// @notice Returns how much of current yield is still not accrued into NAV.
+    /// @dev This is what we subtract from raw balance in totalAssets().
+    function _unaccruedYield() internal view returns (uint256) {
+        uint256 amount = yieldStreamingAmount;
+        if (amount == 0) return 0;
+
+        uint256 start = yieldStreamStart;
+        uint256 end = yieldStreamEnd;
+        uint256 ts = block.timestamp;
+
+        if (ts <= start) {
+            // streaming not started yet: entire amount is unaccrued
+            return amount;
+        }
+
+        if (ts >= end || end <= start) {
+            // fully accrued or invalid config
+            return 0;
+        }
+
+        uint256 elapsed = ts - start;
+        uint256 duration = end - start;
+
+        uint256 accrued = (amount * elapsed) / duration;
+        if (accrued >= amount) return 0;
+        return amount - accrued;
+    }
+
+    // ==================== ERC4626 overrides (NAV with linear yield) ====================
+
+    /// @notice Virtual total assets backing tranche shares.
+    /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
+    function totalAssets() public view override returns (uint256) {
+        uint256 balance = IERC20(asset()).balanceOf(address(this));
+        uint256 unaccrued = _unaccruedYield();
+
+        if (unaccrued > balance) {
+            // Should not happen if notifyYield is used correctly, but guard against underflow.
+            return 0;
+        }
+
+        return balance - unaccrued;
+    }
+
+    /// @notice Convenience view: price per share using virtual NAV.
+    function pricePerShare() external view returns (uint256) {
+        return convertToAssets(10 ** decimals());
+    }
+
+    // ==================== Core user flows ====================
+
     function deposit(
         uint256 assets,
         address receiver
     ) public override whenNotPaused nonReentrant returns (uint256 shares) {
         if (isPolJunior) revert InvalidAmount();
         _checkDepositLimit(assets);
+        // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
     }
 
-    function requestWithdrawal(
-        uint256 shares
-    ) external whenNotPaused nonReentrant {
+    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
         if (isPolJunior) revert InvalidAmount();
         if (shares == 0 || balanceOf(_msgSender()) < shares) revert InvalidAmount();
 
@@ -147,12 +262,7 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         emit UnstakeRequested(_msgSender(), shares, currentVaultEpoch, targetEpoch);
     }
 
-    function finalizeEpoch(uint256 epochId)
-        external
-        nonReentrant
-        whenNotPaused
-        restricted
-    {
+    function finalizeEpoch(uint256 epochId) external nonReentrant whenNotPaused restricted {
         uint256 currentVaultEpoch = IVaultEpochSource(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -161,6 +271,7 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
 
         umbrellaSharesByEpoch[epochId] = 0;
 
+        // use virtual NAV at the moment of finalization
         uint256 assetsToCredit = convertToAssets(sharesToFinalize);
 
         finalizedEpochs[epochId] = FinalizedEpoch({
@@ -192,16 +303,14 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         emit WithdrawalClaimed(_msgSender(), epochId, userAssets);
     }
 
+    // ==================== Admin config ====================
+
     function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
         unstakeDelayEpochs = epochsDelay;
         emit UnstakeDelayUpdated(epochsDelay);
     }
 
-    function setDepositLimits(
-        bool enabled,
-        uint256 cap,
-        uint256 tvlBps
-    ) external restricted {
+    function setDepositLimits(bool enabled, uint256 cap, uint256 tvlBps) external restricted {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
         depositLimitEnabled = enabled;
         maxDepositCap = cap;
@@ -209,14 +318,12 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
-    function pricePerShare() external view returns (uint256) {
-        return convertToAssets(10 ** decimals());
-    }
+    // ==================== Internal helpers ====================
 
     function _checkDepositLimit(uint256 amount) internal view {
         if (!depositLimitEnabled) return;
 
-        uint256 totalVaultAssets = totalAssets();
+        uint256 totalVaultAssets = totalAssets(); // virtual TVL with streaming
         uint256 limitByTvl = totalVaultAssets == 0
             ? type(uint256).max
             : (totalVaultAssets * maxDepositTvlBps) / BASIS_POINTS;
@@ -232,6 +339,4 @@ contract Tranche is Initializable, ERC4626Upgradeable, AccessManagedUpgradeable,
     }
 
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
-
-    uint256[50] private __gap;
 }

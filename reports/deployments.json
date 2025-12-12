@@ -1,0 +1,231 @@
+{
+  "buildbear": {
+    "AccessManager": [
+      {
+        "version": 1,
+        "address": "0xC8A331DDA92f7A8362F6634a8501c6753cC6b3d7",
+        "txHash": "0x1fc4fee8c76fe941cc48c38350604acdf8409830ec2652791a0e59332f722ebd",
+        "deployedAt": "2025-12-04T18:42:33.024Z"
+      },
+      {
+        "version": 2,
+        "address": "0x52d2ed7a102Df15b212a800d4293099f18659F6c",
+        "txHash": "0xaac198ebc81538709c7c460a5a42c449ad597fe6e44baa0998e70d359da4442d",
+        "deployedAt": "2025-12-04T18:47:00.691Z"
+      },
+      {
+        "version": 3,
+        "address": "0xb11632A56608Bad85562FaE6f1AF269d1fE9e8e6",
+        "txHash": "0x287fdaf33ee9efa4f587d43938816ff958917577780b1dadf55d5e7a11771319",
+        "deployedAt": "2025-12-04T18:48:06.978Z"
+      },
+      {
+        "version": 4,
+        "address": "0x34Ae5d0B3f03443f52F461271e6b765Cc0a24c9e",
+        "txHash": "0xa0d050ce965f9ecf7b653a6fcae14a52594af7930778a32ae3718b464a539cbe",
+        "deployedAt": "2025-12-04T18:53:20.723Z"
+      },
+      {
+        "version": 5,
+        "address": "0x4D804f069122136621566a8E75fD88f7530B0C99",
+        "txHash": "0xaa10ce00bb684122b1a308c1ac60291729ae8595f307fd2ac620f5b52ec34176",
+        "deployedAt": "2025-12-05T11:54:12.839Z"
+      },
+      {
+        "version": 6,
+        "address": "0x34Ae5d0B3f03443f52F461271e6b765Cc0a24c9e",
+        "txHash": "0xda1a4f4b43fc24fecb427a0152ebc73eec594e2eef37f5a0159cf33a8d3ec863",
+        "deployedAt": "2025-12-12T10:56:25.148Z"
+      },
+      {
+        "version": 7,
+        "address": "0xb3f457DAddA553A7448955a361272Ef4093F25e3",
+        "txHash": "0xf77cb3cd9b6b5a6c41d50e1b3e4ecbf746610ac389b488d458960b67f814e4f0",
+        "deployedAt": "2025-12-12T10:58:41.002Z"
+      },
+      {
+        "version": 8,
+        "address": "0x8E50C10Cba40DcDc94fD1B7BFD5A87A4c8fAFB04",
+        "txHash": "0x6ad9d2b751f3b5060433fc19d0b9a27e7fb6d681fecfb517979d9ffff208d4a7",
+        "deployedAt": "2025-12-12T11:00:45.011Z"
+      },
+      {
+        "version": 9,
+        "address": "0xa5220fde629007f954bFc0bEE2d3B8F26a8C3F80",
+        "txHash": "0xfaf09afe12410afb4fdc17cb6912a096c3dddf23d9c1b50cd9398b9bc0b87e9f",
+        "deployedAt": "2025-12-12T11:01:31.076Z"
+      },
+      {
+        "version": 10,
+        "address": "0x556F94fBCdc8eDB0101D0d10A9ff754A57f761db",
+        "txHash": "0x2e1b787d9d8ede9b9679cbb4ceddbfa416054e05f1ae28bef02c66edcea1e0df",
+        "deployedAt": "2025-12-12T12:26:12.312Z"
+      },
+      {
+        "version": 11,
+        "address": "0xF30c1d76eB152DB8F29916A264D87a4977F4a16E",
+        "txHash": "0x6846e4cdd56984e9254a3f6d1b80ae1b88b36bdf21b0959554844ef8c13febd0",
+        "deployedAt": "2025-12-12T12:30:45.467Z"
+      },
+      {
+        "version": 12,
+        "address": "0x3cABcAC0E84b1ba50AD220a5CaDfC96ffF54ab7c",
+        "txHash": "0x947b997969cb4d54fdf78230d37b3df7c6a63debf42581adac53bdb929d000fa",
+        "deployedAt": "2025-12-12T12:37:29.305Z"
+      }
+    ],
+    "MZUSD": [
+      {
+        "version": 1,
+        "address": "0x94AfD75DB06A12fd106f02C194835a6dcb47bbEE",
+        "implementation": "0xd2571E989390F4F654572BE25Da2f4Ec41CB2cc8",
+        "txHash": "0xf5738b72900e1e6dd78fc280830217e1decc946cc709666e1d9b92585c64b431",
+        "deployedAt": "2025-12-04T18:42:43.239Z"
+      },
+      {
+        "version": 2,
+        "address": "0x0efdDbB35e9BBc8c762E5B4a0f627210b6c9A721",
+        "implementation": "0xd2571E989390F4F654572BE25Da2f4Ec41CB2cc8",
+        "txHash": "0x061abb3be2532e1032855c09bcb7af4455e17c0d5f5dd2d060fe15a7e71de3fd",
+        "deployedAt": "2025-12-04T18:47:09.458Z"
+      },
+      {
+        "version": 3,
+        "address": "0xB8c3d6CF4297202C45f61673804409B060400705",
+        "implementation": "0xd2571E989390F4F654572BE25Da2f4Ec41CB2cc8",
+        "txHash": "0x7040d9aa34b178462dc79a493428cfae41b9d181eef20fcf79ceab6f3857c32b",
+        "deployedAt": "2025-12-04T18:48:24.507Z"
+      },
+      {
+        "version": 4,
+        "address": "0xb3f457DAddA553A7448955a361272Ef4093F25e3",
+        "implementation": "0xd2571E989390F4F654572BE25Da2f4Ec41CB2cc8",
+        "txHash": "0x4d97b9dc1d87a2bb13f7788f86dbc9e323a3a4b0022fccc73b7c75b8d228e0d9",
+        "deployedAt": "2025-12-04T18:53:36.053Z"
+      },
+      {
+        "version": 5,
+        "address": "0xfEEA5CdFA93648b1B60c3FBceD36010aed42F40B",
+        "implementation": "0xe8711A2905B50aa170768fE6EeA24826ce201230",
+        "txHash": "0x30ea2a3aaf630e436664ef70c5633d7ae99e7fbab8685d8f61318f96af52353f",
+        "deployedAt": "2025-12-05T11:54:29.665Z"
+      },
+      {
+        "version": 6,
+        "address": "0x3Da2810C41D9b847F876a924157B0eDF444CDD19",
+        "implementation": "0xb601016e0E20A6eD513CbA47d4AE7D27DA820590",
+        "txHash": "0xc7cdf4c469839689374e9750507b51502a9ea73ea4b3fd62bfa27371798c402e",
+        "deployedAt": "2025-12-12T12:26:30.554Z"
+      },
+      {
+        "version": 7,
+        "address": "0x74792042B03fB80D422E85A919D0494760Ff4139",
+        "implementation": "0xb601016e0E20A6eD513CbA47d4AE7D27DA820590",
+        "txHash": "0x3b3fbe8a9c14b1cef765cf410e1ae7a9a5163228088f66a8dfa6a07a2ffa5f06",
+        "deployedAt": "2025-12-12T12:31:00.989Z"
+      },
+      {
+        "version": 8,
+        "address": "0xe8Bb38D744b81F79CabdF45ac008c7890A38729e",
+        "implementation": "0xb601016e0E20A6eD513CbA47d4AE7D27DA820590",
+        "txHash": "0x53b5c786a929b8acbf227146816a814e9a3141e3f311047ccaffd303e48abc56",
+        "deployedAt": "2025-12-12T12:37:45.669Z"
+      }
+    ],
+    "ReservoirUSDC": [
+      {
+        "version": 1,
+        "address": "0x73992bAD0eE2bF03588DA062f1bdbCF45088eA07",
+        "implementation": "0xEc5AB17Cc35221cdF54EaEb0868eA82d4D75D9Bf",
+        "txHash": "0x5a42a576f56fcf93c8ce65aa329e46242a97325963205fc0f953ff4611a71e21",
+        "deployedAt": "2025-12-04T18:42:53.876Z"
+      },
+      {
+        "version": 2,
+        "address": "0xd7400e73bA36388c71C850aC96288E390bd22Ebe",
+        "implementation": "0xEc5AB17Cc35221cdF54EaEb0868eA82d4D75D9Bf",
+        "txHash": "0x0d8bd53eba9f84e6691e89c390ddd01cd84c58ca189ce6f54bd750997256dedc",
+        "deployedAt": "2025-12-04T18:47:18.535Z"
+      },
+      {
+        "version": 3,
+        "address": "0x067B18909cCaB20BD44B18102528901f69B8eA71",
+        "implementation": "0xEc5AB17Cc35221cdF54EaEb0868eA82d4D75D9Bf",
+        "txHash": "0xc2dc971e12c005eb0ec1a94fb0736a0ad669ab0cb6311c67a8b02c4113652c68",
+        "deployedAt": "2025-12-04T18:48:39.612Z"
+      },
+      {
+        "version": 4,
+        "address": "0x8E50C10Cba40DcDc94fD1B7BFD5A87A4c8fAFB04",
+        "implementation": "0xEc5AB17Cc35221cdF54EaEb0868eA82d4D75D9Bf",
+        "txHash": "0x9af52032aaaa1b4776f9ee807a0b3cfddd87e98301c0a1dd7a4ab21fd826e4c9",
+        "deployedAt": "2025-12-04T18:53:51.708Z"
+      },
+      {
+        "version": 5,
+        "address": "0xD7B3E42c01b36231C714B8e0a1Dc56f2CF963952",
+        "implementation": "0xEc5AB17Cc35221cdF54EaEb0868eA82d4D75D9Bf",
+        "txHash": "0xbd3b36b72dd52d074e80fd14dc147310eaaa1c3b5cd159c7637ab7c37f183904",
+        "deployedAt": "2025-12-05T11:54:45.965Z"
+      },
+      {
+        "version": 6,
+        "address": "0xfEEA5CdFA93648b1B60c3FBceD36010aed42F40B",
+        "implementation": "0xe8711A2905B50aa170768fE6EeA24826ce201230",
+        "txHash": "0x8d98a5d8bf3c11cf945e486f45eeed82ea0991b44d23400b2797aa54d679b81a",
+        "deployedAt": "2025-12-12T12:26:44.132Z"
+      },
+      {
+        "version": 7,
+        "address": "0x9F1B657A633ecA3Ff453B6abdE86e579FE92b264",
+        "implementation": "0xe8711A2905B50aa170768fE6EeA24826ce201230",
+        "txHash": "0xc8e6c65189cc2e61f877d34881bf4e677ff1be7cd430437bb062bdd438ab223e",
+        "deployedAt": "2025-12-12T12:31:17.484Z"
+      },
+      {
+        "version": 8,
+        "address": "0x2d75094b3d0D01c8B101F2Ec391dC620e7cdF6Bf",
+        "implementation": "0xe8711A2905B50aa170768fE6EeA24826ce201230",
+        "txHash": "0x7327dd4956ec713678742fdbb67c697a9cfb0bc17bd762edde36fb2032f588b4",
+        "deployedAt": "2025-12-12T12:38:02.885Z"
+      }
+    ],
+    "Vault": [
+      {
+        "version": 1,
+        "address": "0xa5220fde629007f954bFc0bEE2d3B8F26a8C3F80",
+        "implementation": "0xd512108c249cC5ec5370491AD916Be31bb88Dad2",
+        "txHash": "0xf916ae39944fe3e2193fb01b2413c6ca602fb2e2b58eb1d88935457ddf35e1c6",
+        "deployedAt": "2025-12-04T18:54:04.738Z"
+      },
+      {
+        "version": 2,
+        "address": "0x4f139FcA65241969B9164a231810b53e4a5D694D",
+        "implementation": "0xd512108c249cC5ec5370491AD916Be31bb88Dad2",
+        "txHash": "0xbc4d904881e1474ac3967b73ce60f12d5d0834006487587dc0227bff4f9a015f",
+        "deployedAt": "2025-12-05T11:54:57.303Z"
+      },
+      {
+        "version": 3,
+        "address": "0xD7B3E42c01b36231C714B8e0a1Dc56f2CF963952",
+        "implementation": "0x36dF0F6c472D537d24581b5AE21772151561CE15",
+        "txHash": "0x40b3d1cb988f459865c12bf3daa7d12e7f26b18686916aa5e1a3f44ab53681ba",
+        "deployedAt": "2025-12-12T12:26:56.663Z"
+      },
+      {
+        "version": 4,
+        "address": "0xE7874975f5c7263F57F8b5C006782613fca3F735",
+        "implementation": "0x36dF0F6c472D537d24581b5AE21772151561CE15",
+        "txHash": "0x8f9e9f13aac8eb9d22a66bda66ef5d8bc89e4bbe299906f2b97aff593e2078b3",
+        "deployedAt": "2025-12-12T12:31:31.516Z"
+      },
+      {
+        "version": 5,
+        "address": "0xfe73ffB476f2C0727AaB0177CCb48718C511aD36",
+        "implementation": "0x36dF0F6c472D537d24581b5AE21772151561CE15",
+        "txHash": "0x87a3f12755eec62cfcdb2f05ee48177743ff855750751f39479d43e7f83a2213",
+        "deployedAt": "2025-12-12T12:38:16.439Z"
+      }
+    ]
+  }
+}

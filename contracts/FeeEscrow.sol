@@ -53,7 +53,8 @@ contract FeeEscrow is
         address _mzusd,
         address _vault
     ) external initializer {
-        if (accessManager == address(0) || _mzusd == address(0) || _vault == address(0)) revert ZeroAddress();
+        if (accessManager == address(0) || _mzusd == address(0) || _vault == address(0))
+            revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
@@ -66,10 +67,7 @@ contract FeeEscrow is
 
     // @notice Called by Vault to lock newly minted fees for beneficiary until a specific epoch
     // @dev Vault must mint mzUSD to this escrow before calling this
-    function lock(address beneficiary, uint256 amount, uint256 unlockEpoch)
-        external
-        restricted
-    {
+    function lock(address beneficiary, uint256 amount, uint256 unlockEpoch) external restricted {
         LockInfo storage info = locks[beneficiary];
         info.amount += amount;
         if (unlockEpoch > info.unlockEpoch) {

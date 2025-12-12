@@ -1,63 +1,42 @@
 name: security
 
 on:
-  pull_request:
-    branches: [main, develop]
+    pull_request:
+        branches: [main, develop]
 
 jobs:
-  aderyn-and-slither:
-    runs-on: ubuntu-latest
+    aderyn-and-slither:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
+            - name: Use Node.js 22
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
 
-      - name: Install deps
-        run: npm ci
+            - name: Install deps
+              run: npm ci
 
-      - name: Compile
-        run: npm run compile
+            - name: Compile
+              run: npm run compile
 
-      - name: Run Aderyn
-        run: |
-          npx aderyn \
-            --output reports/aderyn.md
+            - name: Aderyn Check
+              uses: Cyfrin/aderyn-ci@v0
+              with:
+                  fail-on: medium
+                  warn-on: low
 
-      - name: Fail if Aderyn found Medium+ issues
-        run: |
-          REPORT="reports/aderyn.md"
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
 
-          if [ ! -f "$REPORT" ]; then
-            echo "Aderyn report not found at $REPORT"
-            exit 1
-          fi
+            - name: Install Slither
+              run: pip install slither-analyzer
 
-          if grep -qE '^## (High|Medium) Issues' "$REPORT"; then
-            echo "Aderyn found High/Medium issues. Failing CI."
-            exit 1
-          else
-            echo "Aderyn: no Medium+ issues ✅"
-          fi
-
-      - name: Upload Aderyn report
-        uses: actions/upload-artifact@v4
-        with:
-          name: aderyn-report
-          path: reports/aderyn.md
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Slither
-        run: pip install slither-analyzer
-
-      - name: Run Slither
-        run: npm run slither
+            - name: Run Slither
+              run: npm run slither
