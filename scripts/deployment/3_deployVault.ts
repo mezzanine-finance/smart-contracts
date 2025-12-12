@@ -142,15 +142,24 @@ async function main() {
               : "unknown";
     const explorer =
         hre.config.etherscan?.customChains?.find((c) => c.network === netName)?.urls?.browserURL ??
-        "";
+        "unknown";
+    const faucetUrl =
+        (rpcUrl && typeof rpcUrl === "string" && rpcUrl.includes("buildbear")) ||
+        netName === "buildbear"
+            ? "https://faucet.buildbear.io/overall-electro-86c210d9"
+            : undefined;
 
     const summaryLines = [
         `New deployment on ${netName}`,
         "Network settings:",
         `- RPC: ${rpcUrl}`,
         `- Chain ID: ${rpcConfig.chainId ?? "unknown"}`,
-        `- Explorer: ${explorer || "unknown"}`,
+        `- Explorer: ${explorer}`,
+        ...(faucetUrl
+            ? [`- Faucet: ${faucetUrl} (mint test ETH and USDC here)`]
+            : []),
         `\nSmart contract addresses:`,
+        `USDC: ${usdcAddress}`,
         `MZUSD (proxy): ${mzusdAddress}`,
         `ReservoirUSDC (proxy): ${reservoirAddress}`,
         `Vault (proxy): ${vaultAddress}`,
