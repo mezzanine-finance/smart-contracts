@@ -72,16 +72,16 @@ const config: HardhatUserConfig = {
         apiKey: {
             buildbear: "verifyContract",
         },
-    customChains: [
-        {
-            network: "buildbear",
-            chainId: 31337,
-            urls: {
-                apiURL: "https://rpc.buildbear.io/verify/etherscan/overall-electro-86c210d9",
-                browserURL: "https://explorer.buildbear.io/overall-electro-86c210d9",
+        customChains: [
+            {
+                network: "buildbear",
+                chainId: 31337,
+                urls: {
+                    apiURL: "https://rpc.buildbear.io/verify/etherscan/overall-electro-86c210d9",
+                    browserURL: "https://explorer.buildbear.io/overall-electro-86c210d9",
+                },
             },
-        },
-    ],
+        ],
     },
     // sourcify: {
     //     enabled: true,

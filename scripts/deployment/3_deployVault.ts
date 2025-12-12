@@ -141,7 +141,7 @@ async function main() {
               ? rpcConfig.url[0]
               : "unknown";
     const explorer =
-        hre.config.etherscan?.customChains?.find((c) => c.network === netName)?.urls?.browserURL ||
+        hre.config.etherscan?.customChains?.find((c) => c.network === netName)?.urls?.browserURL ??
         "";
 
     const summaryLines = [
