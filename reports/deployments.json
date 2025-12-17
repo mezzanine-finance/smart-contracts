@@ -72,6 +72,12 @@
         "address": "0x3cABcAC0E84b1ba50AD220a5CaDfC96ffF54ab7c",
         "txHash": "0x947b997969cb4d54fdf78230d37b3df7c6a63debf42581adac53bdb929d000fa",
         "deployedAt": "2025-12-12T12:37:29.305Z"
+      },
+      {
+        "version": 13,
+        "address": "0x34Ae5d0B3f03443f52F461271e6b765Cc0a24c9e",
+        "txHash": "0xfe411d2c04c0fd034bff3e8ca291a9c0b6883ef378fbbc3976efd9fe394e3913",
+        "deployedAt": "2025-12-16T19:01:21.831Z"
       }
     ],
     "MZUSD": [
@@ -130,6 +136,13 @@
         "implementation": "0xb601016e0E20A6eD513CbA47d4AE7D27DA820590",
         "txHash": "0x53b5c786a929b8acbf227146816a814e9a3141e3f311047ccaffd303e48abc56",
         "deployedAt": "2025-12-12T12:37:45.669Z"
+      },
+      {
+        "version": 9,
+        "address": "0x8E50C10Cba40DcDc94fD1B7BFD5A87A4c8fAFB04",
+        "implementation": "0xb3f457DAddA553A7448955a361272Ef4093F25e3",
+        "txHash": "0x6120b1984824b382488274e10e0b241a9fd0155b9fc2aa303c2aa8441f0d5c2e",
+        "deployedAt": "2025-12-16T19:01:39.750Z"
       }
     ],
     "ReservoirUSDC": [
@@ -188,6 +201,13 @@
         "implementation": "0xe8711A2905B50aa170768fE6EeA24826ce201230",
         "txHash": "0x7327dd4956ec713678742fdbb67c697a9cfb0bc17bd762edde36fb2032f588b4",
         "deployedAt": "2025-12-12T12:38:02.885Z"
+      },
+      {
+        "version": 9,
+        "address": "0xb601016e0E20A6eD513CbA47d4AE7D27DA820590",
+        "implementation": "0x556F94fBCdc8eDB0101D0d10A9ff754A57f761db",
+        "txHash": "0xcd18923e1cd2c4d1be5d299588f7e82f85e6a53577efad92257cb8c8512c904f",
+        "deployedAt": "2025-12-16T19:02:00.132Z"
       }
     ],
     "Vault": [
@@ -225,6 +245,13 @@
         "implementation": "0x36dF0F6c472D537d24581b5AE21772151561CE15",
         "txHash": "0x87a3f12755eec62cfcdb2f05ee48177743ff855750751f39479d43e7f83a2213",
         "deployedAt": "2025-12-12T12:38:16.439Z"
+      },
+      {
+        "version": 6,
+        "address": "0x4D804f069122136621566a8E75fD88f7530B0C99",
+        "implementation": "0x3Da2810C41D9b847F876a924157B0eDF444CDD19",
+        "txHash": "0x8097c8958f214d3051d14f4b18df6e7f00ac603c81dfb30117a97a591afdba79",
+        "deployedAt": "2025-12-16T19:02:14.698Z"
       }
     ]
   }
