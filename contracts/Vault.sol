@@ -8,8 +8,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
-import "./interfaces/IVault.sol";
-
 interface IMZUSD {
     function mint(address to, uint256 amount) external;
 }
@@ -70,7 +68,7 @@ contract Vault is
 
     // epochs
     uint64 public epochStart;
-    uint64 public minEpochDuration;
+    uint64 public epochDuration;
 
     // fee locking
     uint64 public feeLockEpochs;
@@ -98,10 +96,9 @@ contract Vault is
     event ReservoirUpdated(address newReservoir);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event FeeEscrowUpdated(address escrow, uint256 feeLockEpochs);
-    event MinEpochDurationSet(uint256 minEpochDuration);
+    event EpochDurationSet(uint256 epochDuration);
 
     error ZeroAmount();
-    error InsufficientUSDC();
     error NoTranchesAdded();
     error TVLZero();
     error WeightsZero();
@@ -114,6 +111,8 @@ contract Vault is
     error FeeLockEpochsTooBig();
     error TooManyTranches();
     error SameValue();
+    error ZeroAddressAndZeroBpsPerformance();
+    error ZeroAddressAndZeroBpsProtocol();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -143,7 +142,7 @@ contract Vault is
 
         currentEpochId = 1;
         epochStart = uint64(block.timestamp);
-        minEpochDuration = 1 days;
+        epochDuration = 1 days;
 
         feeLockEpochs = 2;
 
@@ -236,9 +235,9 @@ contract Vault is
         if (_performanceFeeBps > BPS || _protocolFeeBps > BPS)
             revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
-            revert ZeroAddress();
+            revert ZeroAddressAndZeroBpsPerformance();
         if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
-            revert ZeroAddress();
+            revert ZeroAddressAndZeroBpsProtocol();
 
         performanceFeeBps = uint16(_performanceFeeBps);
         performanceFeeReceiver = _performanceFeeReceiver;
@@ -298,20 +297,20 @@ contract Vault is
         emit BufferUpdated(target, bandBps);
     }
 
-    function setEpochConfig(uint256 _minEpochDuration, bool resetStart) external restricted {
+    function setEpochConfig(uint256 _epochDuration, bool resetStart) external restricted {
         if (
-            _minEpochDuration < MIN_EPOCH_DURATION_LIMIT ||
-            _minEpochDuration > MAX_EPOCH_DURATION_LIMIT
+            _epochDuration < MIN_EPOCH_DURATION_LIMIT ||
+            _epochDuration > MAX_EPOCH_DURATION_LIMIT
         ) {
             revert InvalidEpochDuration();
         }
-        minEpochDuration = uint64(_minEpochDuration);
+        epochDuration = uint64(_epochDuration);
         if (resetStart) {
             uint256 ts = block.timestamp;
             epochStart = uint64(ts);
             emit EpochAdvanced(currentEpochId, ts);
         }
-        emit MinEpochDurationSet(_minEpochDuration);
+        emit EpochDurationSet(_epochDuration);
     }
 
     function pause() external restricted {
@@ -365,7 +364,7 @@ contract Vault is
 
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         uint256 ts = block.timestamp;
-        uint256 duration = minEpochDuration;
+        uint256 duration = epochDuration;
 
         if (ts < uint256(epochStart) + duration) revert EpochTooSoon();
 
