@@ -8,11 +8,10 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "./interfaces/IVault.sol";
 
-interface IVaultEpochSource {
+interface IVault {
     function currentEpochId() external view returns (uint256);
-    function minEpochDuration() external view returns (uint256);
+    function epochDuration() external view returns (uint256);
 }
 
 // @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
@@ -108,10 +107,17 @@ contract Tranche is
     error NotFinalized();
     error NothingToClaim();
     error ZeroAddress();
-    error YieldStreamActive();
+    error YieldStreamIsActive();
     error AlreadyFinalized();
     error NoPendingUnstake();
     error InvalidMode();
+    error ZeroPassedShares();
+    error InvalidShares();
+    error InvalidBalance();
+    error ZeroYieldPassed();
+    error ZeroEpochDuration();
+    error ZeroPolPayoutAddressWhileModeIsOn();
+    error TooLateToCancel();
 
     constructor() {
         _disableInitializers();
@@ -148,7 +154,7 @@ contract Tranche is
         isPolJunior = polJuniorMode;
 
         if (polJuniorMode && polPayoutAddress == address(0)) {
-            revert ZeroAddress();
+            revert ZeroPolPayoutAddressWhileModeIsOn();
         }
         polPayout = polPayoutAddress;
     }
@@ -158,7 +164,7 @@ contract Tranche is
         uint256 assets,
         address receiver
     ) public override whenNotPaused nonReentrant returns (uint256 shares) {
-        if (isPolJunior) revert InvalidAmount();
+        if (isPolJunior) revert InvalidMode();
         _checkDepositLimit(assets);
         // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
@@ -167,9 +173,9 @@ contract Tranche is
     function requestWithdrawal(
         uint256 shares
     ) external whenNotPaused nonReentrant {
-        if (isPolJunior) revert InvalidAmount();
-        if (shares == 0 || balanceOf(_msgSender()) < shares)
-            revert InvalidAmount();
+        if (isPolJunior) revert InvalidMode();
+        if (shares == 0) revert ZeroPassedShares();
+        if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
 
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         uint256 targetEpoch = currentVaultEpoch + unstakeDelayEpochs;
@@ -198,9 +204,12 @@ contract Tranche is
     ) external nonReentrant whenNotPaused {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NoPendingUnstake();
-        if (shares == 0 || shares > userShares) revert InvalidAmount();
+        if (shares == 0) revert ZeroPassedShares();
+        if (shares > userShares) revert InvalidShares();
 
         if (finalizedEpochs[epochId].isFinalized) revert AlreadyFinalized();
+        uint256 currentEpochOnVault = IVault(vault).currentEpochId();
+        if (currentEpochOnVault > epochId) revert TooLateToCancel();
 
         // Update user and global umbrella accounting
         userSharesByEpoch[_msgSender()][epochId] = userShares - shares;
@@ -267,15 +276,15 @@ contract Tranche is
     ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
     /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
     function notifyYield(uint256 yieldAmount) external restricted {
-        if (yieldAmount == 0) revert InvalidAmount();
+        if (yieldAmount == 0) revert ZeroYieldPassed();
 
         // Do not allow overriding active stream
         if (yieldStreamingAmount != 0 && block.timestamp < yieldStreamEnd) {
-            revert YieldStreamActive();
+            revert YieldStreamIsActive();
         }
 
-        uint256 duration = IVault(vault).minEpochDuration();
-        if (duration == 0) revert InvalidAmount();
+        uint256 duration = IVault(vault).epochDuration();
+        if (duration == 0) revert ZeroEpochDuration();
 
         yieldStreamingAmount = yieldAmount;
         yieldStreamStart = block.timestamp;
