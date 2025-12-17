@@ -58,8 +58,8 @@ const config: HardhatUserConfig = {
             },
         },
         buildbear: {
-            url: "https://rpc.buildbear.io/male-shatterstar-286313ca",
-            chainId: 31337,
+            url: "https://rpc.buildbear.io/mezzanine-dev",
+            chainId: 1,
             accounts: envs.DEV_ACCOUNT ? [envs.DEV_ACCOUNT] : [],
         },
         sepolia: {
@@ -75,10 +75,10 @@ const config: HardhatUserConfig = {
         customChains: [
             {
                 network: "buildbear",
-                chainId: 31337,
+                chainId: 1,
                 urls: {
-                    apiURL: "https://rpc.buildbear.io/verify/etherscan/male-shatterstar-286313ca",
-                    browserURL: "https://explorer.buildbear.io/male-shatterstar-286313ca",
+                    apiURL: "https://rpc.buildbear.io/verify/etherscan/mezzanine-dev",
+                    browserURL: "https://explorer.buildbear.io/mezzanine-dev",
                 },
             },
         ],

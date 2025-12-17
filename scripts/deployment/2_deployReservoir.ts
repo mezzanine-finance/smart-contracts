@@ -54,15 +54,12 @@ async function main() {
     upgrades.silenceWarnings();
 
     const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-    const reservoir = await upgrades.deployProxy(
-        ReservoirFactory,
-        [usdcAddress, accessManagerAddress],
-        {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor"],
-        }
-    );
+    const reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManagerAddress], {
+        kind: "uups",
+        initializer: "initialize",
+        unsafeAllow: ["constructor", "state-variable-immutable"],
+        constructorArgs: [usdcAddress],
+    });
 
     const tx = reservoir.deploymentTransaction();
     await reservoir.waitForDeployment();
@@ -81,7 +78,7 @@ async function main() {
     });
 
     // Verify implementation
-    await verifyContract(implAddress);
+    await verifyContract(implAddress, [usdcAddress]);
 
     saveDeployments(deployments);
     console.log("Deployments file updated");
