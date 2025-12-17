@@ -1,416 +1,985 @@
-import { expect } from "chai";
-import { ethers, upgrades, network } from "hardhat";
-import { parseUnits } from "ethers";
+import {expect} from "chai";
+import {ethers, upgrades, network} from "hardhat";
+import {parseUnits} from "ethers";
 import {
-  impersonateAccount,
-  setBalance,
-  takeSnapshot,
-  time,
+    impersonateAccount,
+    setBalance,
+    takeSnapshot,
+    time,
 } from "@nomicfoundation/hardhat-network-helpers";
-import type { SnapshotRestorer } from "@nomicfoundation/hardhat-network-helpers";
+import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {
-  MZUSD,
-  Vault,
-  ReservoirUSDC,
-  IERC20,
-  Tranche,
-} from "../typechain-types";
+import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
 const VAULT_ROLE = 2n;
 
-const to6 = (value: string | number | bigint) =>
-  parseUnits(value.toString(), 6);
-const to18 = (value: string | number | bigint) =>
-  parseUnits(value.toString(), 18);
+const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
+const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
 
 async function imp(addr: string) {
-  // Give the whale some ETH for gas
-  await setBalance(addr, to18(10));
-  await impersonateAccount(addr);
-  return ethers.getSigner(addr);
+    // Give the whale some ETH for gas
+    await setBalance(addr, to18(10));
+    await impersonateAccount(addr);
+    return ethers.getSigner(addr);
 }
 
-describe("Tranche", () => {
-  let snapshot: SnapshotRestorer;
+describe.only("Tranche", () => {
+    let snapshot: SnapshotRestorer;
 
-  let deployer: any;
-  let alice: any;
-  let bob: any;
+    let deployer: any;
+    let alice: any;
+    let bob: any;
+    let carol: any;
 
-  let accessManager: any;
-  let vault: Vault;
-  let mzusd: MZUSD;
-  let usdc: IERC20;
-  let reservoir: ReservoirUSDC;
-  let tranche: Tranche;
+    let accessManager: any;
+    let vault: Vault;
+    let mzusd: MZUSD;
+    let usdc: IERC20;
+    let reservoir: ReservoirUSDC;
+    let tranche: Tranche;
 
-  before(async () => {
-    [deployer, alice, bob] = await ethers.getSigners();
+    before(async () => {
+        [deployer, alice, bob, carol] = await ethers.getSigners();
 
-    usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
-    upgrades.silenceWarnings();
+        usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        upgrades.silenceWarnings();
 
-    await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
+        await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
-    const AccessManagerFactory = await ethers.getContractFactory(
-      "AccessManager",
-      deployer
-    );
-    accessManager = await AccessManagerFactory.deploy(deployer.address);
-    await accessManager.waitForDeployment();
+        const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
+        accessManager = await AccessManagerFactory.deploy(deployer.address);
+        await accessManager.waitForDeployment();
 
-    const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-    mzusd = (await upgrades.deployProxy(
-      MZUSDFactory,
-      [
-        accessManager.target,
-        0, // _hourlyLimitUSDC (0 = limit is off)
-      ],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor", "state-variable-immutable"],
-        constructorArgs: [MAINNET_USDC],
-      }
-    )) as unknown as MZUSD;
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                0, // _hourlyLimitUSDC (0 = limit is off)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as MZUSD;
 
-    const ReservoirFactory = await ethers.getContractFactory(
-      "ReservoirUSDC",
-      deployer
-    );
-    reservoir = (await upgrades.deployProxy(
-      ReservoirFactory,
-      [accessManager.target],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor", "state-variable-immutable"],
-        constructorArgs: [MAINNET_USDC],
-      }
-    )) as unknown as ReservoirUSDC;
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        })) as unknown as ReservoirUSDC;
 
-    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-    vault = (await upgrades.deployProxy(
-      VaultFactory,
-      [mzusd.target, reservoir.target, accessManager.target],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor", "state-variable-immutable"],
-        constructorArgs: [MAINNET_USDC]
-      }
-    )) as unknown as Vault;
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [mzusd.target, reservoir.target, accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as Vault;
 
-    // Tranche
-    const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-    tranche = (await upgrades.deployProxy(
-      TrancheFactory,
-      [
-        mzusd.target, // assetToken (MZUSD as IERC20)
-        vault.target, // vaultAddress
-        1, // trancheIdentifier
-        0, // initialUnstakeDelayEpochs
-        "Senior Tranche", // name
-        "sMZUSD", // symbol
-        accessManager.target, // accessManager
-        false, // polJuniorMode
-        ethers.ZeroAddress, // polPayoutAddress
-      ],
-      {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor"],
-      }
-    )) as unknown as Tranche;
+        // Tranche
+        const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+        tranche = (await upgrades.deployProxy(
+            TrancheFactory,
+            [
+                mzusd.target, // assetToken (MZUSD as IERC20)
+                vault.target, // vaultAddress
+                1, // trancheIdentifier
+                0, // initialUnstakeDelayEpochs
+                "Senior Tranche", // name
+                "sMZUSD", // symbol
+                accessManager.target, // accessManager
+                false, // polJuniorMode
+                ethers.ZeroAddress, // polPayoutAddress
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+            }
+        )) as unknown as Tranche;
 
-    // ROLES & AccessManager wiring
+        // ROLES & AccessManager wiring
 
-    const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
-    const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-    // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
-    const depositSelector = mzusd.interface.getFunction("deposit")!.selector;
-    const requestWithdrawalSelector =
-      mzusd.interface.getFunction("requestWithdrawal")!.selector;
+        // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
+        const depositSelector = mzusd.interface.getFunction("deposit")!.selector;
+        const requestWithdrawalSelector =
+            mzusd.interface.getFunction("requestWithdrawal")!.selector;
 
-    await accessManager.setTargetFunctionRole(
-      mzusd.target,
-      [depositSelector, requestWithdrawalSelector],
-      PUBLIC_ROLE
-    );
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [depositSelector, requestWithdrawalSelector],
+            PUBLIC_ROLE
+        );
 
-    // 2) Admin-only functions on MZUSD & Vault
-    const setVaultSelector = mzusd.interface.getFunction("setVault")!.selector;
-    const distributeYieldSelector =
-      vault.interface.getFunction("distributeYield")!.selector;
-    const addTrancheSelector =
-      vault.interface.getFunction("addTranche")!.selector;
+        // 2) Admin-only functions on MZUSD & Vault
+        const setVaultSelector = mzusd.interface.getFunction("setVault")!.selector;
+        const distributeYieldSelector = vault.interface.getFunction("distributeYield")!.selector;
+        const addTrancheSelector = vault.interface.getFunction("addTranche")!.selector;
 
-    await accessManager.setTargetFunctionRole(
-      mzusd.target,
-      [setVaultSelector],
-      ADMIN_ROLE
-    );
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
-    await accessManager.setTargetFunctionRole(
-      vault.target,
-      [distributeYieldSelector, addTrancheSelector],
-      ADMIN_ROLE
-    );
+        await accessManager.setTargetFunctionRole(
+            vault.target,
+            [distributeYieldSelector, addTrancheSelector],
+            ADMIN_ROLE
+        );
 
-    // 3) Vault role allowed to mint MZUSD and push yield to tranches
-    const mintSelector = mzusd.interface.getFunction("mint")!.selector;
-    await accessManager.setTargetFunctionRole(
-      mzusd.target,
-      [mintSelector],
-      VAULT_ROLE
-    );
+        // 3) Vault role allowed to mint MZUSD and push yield to tranches
+        const mintSelector = mzusd.interface.getFunction("mint")!.selector;
+        await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
 
-    const notifySelector =
-      tranche.interface.getFunction("notifyYield")!.selector;
-    await accessManager.setTargetFunctionRole(
-      tranche.target,
-      [notifySelector],
-      VAULT_ROLE
-    );
+        const notifySelector = tranche.interface.getFunction("notifyYield")!.selector;
+        await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
 
-    await accessManager.grantRole(
-      VAULT_ROLE,
-      vault.target,
-      0 // executionDelay
-    );
+        await accessManager.grantRole(
+            VAULT_ROLE,
+            vault.target,
+            0 // executionDelay
+        );
 
-    // 4) Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
-    await mzusd.setVault(vault.target);
+        // 4) Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
+        await mzusd.setVault(vault.target);
 
-    await vault.addTranche({
-      tranche: tranche.target,
-      weightBps: 10_000,
-      enabled: true,
+        await vault.addTranche({
+            tranche: tranche.target,
+            weightBps: 10_000,
+            enabled: true,
+        });
+
+        snapshot = await takeSnapshot();
     });
 
-    snapshot = await takeSnapshot();
-  });
+    afterEach(async () => {
+        await snapshot.restore();
+    });
 
-  afterEach(async () => {
-    await snapshot.restore();
-  });
+    // small helper to mint MZUSD via real deposit
+    async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
+        const whale = await imp(USDC_WHALE);
 
-  // small helper to mint MZUSD via real deposit
-  async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-    const whale = await imp(USDC_WHALE);
+        // give user some USDC
+        await usdc.connect(whale).transfer(user.address, usdcAmount6);
 
-    // give user some USDC
-    await usdc.connect(whale).transfer(user.address, usdcAmount6);
+        // deposit to MZUSD
+        await usdc.connect(user).approve(mzusd.target, usdcAmount6);
+        await mzusd.connect(user).deposit(usdcAmount6);
 
-    // deposit to MZUSD
-    await usdc.connect(user).approve(mzusd.target, usdcAmount6);
-    await mzusd.connect(user).deposit(usdcAmount6);
+        const mzBalance = await mzusd.balanceOf(user.address);
+        return mzBalance;
+    }
+    // helper: deposit MZUSD into Tranche (ERC4626)
+    async function depositMZIntoTranche(
+        user: any,
+        mzAmount18: bigint,
+        receiver: string = user.address
+    ) {
+        await mzusd.connect(user).approve(tranche.target, mzAmount18);
+        const tx = await tranche.connect(user).deposit(mzAmount18, receiver);
+        await tx.wait();
+        return tx;
+    }
 
-    const mzBalance = await mzusd.balanceOf(user.address);
-    return mzBalance;
-  }
+    // helper: mint MZUSD via USDC deposit and immediately deposit into Tranche
+    async function mintAndDepositIntoTranche(
+        user: any,
+        usdcAmount6: bigint,
+        receiver: string = user.address
+    ) {
+        const mintedMZ = await mintMZUSDFor(user, usdcAmount6);
+        const tx = await depositMZIntoTranche(user, mintedMZ, receiver);
+        const shares = await tranche.balanceOf(receiver);
+        return {mintedMZ, shares, tx};
+    }
 
-  it("Should allow basic deposit into Tranche (ERC4626 semantics)", async () => {
-    const depositUSDC = to6(100n); // 100 USDC
-    const expectedMZ = to18(100n); // 100 MZUSD (18 decimals)
+    it("Should allow basic deposit into Tranche (ERC4626 semantics)", async () => {
+        const depositUSDC = to6(100n); // 100 USDC
+        const expectedMZ = to18(100n); // 100 MZUSD (18 decimals)
 
-    // 1) Mint MZUSD for Alice via real deposit into MZUSD
-    const aliceMZBefore = await mzusd.balanceOf(alice.address);
-    expect(aliceMZBefore).to.equal(0n);
+        // 1) Mint MZUSD for Alice via real deposit into MZUSD
+        const aliceMZBefore = await mzusd.balanceOf(alice.address);
+        expect(aliceMZBefore).to.equal(0n);
 
-    const minted = await mintMZUSDFor(alice, depositUSDC);
-    expect(minted).to.equal(expectedMZ);
+        const minted = await mintMZUSDFor(alice, depositUSDC);
+        expect(minted).to.equal(expectedMZ);
 
-    const aliceMZAfterMint = await mzusd.balanceOf(alice.address);
-    expect(aliceMZAfterMint).to.equal(expectedMZ);
+        const aliceMZAfterMint = await mzusd.balanceOf(alice.address);
+        expect(aliceMZAfterMint).to.equal(expectedMZ);
 
-    const trancheAssetsBefore = await tranche.totalAssets();
-    const trancheSharesBefore = await tranche.totalSupply();
-    expect(trancheAssetsBefore).to.equal(0n);
-    expect(trancheSharesBefore).to.equal(0n);
+        const trancheAssetsBefore = await tranche.totalAssets();
+        const trancheSharesBefore = await tranche.totalSupply();
+        expect(trancheAssetsBefore).to.equal(0n);
+        expect(trancheSharesBefore).to.equal(0n);
 
-    // 2) Alice deposits MZUSD into Tranche
-    await mzusd.connect(alice).approve(tranche.target, expectedMZ);
+        // 2) Alice deposits MZUSD into Tranche
+        await mzusd.connect(alice).approve(tranche.target, expectedMZ);
 
-    const tx = await tranche.connect(alice).deposit(expectedMZ, alice.address);
-    await tx.wait();
+        const tx = await tranche.connect(alice).deposit(expectedMZ, alice.address);
+        await tx.wait();
 
-    await expect(tx)
-      .to.emit(tranche, "Deposit")
-      .withArgs(alice.address, alice.address, expectedMZ, expectedMZ);
+        await expect(tx)
+            .to.emit(tranche, "Deposit")
+            .withArgs(alice.address, alice.address, expectedMZ, expectedMZ);
 
-    const aliceMZFinal = await mzusd.balanceOf(alice.address);
-    const aliceShares = await tranche.balanceOf(alice.address);
-    const trancheAssetsAfter = await tranche.totalAssets();
-    const trancheSharesAfter = await tranche.totalSupply();
+        const aliceMZFinal = await mzusd.balanceOf(alice.address);
+        const aliceShares = await tranche.balanceOf(alice.address);
+        const trancheAssetsAfter = await tranche.totalAssets();
+        const trancheSharesAfter = await tranche.totalSupply();
 
-    // MZUSD moved from Alice to Tranche
-    expect(aliceMZFinal).to.equal(0n);
+        // MZUSD moved from Alice to Tranche
+        expect(aliceMZFinal).to.equal(0n);
 
-    // first deposit in ERC4626 -> shares == assets
-    expect(aliceShares).to.equal(expectedMZ);
-    expect(trancheSharesAfter).to.equal(expectedMZ);
+        // first deposit in ERC4626 -> shares == assets
+        expect(aliceShares).to.equal(expectedMZ);
+        expect(trancheSharesAfter).to.equal(expectedMZ);
 
-    // totalAssets uses virtual NAV, but without streaming = real MZUSD balance
-    expect(trancheAssetsAfter).to.equal(expectedMZ);
+        // totalAssets uses virtual NAV, but without streaming = real MZUSD balance
+        expect(trancheAssetsAfter).to.equal(expectedMZ);
 
-    // convertToAssets(shares) will return the same amount
-    const previewAssets = await tranche.convertToAssets(aliceShares);
-    expect(previewAssets).to.equal(expectedMZ);
-  });
+        // convertToAssets(shares) will return the same amount
+        const previewAssets = await tranche.convertToAssets(aliceShares);
+        expect(previewAssets).to.equal(expectedMZ);
+    });
+    it("Streams yield linearly and affects deposits & pricePerShare correctly", async () => {
+        const DAY = 24 * 60 * 60;
 
-  it.only("Streams yield linearly and affects deposits & pricePerShare correctly", async () => {
-    const DAY = 24 * 60 * 60;
+        // 1) Alice gets MZUSD
+        const depositUSDC = to6(100n); // 100 USDC -> 100 MZUSD
+        const expectedMZ = to18(100n);
 
-    // 1) Alice gets MZUSD
-    const depositUSDC = to6(100n); // 100 USDC -> 100 MZUSD
-    const expectedMZ = to18(100n);
+        const {mintedMZ: aliceMintedMZ, shares: aliceShares} = await mintAndDepositIntoTranche(
+            alice,
+            depositUSDC,
+            alice.address
+        );
 
-    await mintMZUSDFor(alice, depositUSDC);
+        expect(aliceMintedMZ).to.equal(expectedMZ);
+        expect(aliceShares).to.equal(expectedMZ);
 
-    // And deposits into Tranche
-    await mzusd.connect(alice).approve(tranche.target, expectedMZ);
-    await tranche.connect(alice).deposit(expectedMZ, alice.address);
+        const assetsAfterAliceDeposit = await tranche.totalAssets();
+        expect(assetsAfterAliceDeposit).to.equal(expectedMZ); // 100
 
-    const aliceShares = await tranche.balanceOf(alice.address);
-    expect(aliceShares).to.equal(expectedMZ);
+        await expect(vault.connect(deployer).distributeYield(1000n)).to.be.revertedWithCustomError(
+            vault,
+            "EpochTooSoon"
+        ); // dummy call to check revert
 
-    const assetsAfterAliceDeposit = await tranche.totalAssets();
-    expect(assetsAfterAliceDeposit).to.equal(expectedMZ); // 100
+        // 2) Time skip for one epoch, distributeYield on Vault is called
+        // needed to make _advanceEpochAndValidate() not to fail with EpochTooSoon (1 day because we initialized contract with 1 day minEpochDuration)
+        await time.increase(DAY);
 
-    await expect(
-      vault.connect(deployer).distributeYield(1000n)
-    ).to.be.revertedWithCustomError(vault, "EpochTooSoon"); // dummy call to check revert
+        const reportedUSDC = to6(20n);
+        const expectedYieldMZ = to18(20n);
+        const epochIdBefore = await vault.currentEpochId();
+        const newEpochId = (await vault.currentEpochId()) + 1n;
 
-    // 2) Time skip for one epoch, distributeYield on Vault is called
-    // needed to make _advanceEpochAndValidate() not to fail with EpochTooSoon (1 day because we initialized contract with 1 day minEpochDuration)
-    await time.increase(DAY);
+        // Call distributeYield and get tx
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        await tx.wait();
 
-    const reportedUSDC = to6(20n);
-    const expectedYieldMZ = to18(20n);
-    const epochIdBefore = await vault.currentEpochId();
-    const newEpochId = (await vault.currentEpochId()) + 1n;
+        // Use Hardhat time helper to get latest block timestamp (the tx block)
+        const streamStartTs = BigInt(await time.latest());
+        const minDuration = await vault.epochDuration();
+        const expectedStreamEnd = streamStartTs + minDuration;
 
-    // Call distributeYield and get tx
-    const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
-    await tx.wait();
+        await expect(tx)
+            .to.emit(tranche, "YieldNotified")
+            .withArgs(newEpochId, expectedYieldMZ, streamStartTs, expectedStreamEnd)
+            .and.emit(vault, "YieldDistributed")
+            .withArgs(reportedUSDC, expectedYieldMZ, newEpochId);
 
-    // Use Hardhat time helper to get latest block timestamp (the tx block)
-    const streamStartTs = BigInt(await time.latest());
-    const minDuration = await vault.minEpochDuration();
-    const expectedStreamEnd = streamStartTs + minDuration;
+        const streamingAmount = await tranche.yieldStreamingAmount();
+        expect(streamingAmount).to.equal(expectedYieldMZ);
 
-    await expect(tx)
-      .to.emit(tranche, "YieldNotified")
-      .withArgs(newEpochId, expectedYieldMZ, streamStartTs, expectedStreamEnd)
-      .and.emit(vault, "YieldDistributed")
-      .withArgs(reportedUSDC, expectedYieldMZ, newEpochId);
+        const yieldStart = await tranche.yieldStreamStart();
+        const yieldEnd = await tranche.yieldStreamEnd();
 
-    const streamingAmount = await tranche.yieldStreamingAmount();
-    expect(streamingAmount).to.equal(expectedYieldMZ);
+        expect(yieldStart).to.equal(streamStartTs);
+        expect(yieldEnd).to.equal(expectedStreamEnd);
+        expect(yieldEnd - yieldStart).to.equal(minDuration);
 
-    const yieldStart = await tranche.yieldStreamStart();
-    const yieldEnd = await tranche.yieldStreamEnd();
+        // On Tranche the yield is already there, but all "unaccrued" (ts == start)
+        const trancheBalanceAfterYield = await mzusd.balanceOf(tranche.target);
+        expect(trancheBalanceAfterYield).to.equal(expectedMZ + expectedYieldMZ); // 100 + 20 = 120
 
-    expect(yieldStart).to.equal(streamStartTs);
-    expect(yieldEnd).to.equal(expectedStreamEnd);
-    expect(yieldEnd - yieldStart).to.equal(minDuration);
+        const totalAssetsImmediately = await tranche.totalAssets();
+        // Virtual NAV 100 for now, all yield is unaccrued
+        expect(totalAssetsImmediately).to.equal(expectedMZ);
 
-    // On Tranche the yield is already there, but all "unaccrued" (ts == start)
-    const trancheBalanceAfterYield = await mzusd.balanceOf(tranche.target);
-    expect(trancheBalanceAfterYield).to.equal(expectedMZ + expectedYieldMZ); // 100 + 20 = 120
+        const price0 = await tranche.pricePerShare();
+        // pricePerShare ≈ 1.0
+        expect(price0).to.equal(to18(1n));
 
-    const totalAssetsImmediately = await tranche.totalAssets();
-    // Virtual NAV 100 for now, all yield is unaccrued
-    expect(totalAssetsImmediately).to.equal(expectedMZ);
+        // Go half-way through the streaming period
+        await time.increase(minDuration / 2n);
 
-    const price0 = await tranche.pricePerShare();
-    // pricePerShare ≈ 1.0
-    expect(price0).to.equal(to18(1n));
+        const totalAssetsMid = await tranche.totalAssets();
+        // After half epoch half of yield should be accrued
+        // NAV = 100 + 10 = 110
+        expect(totalAssetsMid).to.equal(to18(110n));
 
-    // Go half-way through the streaming period
-    await time.increase(minDuration / 2n);
+        const priceMid = await tranche.pricePerShare();
+        // pricePerShare ≈ 1.1
+        const expectedMidPrice = to18(11n) / 10n; // 1.1 * 1e18
+        const priceDiff =
+            priceMid > expectedMidPrice ? priceMid - expectedMidPrice : expectedMidPrice - priceMid;
 
-    const totalAssetsMid = await tranche.totalAssets();
-    // After half epoch half of yield should be accrued
-    // NAV = 100 + 10 = 110
-    expect(totalAssetsMid).to.equal(to18(110n));
+        expect(priceDiff).to.be.lte(1n);
+        // expect(priceMid).to.equal(expectedMidPrice);
 
-    const priceMid = await tranche.pricePerShare();
-    // pricePerShare ≈ 1.1
-    const expectedMidPrice = to18(11n) / 10n; // 1.1 * 1e18
-    const priceDiff =
-      priceMid > expectedMidPrice
-        ? priceMid - expectedMidPrice
-        : expectedMidPrice - priceMid;
+        // 4) Bob comes in the middle of the stream: deposits MZUSD at the already increased price
+        const bobUSDCDeposit = to6(100n);
+        const bobMintedMZ = await mintMZUSDFor(bob, bobUSDCDeposit);
 
-    expect(priceDiff).to.be.lte(1n);
-    // expect(priceMid).to.equal(expectedMidPrice);
+        // previewDeposit needs to show less shares than assets, because pricePerShare > 1
+        const previewBobShares = await tranche.previewDeposit(bobMintedMZ);
+        expect(previewBobShares).to.be.lt(bobMintedMZ);
+        const txBob = await depositMZIntoTranche(bob, bobMintedMZ, bob.address);
+        const bobShares = await tranche.balanceOf(bob.address);
 
-    // 4) Bob comes in the middle of the stream: deposits MZUSD at the already increased price
-    const bobUSDCDeposit = to6(100n);
-    const bobMintedMZ = await mintMZUSDFor(bob, bobUSDCDeposit);
+        //price grow up because of streaming, between preview and actual deposit
+        //because of it actual shares should be lte than previewed
+        expect(bobShares).to.be.lte(previewBobShares);
+        expect(bobShares).to.be.gt(0n);
+        const delta =
+            previewBobShares > bobShares
+                ? previewBobShares - bobShares
+                : bobShares - previewBobShares;
 
-    await mzusd.connect(bob).approve(tranche.target, bobMintedMZ);
+        //difference due to math and 1 second of streaming should be very small
+        expect(delta).to.be.lte(10n ** 16n);
 
-    // previewDeposit needs to show less shares than assets, because pricePerShare > 1
-    const previewBobShares = await tranche.previewDeposit(bobMintedMZ);
+        // For checking sanity: Alice still has her original shares
+        const aliceSharesAfterBob = await tranche.balanceOf(alice.address);
+        expect(aliceSharesAfterBob).to.equal(aliceShares);
 
-    expect(previewBobShares).to.be.lt(bobMintedMZ); // bob's part is worth less shares due to pricePerShare > 1
+        // 5) Move time to the end of streaming and check that all yield is accrued
+        await time.increase(DAY);
 
-    const txBob = await tranche.connect(bob).deposit(bobMintedMZ, bob.address);
-    await txBob.wait();
+        const finalBalance = await mzusd.balanceOf(tranche.target);
+        const finalTotalAssets = await tranche.totalAssets();
 
-    const bobShares = await tranche.balanceOf(bob.address);
+        // On the balance: 100 (Alice) + 100 (Bob) + 20 (yield) = 220
+        expect(finalBalance).to.equal(to18(220n));
 
-    //price grow up because of streaming, between preview and actual deposit
-    //because of it actual shares should be lte than previewed
-    expect(bobShares).to.be.lte(previewBobShares);
-    expect(bobShares).to.be.gt(0n);
-    const delta =
-      previewBobShares > bobShares
-        ? previewBobShares - bobShares
-        : bobShares - previewBobShares;
+        // Virtual totalAssets should match real balance, as unaccruedYield == 0
+        expect(finalTotalAssets).to.equal(finalBalance);
 
-    //difference due to math and 1 second of streaming should be very small
-    expect(delta).to.be.lte(10n ** 16n);
+        const totalShares = await tranche.totalSupply();
+        const finalPrice = await tranche.pricePerShare();
 
-    // For checking sanity: Alice still has her original shares
-    const aliceSharesAfterBob = await tranche.balanceOf(alice.address);
-    expect(aliceSharesAfterBob).to.equal(aliceShares);
+        // Price should be > midPrice and > 1
+        expect(finalPrice).to.be.gt(priceMid);
+        expect(finalPrice).to.be.gt(to18(1n));
 
-    // 5) Move time to the end of streaming and check that all yield is accrued
-    await time.increase(DAY);
+        // Invariant check: NAV ~= price * totalShares / 1e18
+        const reconstructedAssets = (finalPrice * totalShares) / to18(1n);
+        // Allow a small difference due to integer divisions, but it should be minimal
+        const diff = finalTotalAssets - reconstructedAssets;
+        const absDiff = diff >= 0n ? diff : -diff;
 
-    const finalBalance = await mzusd.balanceOf(tranche.target);
-    const finalTotalAssets = await tranche.totalAssets();
+        // difference is purely from integer division rounding (streaming + ERC4626 formulas),
+        // should be tiny compared to total NAV
+        expect(absDiff).to.be.lte(1000n);
+    });
+    it("Handles umbrella unstake and claim flow", async () => {
+        const DAY = 24 * 60 * 60;
 
-    // On the balance: 100 (Alice) + 100 (Bob) + 20 (yield) = 220
-    expect(finalBalance).to.equal(to18(220n));
+        const depositUSDC = to6(100n); // 100 USDC
+        const expectedMZ = to18(100n); // 100 MZUSD
 
-    // Virtual totalAssets should match real balance, as unaccruedYield == 0
-    expect(finalTotalAssets).to.equal(finalBalance);
+        // 1) Alice mints MZUSD and deposits into the tranche
+        const {mintedMZ: aliceMintedMZ, shares: aliceSharesBefore} =
+            await mintAndDepositIntoTranche(alice, depositUSDC, alice.address);
 
-    const totalShares = await tranche.totalSupply();
-    const finalPrice = await tranche.pricePerShare();
+        expect(aliceMintedMZ).to.equal(expectedMZ);
+        expect(aliceSharesBefore).to.equal(expectedMZ);
 
-    // Price should be > midPrice and > 1
-    expect(finalPrice).to.be.gt(priceMid);
-    expect(finalPrice).to.be.gt(to18(1n));
+        const epochAtRequest = await vault.currentEpochId();
 
-    // Invariant check: NAV ~= price * totalShares / 1e18
-    const reconstructedAssets = (finalPrice * totalShares) / to18(1n);
-    // Allow a small difference due to integer divisions, but it should be minimal
-    const diff = finalTotalAssets - reconstructedAssets;
-    const absDiff = diff >= 0n ? diff : -diff;
+        // 2) Alice requests withdrawal for all her shares (umbrella system)
+        const txReq = await tranche.connect(alice).requestWithdrawal(aliceSharesBefore);
+        await txReq.wait();
 
-    // difference is purely from integer division rounding (streaming + ERC4626 formulas),
-    // should be tiny compared to total NAV
-    expect(absDiff).to.be.lte(1000n);
-  });
+        const targetEpoch = epochAtRequest + 0n; // since unstakeDelayEpochs = 0
+
+        await expect(txReq)
+            .to.emit(tranche, "UnstakeRequested")
+            .withArgs(alice.address, aliceSharesBefore, epochAtRequest, targetEpoch);
+
+        const umbrellaShares = await tranche.umbrellaSharesByEpoch(targetEpoch);
+        const userEpochShares = await tranche.userSharesByEpoch(alice.address, targetEpoch);
+
+        expect(umbrellaShares).to.equal(aliceSharesBefore);
+        expect(userEpochShares).to.equal(aliceSharesBefore);
+
+        const aliceSharesAfterRequest = await tranche.balanceOf(alice.address);
+        expect(aliceSharesAfterRequest).to.equal(0n);
+
+        // 3) Advance epoch in Vault and distribute some yield for the next epoch
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(10n); // small yield just to advance epoch
+        await vault.connect(deployer).distributeYield(reportedUSDC);
+
+        const currentEpochAfterYield = await vault.currentEpochId();
+        expect(currentEpochAfterYield).to.equal(epochAtRequest + 1n);
+
+        // 4) Admin finalizes the epoch for which Alice requested unstake
+        // NOTE: finalizeEpoch uses convertToAssets(shares) at the finalization block timestamp.
+        // Because yield is streamed linearly, NAV can increase by a small amount between our view calls
+        // and the finalize tx (often ~1 second). Here we assert the exact expected math.
+
+        const trancheSupplyBeforeFinal = await tranche.totalSupply();
+
+        // Snapshot streaming params + tranche balance before finalization
+        const streamAmount = await tranche.yieldStreamingAmount();
+        const streamStart = await tranche.yieldStreamStart();
+        const streamEnd = await tranche.yieldStreamEnd();
+        const balanceAtFinalize = await mzusd.balanceOf(tranche.target);
+
+        const txFinal = await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+        const receiptFinal = await txFinal.wait();
+        const blockFinal = await ethers.provider.getBlock(receiptFinal!.blockNumber);
+        const finalizeTs = BigInt(blockFinal!.timestamp);
+
+        const [umbrellaAfterFinal, isFinalized, totalSharesFinal, totalAssetsFinal] =
+            await tranche.getEpochInfo(targetEpoch);
+
+        expect(isFinalized).to.equal(true);
+        expect(umbrellaAfterFinal).to.equal(0n);
+        expect(totalSharesFinal).to.equal(aliceSharesBefore);
+
+        // Exact expected NAV at finalization time:
+        // totalAssets(t) = balance - unaccrued(t)
+        // unaccrued(t) = streamAmount - floor(streamAmount * elapsed / duration)
+        // => totalAssets(t) = (balance - streamAmount) + floor(streamAmount * elapsed / duration)
+        const duration = BigInt(streamEnd) - BigInt(streamStart);
+
+        let elapsed: bigint;
+        if (finalizeTs <= BigInt(streamStart)) {
+            elapsed = 0n;
+        } else if (finalizeTs >= BigInt(streamEnd)) {
+            elapsed = duration;
+        } else {
+            elapsed = finalizeTs - BigInt(streamStart);
+        }
+
+        const accrued = duration === 0n ? 0n : (streamAmount * elapsed) / duration;
+
+        expect(balanceAtFinalize).to.be.gte(streamAmount);
+        const expectedTotalAssetsFinal = balanceAtFinalize - streamAmount + accrued;
+
+        // In theory this should match exactly, but depending on the exact ERC4626 conversion math
+        // used during finalize (vs. our direct NAV reconstruction), a 1-wei rounding difference is possible.
+        const navDiff =
+            totalAssetsFinal > expectedTotalAssetsFinal
+                ? totalAssetsFinal - expectedTotalAssetsFinal
+                : expectedTotalAssetsFinal - totalAssetsFinal;
+
+        expect(navDiff).to.be.lte(1n);
+
+        const trancheSupplyAfterFinal = await tranche.totalSupply();
+        expect(trancheSupplyAfterFinal).to.equal(trancheSupplyBeforeFinal - aliceSharesBefore);
+
+        // 5) Alice claims her withdrawal for that epoch
+        const aliceMZBeforeClaim = await mzusd.balanceOf(alice.address);
+
+        const [pendingSharesBefore, isFinalizedUser, , , claimableBefore] =
+            await tranche.getUserEpochInfo(alice.address, targetEpoch);
+
+        expect(pendingSharesBefore).to.equal(aliceSharesBefore);
+        expect(isFinalizedUser).to.equal(true);
+        // Since Alice is the only pending user for this epoch, claimable == finalized totalAssets
+        expect(claimableBefore).to.equal(totalAssetsFinal);
+
+        const txClaim = await tranche.connect(alice).claim(targetEpoch);
+        await txClaim.wait();
+
+        const aliceMZAfterClaim = await mzusd.balanceOf(alice.address);
+        await expect(txClaim)
+            .to.emit(tranche, "WithdrawalClaimed")
+            .withArgs(alice.address, targetEpoch, claimableBefore);
+
+        // Claim transfers the finalized, claimable assets for this epoch back to Alice
+        expect(aliceMZAfterClaim).to.equal(aliceMZBeforeClaim + claimableBefore);
+
+        const [pendingSharesAfter, , , , claimableAfter] = await tranche.getUserEpochInfo(
+            alice.address,
+            targetEpoch
+        );
+
+        expect(pendingSharesAfter).to.equal(0n);
+        expect(claimableAfter).to.equal(0n);
+    });
+    it("Handles umbrella unstake + finalize + claim for multiple users with awkward numbers", async () => {
+        const DAY = 24 * 60 * 60;
+
+        // Awkward deposit sizes
+        const aUSDC = to6(123n);
+        const bUSDC = to6(77n);
+        const cUSDC = to6(19n);
+
+        // 1) Alice deposits at epoch 1 (pricePerShare ~ 1.0)
+        const {mintedMZ: aMinted, shares: aShares} = await mintAndDepositIntoTranche(
+            alice,
+            aUSDC,
+            alice.address
+        );
+
+        expect(aMinted).to.equal(to18(123n));
+        expect(aShares).to.equal(aMinted);
+
+        expect(await vault.currentEpochId()).to.equal(1n);
+
+        // 2) Advance to epoch 2 and start streaming yield (odd amount -> rounding)
+        await time.increase(DAY);
+
+        const yieldUSDC = to6(17n);
+        const txYield1 = await vault.connect(deployer).distributeYield(yieldUSDC);
+        await txYield1.wait();
+
+        expect(await vault.currentEpochId()).to.equal(2n);
+
+        const minDuration = await vault.epochDuration();
+
+        // Move into the stream by a non-round fraction to create ugly share math
+        await time.increase(minDuration / 3n + 7n);
+
+        // 3) Bob & Carol deposit mid-stream (pricePerShare > 1 => shares < assets)
+        const {mintedMZ: bMinted, shares: bShares} = await mintAndDepositIntoTranche(
+            bob,
+            bUSDC,
+            bob.address
+        );
+        const {mintedMZ: cMinted, shares: cShares} = await mintAndDepositIntoTranche(
+            carol,
+            cUSDC,
+            carol.address
+        );
+
+        expect(bShares).to.be.lt(bMinted);
+        expect(cShares).to.be.lt(cMinted);
+
+        // 4) All request withdrawal for all shares in current vault epoch (targetEpoch = 2)
+        const targetEpoch = await vault.currentEpochId(); // 2
+        expect(targetEpoch).to.equal(2n);
+
+        const aReq = await tranche.balanceOf(alice.address);
+        const bReq = await tranche.balanceOf(bob.address);
+        const cReq = await tranche.balanceOf(carol.address);
+
+        await expect(
+            tranche.connect(alice).requestWithdrawal(aReq + 5n)
+        ).to.be.revertedWithCustomError(tranche, "InvalidBalance");
+        await tranche.connect(alice).requestWithdrawal(aReq);
+        await tranche.connect(bob).requestWithdrawal(bReq);
+        await tranche.connect(carol).requestWithdrawal(cReq);
+
+        const umbrella = await tranche.umbrellaSharesByEpoch(targetEpoch);
+        expect(umbrella).to.equal(aReq + bReq + cReq);
+
+        expect(await tranche.balanceOf(alice.address)).to.equal(0n);
+        expect(await tranche.balanceOf(bob.address)).to.equal(0n);
+        expect(await tranche.balanceOf(carol.address)).to.equal(0n);
+
+        // 5) Advance epoch again so finalizeEpoch(2) becomes allowed
+        await time.increase(DAY);
+        const txYield2 = await vault.connect(deployer).distributeYield(to6(1n));
+        await txYield2.wait();
+
+        expect(await vault.currentEpochId()).to.equal(3n);
+
+        // 6) Finalize epoch 2
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+
+        const [umbrellaAfter, isFinalized, totalSharesFinal, totalAssetsFinal] =
+            await tranche.getEpochInfo(targetEpoch);
+
+        expect(isFinalized).to.equal(true);
+        expect(umbrellaAfter).to.equal(0n);
+        expect(totalSharesFinal).to.equal(aReq + bReq + cReq);
+
+        // 7) Pro-rata claim math with floor rounding (exactly as in Tranche.claim)
+        const expectedA = (aReq * totalAssetsFinal) / totalSharesFinal;
+        const expectedB = (bReq * totalAssetsFinal) / totalSharesFinal;
+        const expectedC = (cReq * totalAssetsFinal) / totalSharesFinal;
+
+        // Verify getUserEpochInfo matches the same formula
+        const [aPending, aFinalized, aTotShares, aTotAssets, aClaimable] =
+            await tranche.getUserEpochInfo(alice.address, targetEpoch);
+        expect(aPending).to.equal(aReq);
+        expect(aFinalized).to.equal(true);
+        expect(aTotShares).to.equal(totalSharesFinal);
+        expect(aTotAssets).to.equal(totalAssetsFinal);
+        expect(aClaimable).to.equal(expectedA);
+
+        const [bPending, , , , bClaimable] = await tranche.getUserEpochInfo(
+            bob.address,
+            targetEpoch
+        );
+        expect(bPending).to.equal(bReq);
+        expect(bClaimable).to.equal(expectedB);
+
+        const [cPending, , , , cClaimable] = await tranche.getUserEpochInfo(
+            carol.address,
+            targetEpoch
+        );
+        expect(cPending).to.equal(cReq);
+        expect(cClaimable).to.equal(expectedC);
+
+        // Claim and check balances
+        const aBalBefore = await mzusd.balanceOf(alice.address);
+        const bBalBefore = await mzusd.balanceOf(bob.address);
+        const cBalBefore = await mzusd.balanceOf(carol.address);
+
+        const trancheBalBeforeClaims = await mzusd.balanceOf(tranche.target);
+
+        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(bob).claim(targetEpoch);
+        await tranche.connect(carol).claim(targetEpoch);
+
+        const aBalAfter = await mzusd.balanceOf(alice.address);
+        const bBalAfter = await mzusd.balanceOf(bob.address);
+        const cBalAfter = await mzusd.balanceOf(carol.address);
+
+        expect(aBalAfter).to.equal(aBalBefore + expectedA);
+        expect(bBalAfter).to.equal(bBalBefore + expectedB);
+        expect(cBalAfter).to.equal(cBalBefore + expectedC);
+
+        // Rounding invariant: sumClaims <= totalAssetsFinal, leftover < number of users
+        const sumClaims = expectedA + expectedB + expectedC;
+        expect(sumClaims).to.be.lte(totalAssetsFinal);
+        expect(totalAssetsFinal - sumClaims).to.be.lt(3n);
+
+        // Contract balance decreases by exactly sumClaims (no other transfers during claim)
+        const trancheBalAfterClaims = await mzusd.balanceOf(tranche.target);
+        expect(trancheBalAfterClaims).to.equal(trancheBalBeforeClaims - sumClaims);
+
+        // Pending shares cleared
+        const [aPendingAfter] = await tranche.getUserEpochInfo(alice.address, targetEpoch);
+        const [bPendingAfter] = await tranche.getUserEpochInfo(bob.address, targetEpoch);
+        const [cPendingAfter] = await tranche.getUserEpochInfo(carol.address, targetEpoch);
+
+        expect(aPendingAfter).to.equal(0n);
+        expect(bPendingAfter).to.equal(0n);
+        expect(cPendingAfter).to.equal(0n);
+    });
+    it("Repeated cancelUnstake + re-request keeps umbrella accounting consistent", async () => {
+        const DAY = 24 * 60 * 60;
+
+        // Awkward numbers to force non-round share math
+        const aUSDC = to6(111n);
+        const bUSDC = to6(53n);
+
+        // 1) Alice deposits at epoch 1
+        const {mintedMZ: aMinted, shares: aShares0} = await mintAndDepositIntoTranche(
+            alice,
+            aUSDC,
+            alice.address
+        );
+        expect(aShares0).to.equal(aMinted);
+        expect(await vault.currentEpochId()).to.equal(1n);
+
+        // 2) Advance to epoch 2 and start streaming yield (odd amount)
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(9n))).wait();
+        expect(await vault.currentEpochId()).to.equal(2n);
+
+        // Move into the stream by a weird amount so Bob's shares are non-round
+        const duration = await vault.epochDuration();
+        await time.increase(duration / 7n + 11n);
+
+        // 3) Bob deposits mid-stream => shares < assets
+        const {mintedMZ: bMinted, shares: bShares0} = await mintAndDepositIntoTranche(
+            bob,
+            bUSDC,
+            bob.address
+        );
+        expect(bShares0).to.be.lt(bMinted);
+
+        // 4) Both request withdrawal for ALL shares in current epoch (targetEpoch = 2)
+        const targetEpoch = await vault.currentEpochId();
+        expect(targetEpoch).to.equal(2n);
+
+        const aReq0 = await tranche.balanceOf(alice.address);
+        const bReq0 = await tranche.balanceOf(bob.address);
+
+        await (await tranche.connect(alice).requestWithdrawal(aReq0)).wait();
+        await (await tranche.connect(bob).requestWithdrawal(bReq0)).wait();
+
+        // Helper for checking invariants at any point
+        const assertUmbrellaState = async (expectedA: bigint, expectedB: bigint) => {
+            const umbrella = await tranche.umbrellaSharesByEpoch(targetEpoch);
+            const aPending = await tranche.userSharesByEpoch(alice.address, targetEpoch);
+            const bPending = await tranche.userSharesByEpoch(bob.address, targetEpoch);
+
+            expect(aPending).to.equal(expectedA);
+            expect(bPending).to.equal(expectedB);
+            expect(umbrella).to.equal(expectedA + expectedB);
+
+            // tranche contract should hold exactly umbrella shares as receipt tokens
+            const held = await tranche.balanceOf(tranche.target);
+            expect(held).to.equal(umbrella);
+        };
+
+        // After requests: all shares moved under umbrella
+        expect(await tranche.balanceOf(alice.address)).to.equal(0n);
+        expect(await tranche.balanceOf(bob.address)).to.equal(0n);
+        await assertUmbrellaState(aReq0, bReq0);
+
+        // 5) Alice cancels twice (partial -> partial). Ensure math composes.
+        const aCancel1 = aReq0 / 4n + 3n;
+        const aCancel2 = aReq0 / 7n + 1n;
+
+        await (await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel1)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1, bReq0);
+        expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1);
+
+        await (await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel2)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq0);
+        expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1 + aCancel2);
+
+        // sanity: cannot cancel more than pending (should revert InvalidShares)
+        const aPendingNow = await tranche.userSharesByEpoch(alice.address, targetEpoch);
+        await expect(
+            tranche.connect(alice).cancelUnstake(targetEpoch, aPendingNow + 1n)
+        ).to.be.revertedWithCustomError(tranche, "InvalidShares");
+
+        // 6) Bob: full cancel -> re-request -> cancel again -> re-request again
+        // Full cancel returns all shares back
+        await (await tranche.connect(bob).cancelUnstake(targetEpoch, bReq0)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, 0n);
+        expect(await tranche.balanceOf(bob.address)).to.equal(bReq0);
+
+        // Re-request a weird subset
+        const bReq1 = bReq0 / 2n + 5n;
+        await (await tranche.connect(bob).requestWithdrawal(bReq1)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1);
+        expect(await tranche.balanceOf(bob.address)).to.equal(bReq0 - bReq1);
+
+        // Cancel part of the re-request
+        const bCancel1 = bReq1 / 3n + 2n;
+        await (await tranche.connect(bob).cancelUnstake(targetEpoch, bCancel1)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1 - bCancel1);
+        expect(await tranche.balanceOf(bob.address)).to.equal(bReq0 - bReq1 + bCancel1);
+
+        // Re-request again using some of Bob's remaining wallet shares
+        const bReq2 = (bReq0 - bReq1 + bCancel1) / 2n + 1n;
+        await (await tranche.connect(bob).requestWithdrawal(bReq2)).wait();
+        await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1 - bCancel1 + bReq2);
+
+        // 7) Advance vault epoch so finalizeEpoch(targetEpoch) becomes allowed
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+        expect(await vault.currentEpochId()).to.equal(3n);
+
+        // Capture pending shares at finalization moment
+        const aPendingFinal = await tranche.userSharesByEpoch(alice.address, targetEpoch);
+        const bPendingFinal = await tranche.userSharesByEpoch(bob.address, targetEpoch);
+        const totalPendingFinal = aPendingFinal + bPendingFinal;
+        expect(totalPendingFinal).to.be.gt(0n);
+
+        const supplyBeforeFinal = await tranche.totalSupply();
+
+        await (await tranche.connect(deployer).finalizeEpoch(targetEpoch)).wait();
+
+        const [umbrellaAfter, isFinalized, totalSharesFinal, totalAssetsFinal] =
+            await tranche.getEpochInfo(targetEpoch);
+        expect(isFinalized).to.equal(true);
+        expect(umbrellaAfter).to.equal(0n);
+        expect(totalSharesFinal).to.equal(totalPendingFinal);
+
+        // Shares under umbrella are burned on finalize
+        const supplyAfterFinal = await tranche.totalSupply();
+        expect(supplyAfterFinal).to.equal(supplyBeforeFinal - totalPendingFinal);
+
+        // 8) Claims: pro-rata floor math for each user (cancelled shares are NOT part of claim)
+        const expectedA = (aPendingFinal * totalAssetsFinal) / totalSharesFinal;
+        const expectedB = (bPendingFinal * totalAssetsFinal) / totalSharesFinal;
+
+        const aMZBefore = await mzusd.balanceOf(alice.address);
+        const bMZBefore = await mzusd.balanceOf(bob.address);
+        const trancheBalBeforeClaims = await mzusd.balanceOf(tranche.target);
+
+        await (await tranche.connect(alice).claim(targetEpoch)).wait();
+        await (await tranche.connect(bob).claim(targetEpoch)).wait();
+
+        expect(await mzusd.balanceOf(alice.address)).to.equal(aMZBefore + expectedA);
+        expect(await mzusd.balanceOf(bob.address)).to.equal(bMZBefore + expectedB);
+
+        const sumClaims = expectedA + expectedB;
+        expect(sumClaims).to.be.lte(totalAssetsFinal);
+        expect(totalAssetsFinal - sumClaims).to.be.lt(2n);
+
+        const trancheBalAfterClaims = await mzusd.balanceOf(tranche.target);
+        expect(trancheBalAfterClaims).to.equal(trancheBalBeforeClaims - sumClaims);
+
+        // After claim, pending shares are cleared
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(bob.address, targetEpoch)).to.equal(0n);
+
+        // Cancelled shares remain on users' balances and were NOT burned/claimed
+        const aliceWalletShares = await tranche.balanceOf(alice.address);
+        const bobWalletShares = await tranche.balanceOf(bob.address);
+        expect(aliceWalletShares).to.equal(aCancel1 + aCancel2);
+        expect(bobWalletShares).to.be.gt(0n);
+    });
+    it("Cancel unstake time and epoch stress", async () => {
+        const DAY = 24 * 60 * 60;
+
+        // Enable a real delay so requests land in a future epoch
+        const txDelay = await tranche.connect(deployer).setUnstakeDelayEpochs(1n);
+        await expect(txDelay).to.emit(tranche, "UnstakeDelayUpdated").withArgs(1n);
+
+        // Epoch 1 deposits
+        const aUSDC = to6(137n);
+        const bUSDC = to6(59n);
+
+        await mintAndDepositIntoTranche(alice, aUSDC, alice.address);
+        await mintAndDepositIntoTranche(bob, bUSDC, bob.address);
+
+        expect(await vault.currentEpochId()).to.equal(1n);
+
+        // Request in epoch 1 -> target epoch 2 (because delay=1)
+        const epochAtReq = await vault.currentEpochId(); // 1
+        const targetEpoch = epochAtReq + 1n; // 2
+
+        const aReq0 = await tranche.balanceOf(alice.address);
+        const bReq0 = await tranche.balanceOf(bob.address);
+
+        const txReqA = await tranche.connect(alice).requestWithdrawal(aReq0);
+        const txReqB = await tranche.connect(bob).requestWithdrawal(bReq0);
+
+        await expect(txReqA)
+            .to.emit(tranche, "UnstakeRequested")
+            .withArgs(alice.address, aReq0, epochAtReq, targetEpoch);
+        await expect(txReqB)
+            .to.emit(tranche, "UnstakeRequested")
+            .withArgs(bob.address, bReq0, epochAtReq, targetEpoch);
+
+        // Umbrella state for epoch 2
+        expect(await tranche.balanceOf(alice.address)).to.equal(0n);
+        expect(await tranche.balanceOf(bob.address)).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(aReq0);
+        expect(await tranche.userSharesByEpoch(bob.address, targetEpoch)).to.equal(bReq0);
+        expect(await tranche.umbrellaSharesByEpoch(targetEpoch)).to.equal(aReq0 + bReq0);
+        expect(await tranche.balanceOf(tranche.target)).to.equal(aReq0 + bReq0);
+
+        // Move to epoch 2 and start yield streaming
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(11n))).wait();
+        expect(await vault.currentEpochId()).to.equal(2n);
+
+        // Cancel within target epoch is allowed (currentEpoch == epochId)
+        const aCancel1 = aReq0 / 3n + 1n;
+        const txCancelA1 = await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel1);
+
+        await expect(txCancelA1)
+            .to.emit(tranche, "UnstakeCancelled")
+            .withArgs(alice.address, targetEpoch, aCancel1);
+
+        // Accounting after cancel
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(
+            aReq0 - aCancel1
+        );
+        expect(await tranche.umbrellaSharesByEpoch(targetEpoch)).to.equal(aReq0 - aCancel1 + bReq0);
+        expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1);
+        expect(await tranche.balanceOf(tranche.target)).to.equal(aReq0 - aCancel1 + bReq0);
+
+        // Re-request some of Alice's returned wallet shares in epoch 2 -> lands in epoch 3
+        const aReReq = aCancel1 / 2n + 1n;
+        const txReReq = await tranche.connect(alice).requestWithdrawal(aReReq);
+        await expect(txReReq)
+            .to.emit(tranche, "UnstakeRequested")
+            .withArgs(alice.address, aReReq, 2n, 3n);
+
+        // Contract now holds umbrella shares for BOTH epoch 2 (remaining) and epoch 3 (new request)
+        const umbrella2 = await tranche.umbrellaSharesByEpoch(2n);
+        const umbrella3 = await tranche.umbrellaSharesByEpoch(3n);
+        expect(umbrella2).to.equal(aReq0 - aCancel1 + bReq0);
+        expect(umbrella3).to.equal(aReReq);
+        expect(await tranche.balanceOf(tranche.target)).to.equal(umbrella2 + umbrella3);
+
+        // Advance to epoch 3 (but do NOT finalize epoch 2 yet)
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(3n))).wait();
+        expect(await vault.currentEpochId()).to.equal(3n);
+
+        await expect(tranche.connect(alice).cancelUnstake(2n, 1n)).to.be.revertedWithCustomError(
+            tranche,
+            "TooLateToCancel"
+        );
+
+        // But cancel for epoch 3 is still allowed (currentEpoch == epochId)
+        const txCancelEpoch3 = await tranche.connect(alice).cancelUnstake(3n, 1n);
+        await expect(txCancelEpoch3)
+            .to.emit(tranche, "UnstakeCancelled")
+            .withArgs(alice.address, 3n, 1n);
+
+        // Epoch 3 umbrella reduced by 1
+        expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
+
+        // Advance to epoch 4 so finalizeEpoch(2) is allowed
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+        expect(await vault.currentEpochId()).to.equal(4n);
+
+        // Finalize epoch 2 (should burn ONLY epoch 2 pending shares)
+        const aPendingE2 = await tranche.userSharesByEpoch(alice.address, 2n);
+        const bPendingE2 = await tranche.userSharesByEpoch(bob.address, 2n);
+        const totalPendingE2 = aPendingE2 + bPendingE2;
+
+        const supplyBeforeFinal = await tranche.totalSupply();
+        await (await tranche.connect(deployer).finalizeEpoch(2n)).wait();
+
+        const [umbrellaAfterFinal, isFinalized, totalSharesFinal, totalAssetsFinal] =
+            await tranche.getEpochInfo(2n);
+        expect(isFinalized).to.equal(true);
+        expect(umbrellaAfterFinal).to.equal(0n);
+        expect(totalSharesFinal).to.equal(totalPendingE2);
+
+        const supplyAfterFinal = await tranche.totalSupply();
+        expect(supplyAfterFinal).to.equal(supplyBeforeFinal - totalPendingE2);
+
+        // Epoch 3 umbrella should be unaffected by finalizing epoch 2
+        expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
+
+        // After finalization, cancel for epoch 2 is blocked with AlreadyFinalized (checked before TooLateToCancel)
+        await expect(tranche.connect(alice).cancelUnstake(2n, 1n)).to.be.revertedWithCustomError(
+            tranche,
+            "AlreadyFinalized"
+        );
+
+        // Claims for epoch 2, pro-rata floor math
+        const expectedA = (aPendingE2 * totalAssetsFinal) / totalSharesFinal;
+        const expectedB = (bPendingE2 * totalAssetsFinal) / totalSharesFinal;
+
+        const aBalBefore = await mzusd.balanceOf(alice.address);
+        const bBalBefore = await mzusd.balanceOf(bob.address);
+
+        await (await tranche.connect(alice).claim(2n)).wait();
+        await (await tranche.connect(bob).claim(2n)).wait();
+
+        expect(await mzusd.balanceOf(alice.address)).to.equal(aBalBefore + expectedA);
+        expect(await mzusd.balanceOf(bob.address)).to.equal(bBalBefore + expectedB);
+
+        // Clean-up - userSharesByEpoch for epoch 2 cleared
+        expect(await tranche.userSharesByEpoch(alice.address, 2n)).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(bob.address, 2n)).to.equal(0n);
+    });
 });
