@@ -147,7 +147,7 @@ contract Tranche is
         __ReentrancyGuard_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
-
+ 
         vault = vaultAddress;
         trancheId = trancheIdentifier;
         unstakeDelayEpochs = initialUnstakeDelayEpochs;
@@ -193,6 +193,7 @@ contract Tranche is
         );
     }
 
+    //todo polJunior revert/make modifier
     /// @notice Cancel a previously requested unstake for a given epoch.
     /// @dev User can only cancel shares that are still pending under the umbrella and
     ///      for epochs that have not yet been finalized.
@@ -223,6 +224,7 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
+    //todo polJunior revert
     function claim(uint256 epochId) external nonReentrant whenNotPaused {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
@@ -244,6 +246,7 @@ contract Tranche is
 
     // CORE ADMIN FUNCTIONS
 
+    //todo polJunior revert 
     function finalizeEpoch(
         uint256 epochId
     ) external nonReentrant whenNotPaused restricted {
@@ -325,6 +328,7 @@ contract Tranche is
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
+    //todo polJunior mode refactor 
     // POL/JUNIOR MODE (not for users)
     function sweepPol() external restricted {
         if (polPayout == address(0)) revert ZeroAddress();
