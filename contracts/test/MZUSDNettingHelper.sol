@@ -20,7 +20,7 @@ contract MZUSDNettingHelper {
     ) external {
         IERC20(usdc).approve(mzusd, depositUSDC);
         MZUSD(mzusd).deposit(depositUSDC);
-        MZUSD(mzusd).requestWithdrawal(withdrawMZ, 0);
+        MZUSD(mzusd).requestWithdrawal(withdrawMZ);
     }
 
     // W -> D
@@ -30,7 +30,7 @@ contract MZUSDNettingHelper {
         uint256 withdrawMZ,
         uint256 depositUSDC
     ) external {
-        MZUSD(mzusd).requestWithdrawal(withdrawMZ, 0);
+        MZUSD(mzusd).requestWithdrawal(withdrawMZ);
         IERC20(usdc).approve(mzusd, depositUSDC);
         MZUSD(mzusd).deposit(depositUSDC);
     }
@@ -43,11 +43,11 @@ contract MZUSDNettingHelper {
         uint256 depositUSDC,
         uint256 withdraw2MZ
     ) external {
-        MZUSD(mzusd).requestWithdrawal(withdraw1MZ, 0);
+        MZUSD(mzusd).requestWithdrawal(withdraw1MZ);
 
         IERC20(usdc).approve(mzusd, depositUSDC);
         MZUSD(mzusd).deposit(depositUSDC);
 
-        MZUSD(mzusd).requestWithdrawal(withdraw2MZ, 0);
+        MZUSD(mzusd).requestWithdrawal(withdraw2MZ);
     }
 }

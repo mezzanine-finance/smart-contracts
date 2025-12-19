@@ -28,7 +28,7 @@ async function imp(addr: any) {
     return ethers.getSigner(addr);
 }
 
-describe("MZUSD <-> USDC conversion", () => {
+describe.only("MZUSD <-> USDC conversion", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -222,7 +222,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await fundAliceWithUSDC(depositAmountUSDC);
 
         // Attempt to withdraw without balance
-        await expect(mzusd.connect(alice).requestWithdrawal(to18(1n), 0n)).to.be.reverted;
+        await expect(mzusd.connect(alice).requestWithdrawal(to18(1n))).to.be.reverted;
 
         // Sanity checks before deposit
         const aliceUSDCBefore = await usdc.balanceOf(alice.address);
@@ -243,13 +243,13 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceMZAfterDeposit).to.equal(expectedMZAmount);
         expect(vaultUSDCAfterDeposit - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
-        await expect(mzusd.connect(alice).requestWithdrawal(0n, 0n)).to.be.revertedWithCustomError(
+        await expect(mzusd.connect(alice).requestWithdrawal(0n)).to.be.revertedWithCustomError(
             mzusd,
             "ZeroAmount"
         );
 
         // Request withdrawal of full MZ balance
-        const tx = await mzusd.connect(alice).requestWithdrawal(aliceMZAfterDeposit, 0n);
+        const tx = await mzusd.connect(alice).requestWithdrawal(aliceMZAfterDeposit);
         await tx.wait();
 
         await expect(tx)
@@ -289,7 +289,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const firstWithdrawMZ = to18(100n);
         const firstWithdrawUSDC = to6(100n);
 
-        const tx1 = await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ, 0n);
+        const tx1 = await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
         await tx1.wait();
 
         await expect(tx1)
@@ -300,14 +300,14 @@ describe("MZUSD <-> USDC conversion", () => {
         const secondWithdrawMZ = to18(60n);
 
         await expect(
-            mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ, 0n)
+            mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ)
         ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
 
         // Move time forward by 1 hour to reset the rolling window
         await time.increase(3600);
 
         // Now the same withdrawal should succeed
-        const tx2 = await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ, 0n);
+        const tx2 = await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
         await tx2.wait();
 
         await expect(tx2)
@@ -342,7 +342,7 @@ describe("MZUSD <-> USDC conversion", () => {
         //TX2: Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
 
         const aliceWithdraw1MZ = to18(150n);
-        const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ, 0n);
+        const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ);
         await txA1.wait();
 
         [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
@@ -362,7 +362,7 @@ describe("MZUSD <-> USDC conversion", () => {
         //TX4: Bob withdraws 70 MZUSD -> 70 USDC
 
         const bobWithdraw1MZ = to18(70n);
-        const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ, 0n);
+        const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ);
         await txB1.wait();
 
         [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
@@ -423,7 +423,7 @@ describe("MZUSD <-> USDC conversion", () => {
         //TX7: Alice withdraws another 150 MZUSD -> 150 USDC
 
         const aliceWithdraw2MZ = to18(150n);
-        const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ, 0n);
+        const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ);
         await txA2.wait();
 
         [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
@@ -471,7 +471,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         const bobWithdraw2MZ = to18(20n);
         await expect(
-            mzusd.connect(bob).requestWithdrawal(bobWithdraw2MZ, 0n)
+            mzusd.connect(bob).requestWithdrawal(bobWithdraw2MZ)
         ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
     });
 
@@ -491,7 +491,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const vaultBalanceAfter = await usdc.balanceOf(vault.target);
         expect(vaultBalanceAfter).to.equal(0n);
         // Now Alice tries to withdraw her 50 MZUSD -> 50 USDC
-        await expect(mzusd.connect(alice).requestWithdrawal(to18(50n), 0n)).to.be.reverted;
+        await expect(mzusd.connect(alice).requestWithdrawal(to18(50n))).to.be.reverted;
     });
 
     it("Should correctly compute remaining global hourly cap and preview functions", async () => {
@@ -514,7 +514,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // First withdrawal: 40 USDC
         const w1MZ = to18(40n);
-        await mzusd.connect(alice).requestWithdrawal(w1MZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(w1MZ);
 
         [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
         expect(remaining).to.equal(capUSDC - to6(40n));
@@ -522,7 +522,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Second withdrawal: 110 USDC -> should reach the cap because 40 + 110 = 150
         const w2MZ = to18(110n);
-        await mzusd.connect(alice).requestWithdrawal(w2MZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(w2MZ);
 
         [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
         expect(remaining).to.equal(0n);
@@ -569,7 +569,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // First real withdrawal: 60 USDC (consumes part of cap)
         const firstWithdrawMZ = to18(60n);
-        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
 
         // After this withdrawal, cap usage should be 60 USDC
         const [remainingCapAfterFirst] = await mzusd.getRemainingGlobalHourlyCap();
@@ -688,8 +688,8 @@ describe("MZUSD <-> USDC conversion", () => {
         const firstWithdrawMZ = to18(200n); // 200 USDC
         const secondWithdrawMZ = to18(100n); // 100 USDC
 
-        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ, 0n);
-        await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
+        await mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ);
 
         const aliceMZAfter = await mzusd.balanceOf(alice.address);
         const aliceUSDCAfter = await usdc.balanceOf(alice.address);
@@ -730,7 +730,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Alice withdraws 80 USDC -> consumes part of the cap
         const withdrawMZ = to18(80n);
-        await mzusd.connect(alice).requestWithdrawal(withdrawMZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
         // Capture window state after withdrawal
         const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
@@ -786,7 +786,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Alice withdraws 80 USDC -> consumes part of the cap
         const withdrawMZ = to18(80n);
-        await mzusd.connect(alice).requestWithdrawal(withdrawMZ, 0n);
+        await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
         // Check state via small getter
         const [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalHourlyCap();
@@ -890,7 +890,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const tooSmallAmountMZ = dustLimit;
 
         // usdcOut will be 0 for this amount, so TooSmallWithdrawalAmount should trigger
-        await expect(mzusd.connect(alice).requestWithdrawal(tooSmallAmountMZ, 0n))
+        await expect(mzusd.connect(alice).requestWithdrawal(tooSmallAmountMZ))
             .to.be.revertedWithCustomError(mzusd, "TooSmallWithdrawalAmount")
             .withArgs(tooSmallAmountMZ, 0n);
     });
@@ -911,38 +911,9 @@ describe("MZUSD <-> USDC conversion", () => {
         // usdcOut = 10 USDC in 6 decimals
         const expectedUsdcOut = to6(targetUSDC);
 
-        await expect(mzusd.connect(alice).requestWithdrawal(amountMZ, 0n))
+        await expect(mzusd.connect(alice).requestWithdrawal(amountMZ))
             .to.be.revertedWithCustomError(mzusd, "NonIntegralWithdrawalAmount")
             .withArgs(amountMZ, expectedUsdcOut, dust);
-    });
-
-    it("Should enforce minAmountOutUSDC slippage parameter", async () => {
-        const depositAmountUSDC = to6(100n); // 100 USDC
-
-        // Alice deposits 100 USDC -> 100 MZUSD
-        await fundAndDepositForAlice(depositAmountUSDC);
-
-        const withdrawAmountMZ = to18(50n); // 50 USDC equivalent
-        const expectedUsdcOut = to6(50n);
-
-        // minAmountOut = bigger than expectedUsdcOut
-        const tooHighMin = to6(60n);
-
-        await expect(mzusd.connect(alice).requestWithdrawal(withdrawAmountMZ, tooHighMin))
-            .to.be.revertedWithCustomError(mzusd, "SlippageTooHigh")
-            .withArgs(expectedUsdcOut, tooHighMin);
-
-        // minAmountOut lower than actual - should pass
-        const acceptableMin = to6(40n);
-        const tx = await mzusd.connect(alice).requestWithdrawal(withdrawAmountMZ, acceptableMin);
-        await tx.wait();
-
-        const aliceUSDCBalance = await usdc.balanceOf(alice.address);
-        const aliceMZBalance = await mzusd.balanceOf(alice.address);
-
-        // Alice receives 50 USDC and keeps 50 MZUSD
-        expect(aliceUSDCBalance).to.equal(expectedUsdcOut);
-        expect(aliceMZBalance).to.equal(to18(50n));
     });
 
     it("Should treat zero cap as hard stop and reflect it in view helpers", async () => {
@@ -1023,7 +994,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(wouldExceedGlobalCap).to.equal(true);
 
         await expect(
-            mzusdZeroCap.connect(alice).requestWithdrawal(amountMZ, 0n)
+            mzusdZeroCap.connect(alice).requestWithdrawal(amountMZ)
         ).to.be.revertedWithCustomError(mzusdZeroCap, "GlobalHourlyCapExceeded");
     });
 

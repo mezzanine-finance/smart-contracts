@@ -53,7 +53,6 @@ contract MZUSD is
     error SameValue();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error NonIntegralWithdrawalAmount(uint256 amountMZ, uint256 usdcOut, uint256 dustMZ);
-    error SlippageTooHigh(uint256 actualOutUSDC, uint256 minAmountOutUSDC);
     error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error EthTransferFailed(address to, uint256 attemptedAmount);
@@ -103,10 +102,9 @@ contract MZUSD is
 
     /// @notice request withdrawal of MZUSD for USDC
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
-    /// @dev v2: can be changed to enqueue
+    /// @dev v2: will be changed to enqueue
     function requestWithdrawal(
-        uint256 amountMZ,
-        uint256 minAmountOutUSDC
+        uint256 amountMZ
     ) external nonReentrant restricted {
         if (amountMZ == 0) revert ZeroAmount();
 
@@ -117,7 +115,6 @@ contract MZUSD is
             revert NonIntegralWithdrawalAmount(amountMZ, usdcOut, dustMZ);
 
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
-        if (usdcOut < minAmountOutUSDC) revert SlippageTooHigh(usdcOut, minAmountOutUSDC);
 
         uint256 effectiveForLimit = _applyAtomicNetting(usdcOut);
         if (effectiveForLimit != 0) {
@@ -126,13 +123,11 @@ contract MZUSD is
 
         _burn(sender, amountMZ);
 
-        // Let Vault handle its own liquidity (including Reservoir pulls).
         vault.withdraw(sender, usdcOut);
 
         emit Withdrawal(sender, amountMZ, usdcOut);
     }
 
-    //todo redo to mintFees or limits
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
