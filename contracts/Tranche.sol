@@ -71,25 +71,13 @@ contract Tranche is
         uint256 requestEpoch,
         uint256 targetEpoch
     );
-    event UnstakeCancelled(
-        address indexed user,
-        uint256 indexed epochId,
-        uint256 shares
-    );
-    event EpochFinalized(
-        uint256 indexed epochId,
-        uint256 sharesBurned,
-        uint256 assetsFinal
-    );
+    event UnstakeCancelled(address indexed user, uint256 indexed epochId, uint256 shares);
+    event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
     event PolJuniorUpdated(bool enabled, address payout);
     event PolPayout(uint256 amount);
-    event WithdrawalClaimed(
-        address indexed user,
-        uint256 indexed epochId,
-        uint256 assets
-    );
+    event WithdrawalClaimed(address indexed user, uint256 indexed epochId, uint256 assets);
 
     /// @notice Emitted when new yield is registered for linear streaming.
     /// @dev yieldAmount must correspond to MZUSD amount already transferred to this tranche.
@@ -147,7 +135,7 @@ contract Tranche is
         __ReentrancyGuard_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
- 
+
         vault = vaultAddress;
         trancheId = trancheIdentifier;
         unstakeDelayEpochs = initialUnstakeDelayEpochs;
@@ -170,9 +158,7 @@ contract Tranche is
         shares = super.deposit(assets, receiver);
     }
 
-    function requestWithdrawal(
-        uint256 shares
-    ) external whenNotPaused nonReentrant {
+    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
         if (isPolJunior) revert InvalidMode();
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
@@ -185,24 +171,15 @@ contract Tranche is
 
         _transfer(_msgSender(), address(this), shares);
 
-        emit UnstakeRequested(
-            _msgSender(),
-            shares,
-            currentVaultEpoch,
-            targetEpoch
-        );
+        emit UnstakeRequested(_msgSender(), shares, currentVaultEpoch, targetEpoch);
     }
 
-    //todo polJunior revert/make modifier
     /// @notice Cancel a previously requested unstake for a given epoch.
     /// @dev User can only cancel shares that are still pending under the umbrella and
     ///      for epochs that have not yet been finalized.
     /// @param epochId The epoch for which the user wants to cancel their unstake.
     /// @param shares The amount of shares to cancel (returned back to the user).
-    function cancelUnstake(
-        uint256 epochId,
-        uint256 shares
-    ) external nonReentrant whenNotPaused {
+    function cancelUnstake(uint256 epochId, uint256 shares) external nonReentrant whenNotPaused {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -224,7 +201,6 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
-    //todo polJunior revert
     function claim(uint256 epochId) external nonReentrant whenNotPaused {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
@@ -234,8 +210,7 @@ contract Tranche is
 
         // user keeps tranche exposure until this moment because shares stayed on tranche
         // assets are stored on this contract and only transferred out on claim
-        uint256 userAssets = (userShares * finalizedData.totalAssets) /
-            finalizedData.totalShares;
+        uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
         userSharesByEpoch[_msgSender()][epochId] = 0;
 
@@ -246,10 +221,7 @@ contract Tranche is
 
     // CORE ADMIN FUNCTIONS
 
-    //todo polJunior revert 
-    function finalizeEpoch(
-        uint256 epochId
-    ) external nonReentrant whenNotPaused restricted {
+    function finalizeEpoch(uint256 epochId) external nonReentrant whenNotPaused restricted {
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -294,12 +266,7 @@ contract Tranche is
         yieldStreamEnd = block.timestamp + duration;
 
         uint256 epochId = IVault(vault).currentEpochId();
-        emit YieldNotified(
-            epochId,
-            yieldAmount,
-            yieldStreamStart,
-            yieldStreamEnd
-        );
+        emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
     }
 
     // Admin config
@@ -316,11 +283,7 @@ contract Tranche is
         emit UnstakeDelayUpdated(epochsDelay);
     }
 
-    function setDepositLimits(
-        bool enabled,
-        uint256 cap,
-        uint256 tvlBps
-    ) external restricted {
+    function setDepositLimits(bool enabled, uint256 cap, uint256 tvlBps) external restricted {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
         depositLimitEnabled = enabled;
         maxDepositCap = cap;
@@ -328,7 +291,9 @@ contract Tranche is
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
-    //todo polJunior mode refactor 
+    //todo polJunior mode refactor
+    //todo polJunior add revert to funcs + make modifier
+
     // POL/JUNIOR MODE (not for users)
     function sweepPol() external restricted {
         if (polPayout == address(0)) revert ZeroAddress();
@@ -347,6 +312,7 @@ contract Tranche is
     }
 
     // ERC4626 overrides (NAV with linear yield)
+    //todo fix problem with balance < unaccruedYield
 
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
@@ -457,7 +423,23 @@ contract Tranche is
         }
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override restricted {}
+    function _authorizeUpgrade(address newImplementation) internal override restricted {}
+
+    error DirectWithdrawDisabled();
+
+    function withdraw(
+        uint256 /*assets*/,
+        address /*receiver*/,
+        address /*owner*/
+    ) public pure override returns (uint256) {
+        revert DirectWithdrawDisabled();
+    }
+
+    function redeem(
+        uint256 /*shares*/,
+        address /*receiver*/,
+        address /*owner*/
+    ) public pure override returns (uint256) {
+        revert DirectWithdrawDisabled();
+    }
 }
