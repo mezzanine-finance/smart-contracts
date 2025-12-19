@@ -71,7 +71,7 @@ contract ReservoirUSDC is
         emit Withdrawn(to, amount);
     }
 
-    /// @notice helper to see how much USDC is parked
+    /// @notice helper to see how much USDC is on balance
     function totalAssets() external view returns (uint256) {
         return usdc.balanceOf(address(this));
     }

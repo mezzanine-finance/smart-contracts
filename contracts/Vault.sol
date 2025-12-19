@@ -219,8 +219,7 @@ contract Vault is
         uint256 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted {
-        //todo question - summary fee could be > BPS?
-        if (_performanceFeeBps > BPS || _protocolFeeBps > BPS)
+        if (_performanceFeeBps + _protocolFeeBps > BPS)
             revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
             revert ZeroAddressAndZeroBpsPerformance();
