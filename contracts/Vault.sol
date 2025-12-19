@@ -22,9 +22,6 @@ interface ITranche {
     function notifyYield(uint256 amount) external;
 }
 
-interface IFeeEscrow {
-    function lock(address beneficiary, uint256 amount, uint256 unlockEpoch) external;
-}
 
 contract Vault is
     Initializable,
@@ -41,7 +38,6 @@ contract Vault is
 
     uint256 public constant BPS = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
-    uint256 public constant MAX_FEE_LOCK_EPOCHS = 365;
     uint256 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint256 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
     uint256 public constant MAX_TRANCHES = 50;
@@ -57,7 +53,6 @@ contract Vault is
     address public performanceFeeReceiver;
     address public protocolFeeReceiver;
 
-    IFeeEscrow public feeEscrow;
 
     uint256 public idleBufferUSDC;
     uint256 public currentEpochId;
@@ -70,8 +65,6 @@ contract Vault is
     uint64 public epochStart;
     uint64 public epochDuration;
 
-    // fee locking
-    uint64 public feeLockEpochs;
 
     uint16 public hysteresisBps;
     uint16 public insuranceBps;
@@ -95,7 +88,6 @@ contract Vault is
     event MZUSDChanged(address newMZUSD);
     event ReservoirUpdated(address newReservoir);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
-    event FeeEscrowUpdated(address escrow, uint256 feeLockEpochs);
     event EpochDurationSet(uint256 epochDuration);
 
     error ZeroAmount();
@@ -108,7 +100,6 @@ contract Vault is
     error ZeroAddress();
     error EpochTooSoon();
     error InvalidEpochDuration();
-    error FeeLockEpochsTooBig();
     error TooManyTranches();
     error SameValue();
     error ZeroAddressAndZeroBpsPerformance();
@@ -144,7 +135,6 @@ contract Vault is
         epochStart = uint64(block.timestamp);
         epochDuration = 1 days;
 
-        feeLockEpochs = 2;
 
         _updateBufferBounds();
     }
@@ -191,9 +181,8 @@ contract Vault is
 
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
-        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintAndLockFees(
-            mintedGross,
-            newEpochId
+        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(
+            mintedGross
         );
 
         emit FeesPaid(perfFee, protFee, newEpochId);
@@ -210,7 +199,6 @@ contract Vault is
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
     }
 
-    //-----Setters-----
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         if (address(reservoir) == _reservoir) revert SameValue();
@@ -252,13 +240,6 @@ contract Vault is
         );
     }
 
-    function setFeeEscrow(address _escrow, uint256 _feeLockEpochs) external restricted {
-        if (_escrow == address(0)) revert ZeroAddress();
-        if (_feeLockEpochs > MAX_FEE_LOCK_EPOCHS) revert FeeLockEpochsTooBig();
-        feeEscrow = IFeeEscrow(_escrow);
-        feeLockEpochs = uint64(_feeLockEpochs);
-        emit FeeEscrowUpdated(_escrow, _feeLockEpochs);
-    }
 
     function addTranche(TrancheInfo calldata info) external restricted {
         if (info.tranche == address(0)) revert ZeroAddress();
@@ -347,18 +328,14 @@ contract Vault is
             uint256 _perfBps,
             address _perfReceiver,
             uint256 _protBps,
-            address _protReceiver,
-            address _feeEscrow,
-            uint256 _feeLockEpochs
+            address _protReceiver
         )
     {
         return (
             performanceFeeBps,
             performanceFeeReceiver,
             protocolFeeBps,
-            protocolFeeReceiver,
-            address(feeEscrow),
-            feeLockEpochs
+            protocolFeeReceiver
         );
     }
 
@@ -379,8 +356,7 @@ contract Vault is
     function _handleFee(
         uint16 bps,
         address receiver,
-        uint256 mintedGross,
-        uint256 epochId
+        uint256 mintedGross
     ) internal returns (uint256 feeAmount) {
         if (bps == 0 || receiver == address(0)) {
             return 0;
@@ -391,18 +367,11 @@ contract Vault is
             return 0;
         }
 
-        IFeeEscrow escrow = feeEscrow;
-        if (address(escrow) != address(0)) {
-            mzusd.mint(address(escrow), feeAmount);
-            escrow.lock(receiver, feeAmount, epochId + feeLockEpochs);
-        } else {
-            mzusd.mint(receiver, feeAmount);
-        }
+        mzusd.mint(receiver, feeAmount);
     }
 
-    function _mintAndLockFees(
-        uint256 mintedGross,
-        uint256 epochId
+    function _mintFees(
+        uint256 mintedGross
     )
         internal
         returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
@@ -410,10 +379,9 @@ contract Vault is
         performanceFeeMZUSD = _handleFee(
             performanceFeeBps,
             performanceFeeReceiver,
-            mintedGross,
-            epochId
+            mintedGross
         );
-        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross, epochId);
+        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
 
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
