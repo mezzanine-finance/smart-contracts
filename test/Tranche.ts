@@ -26,7 +26,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe.only("Tranche", () => {
+describe("Tranche", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;

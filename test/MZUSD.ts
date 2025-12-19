@@ -28,7 +28,7 @@ async function imp(addr: any) {
     return ethers.getSigner(addr);
 }
 
-describe.only("MZUSD <-> USDC conversion", () => {
+describe("MZUSD <-> USDC conversion", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
