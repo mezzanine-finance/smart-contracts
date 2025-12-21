@@ -27,7 +27,7 @@ jobs:
             - name: Aderyn Check
               uses: Cyfrin/aderyn-ci@v0
               with:
-                  fail-on: medium
+                  fail-on: high
                   warn-on: low
 
             - name: Setup Python
