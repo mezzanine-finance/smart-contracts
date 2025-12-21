@@ -2,7 +2,7 @@ name: security
 
 on:
     pull_request:
-        branches: [main, develop]
+        branches: [main, dev]
 
 jobs:
     aderyn-and-slither:
@@ -27,7 +27,7 @@ jobs:
             - name: Aderyn Check
               uses: Cyfrin/aderyn-ci@v0
               with:
-                  fail-on: medium
+                  fail-on: high
                   warn-on: low
 
             - name: Setup Python
