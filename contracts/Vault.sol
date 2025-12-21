@@ -210,7 +210,7 @@ contract Vault is
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
     }
 
-    //-----Setters-----
+    //Setters
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         if (address(reservoir) == _reservoir) revert SameValue();

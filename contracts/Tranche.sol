@@ -312,7 +312,6 @@ contract Tranche is
     }
 
     // ERC4626 overrides (NAV with linear yield)
-    //todo fix problem with balance < unaccruedYield
 
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
@@ -320,6 +319,7 @@ contract Tranche is
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         uint256 unaccrued = _unaccruedYield();
 
+        //todo think about this one
         if (unaccrued > balance) {
             // Should not happen if notifyYield is used correctly, but guard against underflow.
             return 0;
