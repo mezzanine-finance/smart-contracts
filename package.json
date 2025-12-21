@@ -13,6 +13,7 @@
         "format": "npx prettier --write .",
         "lint": "npm run lint:ts && npm run lint:sol",
         "lint:fix": "npm run lint:ts:fix && npm run lint:sol:fix",
+        "lint:staged": "lint-staged",
         "lint:ts": "npx prettier --check \"**/*.{ts,js}\" && npx eslint .",
         "lint:ts:fix": "npx prettier --write \"**/*.{ts,js}\" && npx eslint . --fix",
         "lint:sol": "npx hardhat check && npx prettier --check \"contracts/**/*.sol\"",
@@ -39,13 +40,20 @@
         "deploy:access-manager:testnet": "npx hardhat run scripts/deployment/0_deployAccessManager.ts --network sepolia",
         "deploy:mzusd:testnet": "npx hardhat run scripts/deployment/1_deployMZUSD.ts --network sepolia",
         "deploy:reservoir:testnet": "npx hardhat run scripts/deployment/2_deployReservoir.ts --network sepolia",
-        "deploy:vault:testnet": "npx hardhat run scripts/deployment/3_deployVault.ts --network sepolia"
+        "deploy:vault:testnet": "npx hardhat run scripts/deployment/3_deployVault.ts --network sepolia",
+        "deploy:tranche:testnet": "npx hardhat run scripts/deployment/4_deployTranche.ts --network sepolia",
+        "deploy:access-manager:buildbear": "npx hardhat run scripts/deployment/0_deployAccessManager.ts --network buildbear",
+        "deploy:mzusd:buildbear": "npx hardhat run scripts/deployment/1_deployMZUSD.ts --network buildbear",
+        "deploy:reservoir:buildbear": "npx hardhat run scripts/deployment/2_deployReservoir.ts --network buildbear",
+        "deploy:vault:buildbear": "npx hardhat run scripts/deployment/3_deployVault.ts --network buildbear",
+        "deploy:tranche:buildbear": "npx hardhat run scripts/deployment/4_deployTranche.ts --network buildbear",
+        "deploy:summary:buildbear": "npx hardhat run scripts/deployment/5_deploySummary.ts --network buildbear",
+        "deploy:all:buildbear": "npm run deploy:access-manager:buildbear && npm run deploy:mzusd:buildbear && npm run deploy:reservoir:buildbear && npm run deploy:vault:buildbear && npm run deploy:tranche:buildbear && npm run deploy:summary:buildbear"
     },
     "lint-staged": {
         "**/*.sol": [
             "prettier --write",
-            "solhint --fix",
-            "hardhat check"
+            "solhint --fix"
         ],
         "**/*.{js,ts}": [
             "prettier --write",
