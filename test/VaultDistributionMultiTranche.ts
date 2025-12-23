@@ -27,7 +27,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe.only("Vault yield distribution - multi tranche allocation", () => {
+describe("Vault Yield Distribution", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;

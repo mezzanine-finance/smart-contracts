@@ -26,7 +26,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault <-> Reservoir)", () => {
+describe("Vault <-> Reservoir", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
