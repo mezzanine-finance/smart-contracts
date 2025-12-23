@@ -102,8 +102,8 @@ contract Vault is
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
-    error ZeroAddressAndZeroBpsPerformance();
-    error ZeroAddressAndZeroBpsProtocol();
+    error ZeroAddressWhileFeeIsOnPerformance();
+    error ZeroAddressWhileFeeIsOnProtocol();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -222,9 +222,9 @@ contract Vault is
         if (_performanceFeeBps + _protocolFeeBps > BPS)
             revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
-            revert ZeroAddressAndZeroBpsPerformance();
+            revert ZeroAddressWhileFeeIsOnPerformance();
         if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
-            revert ZeroAddressAndZeroBpsProtocol();
+            revert ZeroAddressWhileFeeIsOnProtocol();
 
         performanceFeeBps = uint16(_performanceFeeBps);
         performanceFeeReceiver = _performanceFeeReceiver;
@@ -352,6 +352,22 @@ contract Vault is
         return epochId;
     }
 
+     function _mintFees(
+        uint256 mintedGross
+    )
+        internal
+        returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
+    {
+        performanceFeeMZUSD = _handleFee(
+            performanceFeeBps,
+            performanceFeeReceiver,
+            mintedGross
+        );
+        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
+
+        mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
+    }
+
     function _handleFee(
         uint16 bps,
         address receiver,
@@ -367,22 +383,6 @@ contract Vault is
         }
 
         mzusd.mint(receiver, feeAmount);
-    }
-
-    function _mintFees(
-        uint256 mintedGross
-    )
-        internal
-        returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
-    {
-        performanceFeeMZUSD = _handleFee(
-            performanceFeeBps,
-            performanceFeeReceiver,
-            mintedGross
-        );
-        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
-
-        mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
 
     function _allocateYieldToTranches(
@@ -466,14 +466,6 @@ contract Vault is
         if (currentAllowance < amount) {
             token.approve(spender, amount);
         }
-    }
-
-    function _firstEnabledTranche() internal view returns (address _tranche) {
-        uint256 len = tranches.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (tranches[i].enabled) return tranches[i].tranche;
-        }
-        return address(this);
     }
 
     function _authorizeUpgrade(address newImpl) internal override restricted {}
