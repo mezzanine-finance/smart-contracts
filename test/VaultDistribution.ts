@@ -216,6 +216,52 @@ describe("Vault Yield Distribution", () => {
         await (await tranche.connect(user).deposit(mzAmount18, user.address)).wait();
     }
 
+    it("Getters sanity", async () => {
+        // tranchesLength
+        expect(await vault.tranchesLength()).to.equal(3n);
+
+        // getTrancheInfo
+        const [t0, w0, e0] = await vault.getTrancheInfo(0);
+        expect(t0).to.equal(junior.target);
+        expect(w0).to.equal(2000n);
+        expect(e0).to.equal(true);
+
+        const [t1, w1, e1] = await vault.getTrancheInfo(1);
+        expect(t1).to.equal(mezzanine.target);
+        expect(w1).to.equal(3000n);
+        expect(e1).to.equal(true);
+
+        const [t2, w2, e2] = await vault.getTrancheInfo(2);
+        expect(t2).to.equal(senior.target);
+        expect(w2).to.equal(5000n);
+        expect(e2).to.equal(true);
+
+        // getFeesConfig defaults
+        const [perfBps0, perfReceiver0, protBps0, protReceiver0] = await vault.getFeesConfig();
+        expect(perfBps0).to.equal(0n);
+        expect(perfReceiver0).to.equal(ethers.ZeroAddress);
+        expect(protBps0).to.equal(0n);
+        expect(protReceiver0).to.equal(ethers.ZeroAddress);
+
+        // After setting fees, getter must reflect updates
+        await (await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)).wait();
+        const [perfBps1, perfReceiver1, protBps1, protReceiver1] = await vault.getFeesConfig();
+        expect(perfBps1).to.equal(1111n);
+        expect(perfReceiver1).to.equal(bob.address);
+        expect(protBps1).to.equal(2222n);
+        expect(protReceiver1).to.equal(carol.address);
+
+        // Tranche info updates should be visible through getter
+        await (await vault.connect(deployer).updateTranche(1, 1234, false)).wait();
+        const [t1b, w1b, e1b] = await vault.getTrancheInfo(1);
+        expect(t1b).to.equal(mezzanine.target);
+        expect(w1b).to.equal(1234n);
+        expect(e1b).to.equal(false);
+
+        // Length unchanged
+        expect(await vault.tranchesLength()).to.equal(3n);
+    });
+
     it("Distributes yield by weight*TVL and sends dust to first enabled tranche", async () => {
         const tvlJ = to18(101n);
         const tvlM = to18(203n);
@@ -588,5 +634,96 @@ describe("Vault Yield Distribution", () => {
         await expect(
             vault.connect(deployer).distributeYield(to6(1n))
         ).to.be.revertedWithCustomError(junior, "YieldStreamIsActive");
+    });
+
+    it("Stress for resetStart = false", async () => {
+        // TVL > 0 so allocation is attempted.
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+
+        // Default duration is 1 day. Move close to 1 day but not enough -> still EpochTooSoon.
+        await time.increase(DAY - 60);
+        await expect(
+            vault.connect(deployer).distributeYield(to6(1n))
+        ).to.be.revertedWithCustomError(vault, "EpochTooSoon");
+
+        // Shorten epoch duration to 1 hour WITHOUT resetting epochStart
+        // Since we've already passed > 1 hour since the original epochStart, distributeYield should be allowed now
+        await (await vault.connect(deployer).setEpochConfig(60 * 60, false)).wait();
+
+        const epochBefore = await vault.currentEpochId();
+        const expectedEpoch = epochBefore + 1n;
+
+        const tx = await vault.connect(deployer).distributeYield(to6(1n));
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const startTs = BigInt(block!.timestamp);
+        const endTs = startTs + 3600n;
+
+        // Whole yield goes to junior (others have TVL=0).
+        const expectedYield = to18(1n);
+        await expect(tx)
+            .to.emit(junior, "YieldNotified")
+            .withArgs(expectedEpoch, expectedYield, startTs, endTs);
+
+        // Stream is 1 hour
+        expect((await junior.yieldStreamEnd()) - (await junior.yieldStreamStart())).to.equal(3600n);
+    });
+
+    it("Stress for resetStart = true", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+
+        // First distribution under default 1 day duration -> starts a 1-day stream
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(2n))).wait();
+
+        const streamStart1 = await junior.yieldStreamStart();
+        const streamEnd1 = await junior.yieldStreamEnd();
+        expect(streamEnd1 - streamStart1).to.equal(BigInt(DAY));
+
+        const epochAfterFirst = await vault.currentEpochId();
+
+        // Now shorten epoch duration to 1 hour and reset epochStart
+        await (await vault.connect(deployer).setEpochConfig(60 * 60, true)).wait();
+
+        // After 1 hour Vault would allow next epoch, but tranche still has an active (old) 1-day stream -> revert
+        await time.increase(60 * 60);
+
+        await expect(
+            vault.connect(deployer).distributeYield(to6(1n))
+        ).to.be.revertedWithCustomError(junior, "YieldStreamIsActive");
+
+        // Revert must rollback Vault epoch advancement attempt
+        expect(await vault.currentEpochId()).to.equal(epochAfterFirst);
+
+        // After enough time passes (past old stream), distribution should succeed and new stream uses 1 hour
+        await time.increase(DAY);
+
+        const epochBeforeSecond = await vault.currentEpochId();
+        const expectedEpoch2 = epochBeforeSecond + 1n;
+
+        const tx2 = await vault.connect(deployer).distributeYield(to6(1n));
+        const receipt2 = await tx2.wait();
+        const block2 = await ethers.provider.getBlock(receipt2!.blockNumber);
+        const startTs2 = BigInt(block2!.timestamp);
+        const endTs2 = startTs2 + 3600n;
+
+        await expect(tx2)
+            .to.emit(junior, "YieldNotified")
+            .withArgs(expectedEpoch2, to18(1n), startTs2, endTs2);
+
+        expect((await junior.yieldStreamEnd()) - (await junior.yieldStreamStart())).to.equal(3600n);
+    });
+
+    it("Reverts InvalidEpochDuration for out-of-bounds values", async () => {
+        const MIN = 60 * 60; // 1 hour
+        const MAX = 30 * 24 * 60 * 60; // 30 days
+
+        await expect(
+            vault.connect(deployer).setEpochConfig(MIN - 1, false)
+        ).to.be.revertedWithCustomError(vault, "InvalidEpochDuration");
+
+        await expect(
+            vault.connect(deployer).setEpochConfig(MAX + 1, false)
+        ).to.be.revertedWithCustomError(vault, "InvalidEpochDuration");
     });
 });
