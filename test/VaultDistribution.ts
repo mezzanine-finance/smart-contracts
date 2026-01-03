@@ -590,7 +590,7 @@ describe("Vault Yield Distribution", () => {
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });
 
-    it("Weight = 0 - tranches are ignored", async () => {
+    it("Weight = 0 (tranches are ignored)", async () => {
         // Give all tranches TVL so TVLZero isn't the reason for a revert
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
         await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));

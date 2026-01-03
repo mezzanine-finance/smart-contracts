@@ -331,7 +331,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await usdc.connect(whale).transfer(bob.address, bobUSDC);
         await usdc.connect(whale).transfer(nettingHelper.target, helperUSDC);
 
-        //TX1: Alice deposits 400 USDC (no cap usage)
+        //1. Alice deposits 400 USDC (no cap usage)
 
         await usdc.connect(alice).approve(mzusd.target, aliceUSDC);
         await mzusd.connect(alice).deposit(aliceUSDC);
@@ -339,7 +339,7 @@ describe("MZUSD <-> USDC conversion", () => {
         let [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
         expect(remainingCap).to.equal(capUSDC, "Deposit should not consume the hourly cap");
 
-        //TX2: Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
+        //2. Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
 
         const aliceWithdraw1MZ = to18(150n);
         const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ);
@@ -351,7 +351,7 @@ describe("MZUSD <-> USDC conversion", () => {
             "Alice first withdrawal should consume 150 USDC of the cap"
         );
 
-        //TX3: Bob deposits 300 USDC (no cap usage)
+        //3. Bob deposits 300 USDC (no cap usage)
 
         await usdc.connect(bob).approve(mzusd.target, bobUSDC);
         await mzusd.connect(bob).deposit(bobUSDC);
@@ -359,7 +359,7 @@ describe("MZUSD <-> USDC conversion", () => {
         [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
         expect(capUSDC - remainingCap).to.equal(to6(150n), "Bob deposit should not touch the cap");
 
-        //TX4: Bob withdraws 70 MZUSD -> 70 USDC
+        //4. Bob withdraws 70 MZUSD -> 70 USDC
 
         const bobWithdraw1MZ = to18(70n);
         const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ);
@@ -379,7 +379,7 @@ describe("MZUSD <-> USDC conversion", () => {
             .connect(deployer)
             .depositOnly(mzusd.target, usdc.target, helperPreDepositUSDC);
         await txHPre.wait();
-        //TX5: helper withdrawThenDeposit (W -> D) 60 MZ, 60 USDC
+        //5. helper withdrawThenDeposit (W -> D) 60 MZ, 60 USDC
 
         const helperWTD_MZ = to18(60n);
         const helperWTD_DepUSDC = to6(60n);
@@ -396,7 +396,7 @@ describe("MZUSD <-> USDC conversion", () => {
             "W->D pattern should add 60 USDC to the cap"
         );
 
-        //TX6: helper withdrawDepositWithdraw (W=40, D=50, W=70)
+        //6. helper withdrawDepositWithdraw (W=40, D=50, W=70)
         //
         // In USDC terms:
         //   step1: withdraw 40, txDeposited=0 -> effective1 = 40
@@ -420,7 +420,7 @@ describe("MZUSD <-> USDC conversion", () => {
             "W->D->W pattern should add another 60 USDC to the cap"
         );
 
-        //TX7: Alice withdraws another 150 MZUSD -> 150 USDC
+        //7. Alice withdraws another 150 MZUSD -> 150 USDC
 
         const aliceWithdraw2MZ = to18(150n);
         const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ);
@@ -465,7 +465,7 @@ describe("MZUSD <-> USDC conversion", () => {
             "Atomic D>W netting (depositAndWithdraw) should not consume the cap"
         );
 
-        //TX8: Bob tries to withdraw 20 MZUSD -> 20 USDC
+        //8. Bob tries to withdraw 20 MZUSD -> 20 USDC
         // 490 + 20 > 500 =>
         // must revert on GlobalHourlyCapExceeded
 
@@ -495,7 +495,7 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should correctly compute remaining global hourly cap and preview functions", async () => {
-        // Scenario 1: cap = maxUint256 => unlimited
+        // 1) cap = maxUint256 -> unlimited
         await mzusd.setGlobalHourlyRedemptionCap(maxUint256);
 
         let [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
@@ -504,7 +504,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(remaining).to.equal(maxUint256);
         expect(windowStart).to.equal(storedWindowStart);
 
-        // Scenario 2: cap > 0, window is active, usage < cap and == cap
+        // 2) cap > 0, window is active, usage < cap and = cap
         const capUSDC = to6(150n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
 
@@ -528,7 +528,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(remaining).to.equal(0n);
         expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
 
-        // Scenario 3: Move time forward by 1 hour + 1 second, new window, full cap
+        // 3) Move time forward by 1 hour + 1 second, new window, full cap
         await time.increase(3601);
 
         const latestTs = await time.latest();

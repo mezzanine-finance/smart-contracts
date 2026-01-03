@@ -526,7 +526,7 @@ describe("Tranche", () => {
         expect(pendingSharesAfter).to.equal(0n);
         expect(claimableAfter).to.equal(0n);
     });
-    it("Handles umbrella unstake + finalize + claim for multiple users with awkward numbers", async () => {
+    it("Handles umbrella unstake (finalize + claim for multiple users with awkward numbers)", async () => {
         const DAY = 24 * 60 * 60;
 
         // Awkward deposit sizes
@@ -679,7 +679,7 @@ describe("Tranche", () => {
         expect(bPendingAfter).to.equal(0n);
         expect(cPendingAfter).to.equal(0n);
     });
-    it("Repeated cancelUnstake + re-request keeps umbrella accounting consistent", async () => {
+    it("Repeated cancelUnstake (re-request keeps umbrella accounting consistent)", async () => {
         const DAY = 24 * 60 * 60;
 
         // Awkward numbers to force non-round share math
@@ -982,7 +982,7 @@ describe("Tranche", () => {
         expect(await tranche.userSharesByEpoch(alice.address, 2n)).to.equal(0n);
         expect(await tranche.userSharesByEpoch(bob.address, 2n)).to.equal(0n);
     });
-    it("Deposit limits stress - cap vs TVL-bps, limit changes mid-flight, and streaming NAV", async () => {
+    it("Deposit limits (cap vs TVL-bps, limit changes mid-flight, and streaming NAV)", async () => {
         const DAY = 24 * 60 * 60;
 
         // Give users some MZUSD upfront
@@ -1160,7 +1160,7 @@ describe("Tranche", () => {
         expect(await tranche.totalSupply()).to.be.gt(0n);
         expect(await tranche.totalAssets()).to.be.gt(0n);
     });
-    it("Unstake delay epochs - immediate vs delayed targets, changing delay mid-flight does not move existing pending", async () => {
+    it("Unstake delay epochs (immediate vs delayed targets, changing delay mid-flight does not move existing pending)", async () => {
         const DAY = 24 * 60 * 60;
 
         // epoch 1: Alice deposits and requests with delay=0 => target = request epoch (1)
