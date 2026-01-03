@@ -116,9 +116,9 @@ describe("Tranche", () => {
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
         // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
-        const depositSelector = mzusd.interface.getFunction("deposit")!.selector;
+        const depositSelector = mzusd.interface.getFunction("deposit").selector;
         const requestWithdrawalSelector =
-            mzusd.interface.getFunction("requestWithdrawal")!.selector;
+            mzusd.interface.getFunction("requestWithdrawal").selector;
 
         await accessManager.setTargetFunctionRole(
             mzusd.target,
@@ -127,9 +127,9 @@ describe("Tranche", () => {
         );
 
         // 2) Admin-only functions on MZUSD & Vault
-        const setVaultSelector = mzusd.interface.getFunction("setVault")!.selector;
-        const distributeYieldSelector = vault.interface.getFunction("distributeYield")!.selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche")!.selector;
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
+        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
 
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
@@ -140,10 +140,10 @@ describe("Tranche", () => {
         );
 
         // 3) Vault role allowed to mint MZUSD and push yield to tranches
-        const mintSelector = mzusd.interface.getFunction("mint")!.selector;
+        const mintSelector = mzusd.interface.getFunction("mint").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
 
-        const notifySelector = tranche.interface.getFunction("notifyYield")!.selector;
+        const notifySelector = tranche.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
 
         await accessManager.grantRole(
@@ -679,7 +679,7 @@ describe("Tranche", () => {
         expect(bPendingAfter).to.equal(0n);
         expect(cPendingAfter).to.equal(0n);
     });
-    it("Repeated cancelUnstake (re-request keeps umbrella accounting consistent)", async () => {
+    it("Repeated cancel unstake + re-request keeps umbrella accounting consistent", async () => {
         const DAY = 24 * 60 * 60;
 
         // Awkward numbers to force non-round share math
@@ -982,7 +982,7 @@ describe("Tranche", () => {
         expect(await tranche.userSharesByEpoch(alice.address, 2n)).to.equal(0n);
         expect(await tranche.userSharesByEpoch(bob.address, 2n)).to.equal(0n);
     });
-    it("Deposit limits (cap vs TVL-bps, limit changes mid-flight, and streaming NAV)", async () => {
+    it("Deposit limits stress and streaming NAV", async () => {
         const DAY = 24 * 60 * 60;
 
         // Give users some MZUSD upfront
@@ -1160,10 +1160,10 @@ describe("Tranche", () => {
         expect(await tranche.totalSupply()).to.be.gt(0n);
         expect(await tranche.totalAssets()).to.be.gt(0n);
     });
-    it("Unstake delay epochs (immediate vs delayed targets, changing delay mid-flight does not move existing pending)", async () => {
+    it("Unstake delay epochs stress ", async () => {
         const DAY = 24 * 60 * 60;
 
-        // epoch 1: Alice deposits and requests with delay=0 => target = request epoch (1)
+        // epoch 1: Alice deposits and requests with delay = 0 -> target = request epoch (1)
         await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
         const epoch1 = await vault.currentEpochId();
         expect(epoch1).to.equal(1n);
@@ -1178,7 +1178,7 @@ describe("Tranche", () => {
         const txDelay = await tranche.connect(deployer).setUnstakeDelayEpochs(2n);
         await expect(txDelay).to.emit(tranche, "UnstakeDelayUpdated").withArgs(2n);
 
-        // epoch 1: Bob deposits and requests => target = 3
+        // epoch 1: Bob deposits and requests -> target = 3
         await mintAndDepositIntoTranche(bob, to6(50n), bob.address);
         const bShares = await tranche.balanceOf(bob.address);
         const txReqB = await tranche.connect(bob).requestWithdrawal(bShares);
@@ -1186,7 +1186,7 @@ describe("Tranche", () => {
             .to.emit(tranche, "UnstakeRequested")
             .withArgs(bob.address, bShares, epoch1, epoch1 + 2n);
 
-        // Existing pending should stay where it was (no retroactive move)
+        // Existing pending should stay where it was
         expect(await tranche.userSharesByEpoch(alice.address, 1n)).to.equal(aShares);
         expect(await tranche.umbrellaSharesByEpoch(1n)).to.equal(aShares);
 
@@ -1215,7 +1215,7 @@ describe("Tranche", () => {
         expect(await tranche.userSharesByEpoch(bob.address, 3n)).to.equal(bPendingAfterCancel);
         expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(bPendingAfterCancel);
 
-        // Finalize epoch 1 now allowed (current=2 > 1) and Alice claims
+        // Finalize epoch 1 now allowed (current = 2 > 1) and Alice claims
         await (await tranche.connect(deployer).finalizeEpoch(1n)).wait();
         const [, finalized1, totalShares1, totalAssets1] = await tranche.getEpochInfo(1n);
         expect(finalized1).to.equal(true);
@@ -1230,7 +1230,7 @@ describe("Tranche", () => {
         await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
         expect(await vault.currentEpochId()).to.equal(3n);
 
-        // finalizeEpoch(3) is NOT allowed when currentEpoch == epochId
+        // finalizeEpoch(3) is NOT allowed when currentEpoch = epochId
         await expect(tranche.connect(deployer).finalizeEpoch(3n)).to.be.revertedWithCustomError(
             tranche,
             "EpochNotPassed"
@@ -1241,8 +1241,8 @@ describe("Tranche", () => {
         await (await vault.connect(deployer).distributeYield(to6(9n))).wait();
         expect(await vault.currentEpochId()).to.equal(4n);
 
-        // --- Key addition: finalize epoch 3 while a yield stream (epoch 4) is ACTIVE ---
-        // Move into the stream by an awkward fraction to force non-trivial virtual NAV.
+        // Key addition: finalize epoch 3 while a yield stream (epoch 4) is ACTIVE
+        // Move into the stream by an awkward fraction to force non-trivial virtual NAV
         const epochDuration = await vault.epochDuration();
         await time.increase(epochDuration / 2n + 13n);
 
@@ -1294,5 +1294,85 @@ describe("Tranche", () => {
         const bBalBefore = await mzusd.balanceOf(bob.address);
         await (await tranche.connect(bob).claim(3n)).wait();
         expect(await mzusd.balanceOf(bob.address)).to.equal(bBalBefore + totalAssets3);
+    });
+    it("Should revert NotFinalized when user has pending shares but epoch is not finalized", async () => {
+        const depositUSDC = to6(100n);
+        const expectedMZ = to18(100n);
+
+        // Alice deposits to get tranche shares
+        const {shares: aliceShares} = await mintAndDepositIntoTranche(
+            alice,
+            depositUSDC,
+            alice.address
+        );
+        expect(aliceShares).to.equal(expectedMZ);
+
+        const epochAtRequest = await vault.currentEpochId();
+        expect(epochAtRequest).to.equal(1n);
+
+        // Alice requests withdrawal (creates pending under umbrella)
+        await (await tranche.connect(alice).requestWithdrawal(aliceShares)).wait();
+        const targetEpoch = epochAtRequest; // delay = 0 in this suite setup
+
+        // Epoch is NOT finalized yet -> should revert NotFinalized (not NothingToClaim)
+        await expect(tranche.connect(alice).claim(targetEpoch)).to.be.revertedWithCustomError(
+            tranche,
+            "NotFinalized"
+        );
+    });
+    it("Should revert EpochNotPassed when current vault epoch has not advanced", async () => {
+        const depositUSDC = to6(50n);
+
+        // Create some pending shares for epoch 1
+        const {shares: aliceShares} = await mintAndDepositIntoTranche(
+            alice,
+            depositUSDC,
+            alice.address
+        );
+        const epochAtRequest = await vault.currentEpochId();
+        expect(epochAtRequest).to.equal(1n);
+
+        await (await tranche.connect(alice).requestWithdrawal(aliceShares)).wait();
+
+        // Cannot finalize epoch 1 while currentEpochId = 1
+        await expect(
+            tranche.connect(deployer).finalizeEpoch(epochAtRequest)
+        ).to.be.revertedWithCustomError(tranche, "EpochNotPassed");
+    });
+    it("Notify yield guards (ZeroYieldPassed, YieldStreamIsActive)", async () => {
+        const vaultSigner = await imp(vault.target as string);
+
+        await expect(tranche.connect(vaultSigner).notifyYield(0n)).to.be.revertedWithCustomError(
+            tranche,
+            "ZeroYieldPassed"
+        );
+
+        // Start a stream with a small yield amount (ensure tranche balance has the tokens)
+        const yieldAmt = to18(1n);
+        await (await mzusd.connect(vaultSigner).mint(tranche.target, yieldAmt)).wait();
+
+        await (await tranche.connect(vaultSigner).notifyYield(yieldAmt)).wait();
+
+        // 3) While stream is active, re-notifying should revert YieldStreamIsActive
+        await expect(
+            tranche.connect(vaultSigner).notifyYield(yieldAmt)
+        ).to.be.revertedWithCustomError(tranche, "YieldStreamIsActive");
+    });
+    it("Should revert NothingToFinalize when epoch passed but umbrella is empty", async () => {
+        const DAY = 24 * 60 * 60;
+
+        await mintAndDepositIntoTranche(alice, to6(5n), alice.address);
+
+        expect(await vault.currentEpochId()).to.equal(1n);
+        expect(await tranche.umbrellaSharesByEpoch(1n)).to.equal(0n);
+
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+        expect(await vault.currentEpochId()).to.equal(2n);
+
+        await expect(tranche.connect(deployer).finalizeEpoch(1n)).to.be.revertedWithCustomError(
+            tranche,
+            "NothingToFinalize"
+        );
     });
 });

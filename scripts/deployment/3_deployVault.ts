@@ -1,4 +1,4 @@
-import hre, {ethers, upgrades, network, run} from "hardhat";
+import {ethers, upgrades, network, run} from "hardhat";
 import {
     loadDeployments,
     saveDeployments,
@@ -132,39 +132,8 @@ async function main() {
     // Verify implementation
     await verifyContract(vaultImpl, [usdcAddress]);
 
-    // Summary block for easy copy-paste
-    const rpcConfig = network.config as {url?: string | string[]; chainId?: number};
-    const rpcUrl =
-        typeof rpcConfig.url === "string"
-            ? rpcConfig.url
-            : Array.isArray(rpcConfig.url)
-              ? rpcConfig.url[0]
-              : "unknown";
-    const explorer =
-        hre.config.etherscan?.customChains?.find((c) => c.network === netName)?.urls?.browserURL ??
-        "";
-
-    const summaryLines = [
-        `New deployment on ${netName}`,
-        "Network settings:",
-        `- RPC: ${rpcUrl}`,
-        `- Chain ID: ${rpcConfig.chainId ?? "unknown"}`,
-        `- Explorer: ${explorer || "unknown"}`,
-        `\nSmart contract addresses:`,
-        `MZUSD (proxy): ${mzusdAddress}`,
-        `ReservoirUSDC (proxy): ${reservoirAddress}`,
-        `Vault (proxy): ${vaultAddress}`,
-        `AccessManager: ${accessManagerAddress}`,
-        "---",
-        `MZUSD implementation: ${mzusdRecord?.implementation ?? "unknown"}`,
-        `ReservoirUSDC implementation: ${reservoirRecord?.implementation ?? "unknown"}`,
-        `Vault implementation: ${vaultImpl}`,
-    ];
-    console.log("\n" + summaryLines.join("\n") + "\n");
-
     saveDeployments(deployments);
     console.log("\nDeployments file updated");
-    console.log("Done ✅");
 }
 
 main().catch((err) => {

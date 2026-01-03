@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+set -e
+
+npm run lint:staged
+npx hardhat check
+npm run compile
+npm run gen:abi
+git add abi
