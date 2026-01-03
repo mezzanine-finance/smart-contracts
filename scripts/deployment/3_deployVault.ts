@@ -132,6 +132,43 @@ async function main() {
     // Verify implementation
     await verifyContract(vaultImpl, [usdcAddress]);
 
+    // Summary block for easy copy-paste
+    const rpcConfig = network.config as {url?: string | string[]; chainId?: number};
+    const rpcUrl =
+        typeof rpcConfig.url === "string"
+            ? rpcConfig.url
+            : Array.isArray(rpcConfig.url)
+              ? rpcConfig.url[0]
+              : "unknown";
+    const explorer =
+        hre.config.etherscan?.customChains?.find((c) => c.network === netName)?.urls?.browserURL ??
+        "unknown";
+    const faucetUrl =
+        (rpcUrl && typeof rpcUrl === "string" && rpcUrl.includes("buildbear")) ||
+        netName === "buildbear"
+            ? "https://faucet.buildbear.io/overall-electro-86c210d9"
+            : undefined;
+
+    const summaryLines = [
+        `New deployment on ${netName}`,
+        "Network settings:",
+        `- RPC: ${rpcUrl}`,
+        `- Chain ID: ${rpcConfig.chainId ?? "unknown"}`,
+        `- Explorer: ${explorer}`,
+        ...(faucetUrl ? [`- Faucet: ${faucetUrl} (mint test ETH and USDC here)`] : []),
+        `\nSmart contract addresses:`,
+        `USDC: ${usdcAddress}`,
+        `MZUSD (proxy): ${mzusdAddress}`,
+        `ReservoirUSDC (proxy): ${reservoirAddress}`,
+        `Vault (proxy): ${vaultAddress}`,
+        `AccessManager: ${accessManagerAddress}`,
+        "---",
+        `MZUSD implementation: ${mzusdRecord?.implementation ?? "unknown"}`,
+        `ReservoirUSDC implementation: ${reservoirRecord?.implementation ?? "unknown"}`,
+        `Vault implementation: ${vaultImpl}`,
+    ];
+    console.log("\n" + summaryLines.join("\n") + "\n");
+
     saveDeployments(deployments);
     console.log("\nDeployments file updated");
 }
