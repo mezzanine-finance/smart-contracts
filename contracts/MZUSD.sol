@@ -103,9 +103,7 @@ contract MZUSD is
     /// @notice request withdrawal of MZUSD for USDC
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
-    function requestWithdrawal(
-        uint256 amountMZ
-    ) external nonReentrant restricted {
+    function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
         if (amountMZ == 0) revert ZeroAmount();
 
         address sender = _msgSender();
@@ -130,6 +128,10 @@ contract MZUSD is
 
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external restricted {
+        _burn(from, amount);
     }
 
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
