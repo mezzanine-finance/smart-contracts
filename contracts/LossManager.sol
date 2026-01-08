@@ -15,12 +15,12 @@ interface IMZUSD is IERC20 {
     function burn(address from, uint256 amount) external;
 }
 
-interface ITrancheLike {
+interface ITranche {
     function totalAssets() external view returns (uint256);
 }
 
-// @title LossManager
-// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
+/// @title LossManager
+/// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
 contract LossManager is
     Initializable,
     AccessManagedUpgradeable,
@@ -36,6 +36,12 @@ contract LossManager is
     address[] public trancheOrder; // order to burn from
     uint256 public maxLossPerTxUSDC; // 0 = no limit
 
+    /// @notice Optional group id for proportional loss sharing across a PAIR of tranches.
+    /// @dev If trancheOrder[i] and trancheOrder[i+1] are contiguous and share the same non-zero group id,
+    ///      then they form a pair and share losses proportionally by TVL (totalAssets).
+    mapping(address => uint256) public trancheGroup;
+
+    event TrancheGroupUpdated(address indexed tranche, uint256 indexed groupId);
     event LossApplied(uint256 usdcLoss, uint256 lossMZ, address[] tranches, uint256[] cutsMZ);
     event TrancheOrderUpdated(address[] newOrder);
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
@@ -73,35 +79,24 @@ contract LossManager is
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
-        uint256 remaining = usdcLoss * SCALE; // convert 6d to 18d
+        uint256 remainingMZ = _toMZ(usdcLoss);
         uint256 orderLen = trancheOrder.length;
         uint256[] memory cuts = new uint256[](orderLen);
 
-        for (uint256 i = 0; i < orderLen && remaining > 0; i++) {
-            address trancheAddr = trancheOrder[i];
-            uint256 tvl = ITrancheLike(trancheAddr).totalAssets(); // mzUSD 18d on tranche
-            if (tvl == 0) continue;
+        remainingMZ = _applyLossAcrossOrder(remainingMZ, cuts);
+        if (remainingMZ > 0) revert InsufficientCover(remainingMZ);
 
-            uint256 toBurn = tvl < remaining ? tvl : remaining;
-            mzusd.burn(trancheAddr, toBurn);
-
-            cuts[i] = toBurn;
-            remaining -= toBurn;
-        }
-
-        if (remaining > 0) revert InsufficientCover(remaining);
-
-        // copy storage -> memory for event
-        address[] memory orderCopy = new address[](orderLen);
-        for (uint256 j = 0; j < orderLen; j++) {
-            orderCopy[j] = trancheOrder[j];
-        }
-
-        emit LossApplied(usdcLoss, usdcLoss * SCALE, orderCopy, cuts);
+        emit LossApplied(usdcLoss, _toMZ(usdcLoss), _copyOrder(orderLen), cuts);
     }
 
     function setTrancheOrder(address[] memory order) external restricted {
         _setTrancheOrder(order);
+    }
+
+    function setTrancheGroup(address tranche, uint256 groupId) external restricted {
+        if (tranche == address(0)) revert ZeroAddress();
+        trancheGroup[tranche] = groupId;
+        emit TrancheGroupUpdated(tranche, groupId);
     }
 
     function setMaxLossPerTxUSDC(uint256 maxLossValue) external restricted {
@@ -128,6 +123,132 @@ contract LossManager is
         }
         trancheOrder = order;
         emit TrancheOrderUpdated(order);
+    }
+
+    function _toMZ(uint256 usdcAmount) internal pure returns (uint256) {
+        return usdcAmount * SCALE;
+    }
+
+    function _applyLossAcrossOrder(
+        uint256 remainingMZ,
+        uint256[] memory cuts
+    ) internal returns (uint256) {
+        uint256 orderLen = trancheOrder.length;
+        uint256 i = 0;
+
+        while (i < orderLen && remainingMZ > 0) {
+            (uint256 nextI, uint256 burned) = _applyLossStep(i, remainingMZ, cuts);
+            remainingMZ -= burned;
+            i = nextI;
+        }
+
+        return remainingMZ;
+    }
+
+    function _applyLossStep(
+        uint256 i,
+        uint256 remainingMZ,
+        uint256[] memory cuts
+    ) internal returns (uint256 nextI, uint256 burned) {
+        // Pair-mode is enabled only if trancheOrder[i] and trancheOrder[i+1] share the same non-zero group id
+        (bool isPair, address t0, address t1, ) = _pairAt(i);
+        if (!isPair) {
+            return _burnSequential(i, remainingMZ, cuts);
+        }
+        return _burnPair(i, remainingMZ, cuts, t0, t1);
+    }
+
+    function _pairAt(
+        uint256 i
+    ) internal view returns (bool isPair, address t0, address t1, uint256 gid) {
+        uint256 orderLen = trancheOrder.length;
+        t0 = trancheOrder[i];
+        gid = trancheGroup[t0];
+        if (gid == 0) return (false, t0, address(0), 0);
+        if (i + 1 >= orderLen) return (false, t0, address(0), 0);
+
+        t1 = trancheOrder[i + 1];
+        if (trancheGroup[t1] != gid) return (false, t0, t1, 0);
+
+        return (true, t0, t1, gid);
+    }
+
+    function _tvl(address tranche) internal view returns (uint256) {
+        return ITranche(tranche).totalAssets();
+    }
+
+    function _burnSequential(
+        uint256 i,
+        uint256 remainingMZ,
+        uint256[] memory cuts
+    ) internal returns (uint256 nextI, uint256 burned) {
+        address t0 = trancheOrder[i];
+        uint256 tvl0 = _tvl(t0);
+        if (tvl0 == 0) return (i + 1, 0);
+
+        uint256 toBurn0 = tvl0 < remainingMZ ? tvl0 : remainingMZ;
+        mzusd.burn(t0, toBurn0);
+        cuts[i] = toBurn0;
+        return (i + 1, toBurn0);
+    }
+
+    function _burnPair(
+        uint256 i,
+        uint256 remainingMZ,
+        uint256[] memory cuts,
+        address t0,
+        address t1
+    ) internal returns (uint256 nextI, uint256 burned) {
+        uint256 tvl0 = _tvl(t0);
+        uint256 tvl1 = _tvl(t1);
+        uint256 pairTVL = tvl0 + tvl1;
+        if (pairTVL == 0) return (i + 2, 0);
+
+        uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
+
+        // Proportional split (floor)
+        uint256 burn0 = tvl0 == 0 ? 0 : (lossForPair * tvl0) / pairTVL;
+        if (burn0 > tvl0) burn0 = tvl0;
+
+        uint256 burn1 = tvl1 == 0 ? 0 : (lossForPair * tvl1) / pairTVL;
+        if (burn1 > tvl1) burn1 = tvl1;
+
+        // Allocate rounding remainder: prefer first tranche then second
+        uint256 rem = lossForPair - (burn0 + burn1);
+        if (rem != 0) {
+            uint256 cap0 = tvl0 - burn0;
+            if (cap0 != 0) {
+                uint256 add0 = cap0 < rem ? cap0 : rem;
+                burn0 += add0;
+                rem -= add0;
+            }
+        }
+        if (rem != 0) {
+            uint256 cap1 = tvl1 - burn1;
+            if (cap1 != 0) {
+                uint256 add1 = cap1 < rem ? cap1 : rem;
+                burn1 += add1;
+                rem -= add1;
+            }
+        }
+
+        if (burn0 != 0) {
+            mzusd.burn(t0, burn0);
+            cuts[i] = burn0;
+        }
+        if (burn1 != 0) {
+            mzusd.burn(t1, burn1);
+            cuts[i + 1] = burn1;
+        }
+
+        return (i + 2, lossForPair);
+    }
+
+    function _copyOrder(uint256 orderLen) internal view returns (address[] memory orderCopy) {
+        orderCopy = new address[](orderLen);
+        for (uint256 j = 0; j < orderLen; j++) {
+            orderCopy[j] = trancheOrder[j];
+        }
     }
 
     function _authorizeUpgrade(address) internal override restricted {}
