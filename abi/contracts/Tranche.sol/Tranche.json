@@ -302,11 +302,6 @@
     },
     {
         "inputs": [],
-        "name": "InvalidMode",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "InvalidShares",
         "type": "error"
     },
@@ -390,11 +385,6 @@
     {
         "inputs": [],
         "name": "ZeroPassedShares",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroPolPayoutAddressWhileModeIsOn",
         "type": "error"
     },
     {
@@ -545,38 +535,6 @@
             }
         ],
         "name": "Paused",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            },
-            {
-                "indexed": false,
-                "internalType": "address",
-                "name": "payout",
-                "type": "address"
-            }
-        ],
-        "name": "PolJuniorUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "PolPayout",
         "type": "event"
     },
     {
@@ -1186,16 +1144,6 @@
                 "internalType": "address",
                 "name": "accessManager",
                 "type": "address"
-            },
-            {
-                "internalType": "bool",
-                "name": "polJuniorMode",
-                "type": "bool"
-            },
-            {
-                "internalType": "address",
-                "name": "polPayoutAddress",
-                "type": "address"
             }
         ],
         "name": "initialize",
@@ -1211,19 +1159,6 @@
                 "internalType": "bytes4",
                 "name": "",
                 "type": "bytes4"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "isPolJunior",
-        "outputs": [
-            {
-                "internalType": "bool",
-                "name": "",
-                "type": "bool"
             }
         ],
         "stateMutability": "view",
@@ -1396,19 +1331,6 @@
                 "internalType": "bool",
                 "name": "",
                 "type": "bool"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "polPayout",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
             }
         ],
         "stateMutability": "view",
@@ -1597,32 +1519,12 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "payout",
-                "type": "address"
-            }
-        ],
-        "name": "setPolPayout",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "uint256",
                 "name": "epochsDelay",
                 "type": "uint256"
             }
         ],
         "name": "setUnstakeDelayEpochs",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "sweepPol",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
