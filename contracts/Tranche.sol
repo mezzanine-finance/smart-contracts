@@ -14,7 +14,7 @@ interface IVault {
     function epochDuration() external view returns (uint256);
 }
 
-// @title Tranche with epoch-based umbrella unstake and optional POL/Junior mode
+// @title Tranche with epoch-based umbrella unstake
 // solhint-disable-next-line max-line-length
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
@@ -45,9 +45,6 @@ contract Tranche is
     uint256 public maxDepositCap;
     uint256 public maxDepositTvlBps;
 
-    bool public isPolJunior;
-    address public polPayout;
-
     // YIELD STREAMING (linear distribution over epoch)
     /// @notice Amount of yield (MZUSD) that is being streamed linearly into NAV.
     /// @dev These tokens are already on the tranche balance, but not yet fully reflected in price per share.
@@ -75,8 +72,6 @@ contract Tranche is
     event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
-    event PolJuniorUpdated(bool enabled, address payout);
-    event PolPayout(uint256 amount);
     event WithdrawalClaimed(address indexed user, uint256 indexed epochId, uint256 assets);
 
     /// @notice Emitted when new yield is registered for linear streaming.
@@ -98,20 +93,17 @@ contract Tranche is
     error YieldStreamIsActive();
     error AlreadyFinalized();
     error NoPendingUnstake();
-    error InvalidMode();
     error ZeroPassedShares();
     error InvalidShares();
     error InvalidBalance();
     error ZeroYieldPassed();
     error ZeroEpochDuration();
-    error ZeroPolPayoutAddressWhileModeIsOn();
     error TooLateToCancel();
 
     constructor() {
         _disableInitializers();
     }
 
-    //@dev polPayout can be zero address initially, because polJuniorMode can be false
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -119,9 +111,7 @@ contract Tranche is
         uint256 initialUnstakeDelayEpochs,
         string memory name_,
         string memory symbol_,
-        address accessManager,
-        bool polJuniorMode,
-        address polPayoutAddress
+        address accessManager
     ) external initializer {
         if (
             vaultAddress == address(0) ||
@@ -139,12 +129,6 @@ contract Tranche is
         vault = vaultAddress;
         trancheId = trancheIdentifier;
         unstakeDelayEpochs = initialUnstakeDelayEpochs;
-        isPolJunior = polJuniorMode;
-
-        if (polJuniorMode && polPayoutAddress == address(0)) {
-            revert ZeroPolPayoutAddressWhileModeIsOn();
-        }
-        polPayout = polPayoutAddress;
     }
 
     // CORE USER FUNCTIONS
@@ -152,14 +136,12 @@ contract Tranche is
         uint256 assets,
         address receiver
     ) public override whenNotPaused nonReentrant returns (uint256 shares) {
-        if (isPolJunior) revert InvalidMode();
         _checkDepositLimit(assets);
         // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
     }
 
     function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
-        if (isPolJunior) revert InvalidMode();
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
 
@@ -289,26 +271,6 @@ contract Tranche is
         maxDepositCap = cap;
         maxDepositTvlBps = tvlBps;
         emit DepositLimitUpdated(enabled, cap, tvlBps);
-    }
-
-    //todo polJunior mode refactor
-    //todo polJunior add revert to funcs + make modifier
-
-    // POL/JUNIOR MODE (not for users)
-    function sweepPol() external restricted {
-        if (polPayout == address(0)) revert ZeroAddress();
-        if (!isPolJunior) revert InvalidMode();
-        uint256 balance = IERC20(asset()).balanceOf(address(this));
-        IERC20(asset()).safeTransfer(polPayout, balance);
-        emit PolPayout(balance);
-    }
-
-    /// @notice Update payout address for POL/junior tranche proceeds.
-    /// @dev Does not change isPolJunior flag, that is fixed at initialization.
-    function setPolPayout(address payout) external restricted {
-        if (payout == address(0)) revert ZeroAddress();
-        polPayout = payout;
-        emit PolJuniorUpdated(isPolJunior, payout);
     }
 
     // ERC4626 overrides (NAV with linear yield)
