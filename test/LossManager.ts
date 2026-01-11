@@ -513,7 +513,7 @@ describe("LossManager", () => {
         expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(30n));
     });
 
-    it("Stress: pair-mode burns match expected proportional split (30 iterations)", async () => {
+    it("Pair mode burns match expected proportional split (30 iterations)", async () => {
         // Big buffers
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10_000n)));
         await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(30_000n)));
@@ -531,7 +531,7 @@ describe("LossManager", () => {
         const sStart = await mzusd.balanceOf(seniorAddr);
 
         for (let k = 1; k <= 30; k++) {
-            const lossUSDC = BigInt((k % 97) + 1); // 1..97
+            const lossUSDC = BigInt((k % 97) + 1); // 1 - 97
             const lossMZ = to18(lossUSDC);
 
             const jTvl = await junior.totalAssets();
@@ -554,7 +554,7 @@ describe("LossManager", () => {
         }
     });
 
-    it("Stress: pair-mode works when pair is not first (sequential then proportional)", async () => {
+    it("Pair-mode works when pair is not first (sequential then proportional)", async () => {
         // Setup TVL: mezz small, then pair big
         await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(200n)));
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
@@ -593,7 +593,7 @@ describe("LossManager", () => {
         }
     });
 
-    it("Stress: groupId set but NOT contiguous => falls back to sequential", async () => {
+    it("Group Id set but NOT contiguous -> falls back to sequential", async () => {
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
         await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
         await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
