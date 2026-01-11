@@ -151,7 +151,7 @@ contract Tranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override whenNotPaused nonReentrant returns (uint256 shares) {
+    ) public override nonReentrant whenNotPaused restricted returns (uint256 shares) {
         _checkDepositLimit(assets);
         // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
@@ -159,7 +159,7 @@ contract Tranche is
 
     function requestWithdrawal(
         uint256 shares
-    ) external nonReentrant whenNotPaused whenDirectDisabled {
+    ) external nonReentrant whenNotPaused whenDirectDisabled restricted {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
 
@@ -182,7 +182,7 @@ contract Tranche is
     function cancelUnstake(
         uint256 epochId,
         uint256 shares
-    ) external nonReentrant whenNotPaused whenDirectDisabled {
+    ) external nonReentrant whenNotPaused whenDirectDisabled restricted {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -204,7 +204,9 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
-    function claim(uint256 epochId) external nonReentrant whenNotPaused whenDirectDisabled {
+    function claim(
+        uint256 epochId
+    ) external nonReentrant whenNotPaused whenDirectDisabled restricted {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -253,7 +255,15 @@ contract Tranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant whenNotPaused whenDirectEnabled returns (uint256 shares) {
+    )
+        public
+        override
+        nonReentrant
+        whenNotPaused
+        whenDirectEnabled
+        restricted
+        returns (uint256 shares)
+    {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -261,7 +271,15 @@ contract Tranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant whenNotPaused whenDirectEnabled returns (uint256 assets) {
+    )
+        public
+        override
+        nonReentrant
+        whenNotPaused
+        whenDirectEnabled
+        restricted
+        returns (uint256 assets)
+    {
         return super.redeem(shares, receiver, owner);
     }
 

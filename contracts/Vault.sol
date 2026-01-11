@@ -22,7 +22,6 @@ interface ITranche {
     function notifyYield(uint256 amount) external;
 }
 
-
 contract Vault is
     Initializable,
     PausableUpgradeable,
@@ -53,7 +52,6 @@ contract Vault is
     address public performanceFeeReceiver;
     address public protocolFeeReceiver;
 
-
     uint256 public idleBufferUSDC;
     uint256 public currentEpochId;
 
@@ -64,7 +62,6 @@ contract Vault is
     // epochs
     uint64 public epochStart;
     uint64 public epochDuration;
-
 
     uint16 public hysteresisBps;
     uint16 public insuranceBps;
@@ -135,11 +132,10 @@ contract Vault is
         epochStart = uint64(block.timestamp);
         epochDuration = 1 days;
 
-
         _updateBufferBounds();
     }
 
-    function withdraw(address to, uint256 amount) external whenNotPaused nonReentrant restricted {
+    function withdraw(address to, uint256 amount) external nonReentrant whenNotPaused restricted {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -173,7 +169,7 @@ contract Vault is
         emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
     }
 
-    function distributeYield(uint256 usdcReported) external whenNotPaused nonReentrant restricted {
+    function distributeYield(uint256 usdcReported) external nonReentrant whenNotPaused restricted {
         if (usdcReported == 0) revert ZeroAmount();
         if (tranches.length == 0) revert NoTranchesAdded();
 
@@ -181,9 +177,7 @@ contract Vault is
 
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
-        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(
-            mintedGross
-        );
+        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(mintedGross);
 
         emit FeesPaid(perfFee, protFee, newEpochId);
 
@@ -219,8 +213,7 @@ contract Vault is
         uint256 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted {
-        if (_performanceFeeBps + _protocolFeeBps > BPS)
-            revert TooBigBps();
+        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
             revert ZeroAddressWhileFeeIsOnPerformance();
         if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
@@ -238,7 +231,6 @@ contract Vault is
             protocolFeeReceiver
         );
     }
-
 
     function addTranche(TrancheInfo calldata info) external restricted {
         if (info.tranche == address(0)) revert ZeroAddress();
@@ -279,8 +271,7 @@ contract Vault is
 
     function setEpochConfig(uint256 _epochDuration, bool resetStart) external restricted {
         if (
-            _epochDuration < MIN_EPOCH_DURATION_LIMIT ||
-            _epochDuration > MAX_EPOCH_DURATION_LIMIT
+            _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
         ) {
             revert InvalidEpochDuration();
         }
@@ -323,19 +314,9 @@ contract Vault is
     function getFeesConfig()
         external
         view
-        returns (
-            uint256 _perfBps,
-            address _perfReceiver,
-            uint256 _protBps,
-            address _protReceiver
-        )
+        returns (uint256 _perfBps, address _perfReceiver, uint256 _protBps, address _protReceiver)
     {
-        return (
-            performanceFeeBps,
-            performanceFeeReceiver,
-            protocolFeeBps,
-            protocolFeeReceiver
-        );
+        return (performanceFeeBps, performanceFeeReceiver, protocolFeeBps, protocolFeeReceiver);
     }
 
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
@@ -352,17 +333,13 @@ contract Vault is
         return epochId;
     }
 
-     function _mintFees(
+    function _mintFees(
         uint256 mintedGross
     )
         internal
         returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
     {
-        performanceFeeMZUSD = _handleFee(
-            performanceFeeBps,
-            performanceFeeReceiver,
-            mintedGross
-        );
+        performanceFeeMZUSD = _handleFee(performanceFeeBps, performanceFeeReceiver, mintedGross);
         protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
 
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;

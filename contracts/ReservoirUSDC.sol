@@ -55,14 +55,14 @@ contract ReservoirUSDC is
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(uint256 amount) external restricted nonReentrant {
+    function deposit(uint256 amount) external nonReentrant restricted {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(_msgSender(), address(this), amount);
         emit Deposited(_msgSender(), amount);
     }
 
     /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.
-    function withdraw(uint256 amount, address to) external restricted nonReentrant {
+    function withdraw(uint256 amount, address to) external nonReentrant restricted {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 
