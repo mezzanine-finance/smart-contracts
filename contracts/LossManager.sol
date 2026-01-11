@@ -51,6 +51,7 @@ contract LossManager is
     error ZeroLength();
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
+    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor() {
         _disableInitializers();
@@ -75,7 +76,7 @@ contract LossManager is
     }
 
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(uint256 usdcLoss) external whenNotPaused nonReentrant restricted {
+    function applyLoss(uint256 usdcLoss) external nonReentrant whenNotPaused restricted {
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
@@ -249,6 +250,26 @@ contract LossManager is
         for (uint256 j = 0; j < orderLen; j++) {
             orderCopy[j] = trancheOrder[j];
         }
+    }
+
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     function _authorizeUpgrade(address) internal override restricted {}

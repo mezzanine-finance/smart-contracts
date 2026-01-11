@@ -75,6 +75,22 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "attemptedAmount",
+                "type": "uint256"
+            }
+        ],
+        "name": "EthTransferFailed",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "ExpectedPause",
         "type": "error"
@@ -463,6 +479,24 @@
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "rescueETH",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

@@ -101,6 +101,7 @@ contract Vault is
     error SameValue();
     error ZeroAddressWhileFeeIsOnPerformance();
     error ZeroAddressWhileFeeIsOnProtocol();
+    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -277,8 +278,8 @@ contract Vault is
         }
         epochDuration = uint64(_epochDuration);
         if (resetStart) {
-            uint256 ts = block.timestamp;
-            epochStart = uint64(ts);
+            uint64 ts = uint64(block.timestamp);
+            epochStart = ts;
             emit EpochAdvanced(currentEpochId, ts);
         }
         emit EpochDurationSet(_epochDuration);
@@ -443,6 +444,26 @@ contract Vault is
         if (currentAllowance < amount) {
             token.approve(spender, amount);
         }
+    }
+
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     function _authorizeUpgrade(address newImpl) internal override restricted {}

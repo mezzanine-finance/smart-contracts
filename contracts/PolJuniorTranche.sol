@@ -30,6 +30,7 @@ contract PolJuniorTranche is
 
     error ZeroAddress();
     error ZeroYieldPassed();
+    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor() {
         _disableInitializers();
@@ -60,7 +61,7 @@ contract PolJuniorTranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
         return super.deposit(assets, receiver);
     }
 
@@ -70,7 +71,7 @@ contract PolJuniorTranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -78,7 +79,7 @@ contract PolJuniorTranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
         return super.redeem(shares, receiver, owner);
     }
 
@@ -105,6 +106,26 @@ contract PolJuniorTranche is
 
     function unpause() external restricted {
         _unpause();
+    }
+
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     function _authorizeUpgrade(address) internal override restricted {}
