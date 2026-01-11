@@ -55,6 +55,33 @@ contract PolJuniorTranche is
         polPayout = polPayoutAddress;
     }
 
+    /// ERC4626 entry points (role-controlled via AccessManager)
+    /// @dev AccessManager should set this to PUBLIC_ROLE
+    function deposit(
+        uint256 assets,
+        address receiver
+    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+        return super.deposit(assets, receiver);
+    }
+
+    // ERC4626 exit points (role-controlled via AccessManager)
+    /// @dev AccessManager should set these to ADMIN_ROLE
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+        return super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    ) public override whenNotPaused nonReentrant restricted returns (uint256) {
+        return super.redeem(shares, receiver, owner);
+    }
+
     /// @notice Vault calls this after transferring yieldAmount of MZUSD to this contract.
     /// @dev Forwards yield immediately to polPayout and optionally calls a hook on polPayout.
     function notifyYield(uint256 yieldAmount) external restricted {
