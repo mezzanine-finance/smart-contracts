@@ -36,6 +36,9 @@ contract Tranche is
 
     uint256 public constant BASIS_POINTS = 10_000;
 
+    // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
+    bool public immutable directWithdrawEnabled;
+
     address public vault;
     uint256 public trancheId;
 
@@ -99,8 +102,11 @@ contract Tranche is
     error ZeroYieldPassed();
     error ZeroEpochDuration();
     error TooLateToCancel();
+    error DirectWithdrawModeEnabled();
+    error DirectWithdrawModeDisabled();
 
-    constructor() {
+    constructor(bool _directWithdrawEnabled) {
+        directWithdrawEnabled = _directWithdrawEnabled;
         _disableInitializers();
     }
 
@@ -131,6 +137,16 @@ contract Tranche is
         unstakeDelayEpochs = initialUnstakeDelayEpochs;
     }
 
+    modifier whenDirectEnabled() {
+        if (!directWithdrawEnabled) revert DirectWithdrawModeDisabled();
+        _;
+    }
+
+    modifier whenDirectDisabled() {
+        if (directWithdrawEnabled) revert DirectWithdrawModeEnabled();
+        _;
+    }
+
     // CORE USER FUNCTIONS
     function deposit(
         uint256 assets,
@@ -141,7 +157,9 @@ contract Tranche is
         shares = super.deposit(assets, receiver);
     }
 
-    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
+    function requestWithdrawal(
+        uint256 shares
+    ) external nonReentrant whenNotPaused whenDirectDisabled {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
 
@@ -161,7 +179,10 @@ contract Tranche is
     ///      for epochs that have not yet been finalized.
     /// @param epochId The epoch for which the user wants to cancel their unstake.
     /// @param shares The amount of shares to cancel (returned back to the user).
-    function cancelUnstake(uint256 epochId, uint256 shares) external nonReentrant whenNotPaused {
+    function cancelUnstake(
+        uint256 epochId,
+        uint256 shares
+    ) external nonReentrant whenNotPaused whenDirectDisabled {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -183,7 +204,7 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
-    function claim(uint256 epochId) external nonReentrant whenNotPaused {
+    function claim(uint256 epochId) external nonReentrant whenNotPaused whenDirectDisabled {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -203,7 +224,9 @@ contract Tranche is
 
     // CORE ADMIN FUNCTIONS
 
-    function finalizeEpoch(uint256 epochId) external nonReentrant whenNotPaused restricted {
+    function finalizeEpoch(
+        uint256 epochId
+    ) external nonReentrant whenNotPaused restricted whenDirectDisabled {
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -224,6 +247,22 @@ contract Tranche is
         _burn(address(this), sharesToFinalize);
 
         emit EpochFinalized(epochId, sharesToFinalize, assetsToCredit);
+    }
+
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    ) public override nonReentrant whenNotPaused whenDirectEnabled returns (uint256 shares) {
+        return super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    ) public override nonReentrant whenNotPaused whenDirectEnabled returns (uint256 assets) {
+        return super.redeem(shares, receiver, owner);
     }
 
     // Linear yield streaming
@@ -281,7 +320,6 @@ contract Tranche is
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         uint256 unaccrued = _unaccruedYield();
 
-        //todo think about this one
         if (unaccrued > balance) {
             // Should not happen if notifyYield is used correctly, but guard against underflow.
             return 0;
@@ -386,22 +424,4 @@ contract Tranche is
     }
 
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
-
-    error DirectWithdrawDisabled();
-
-    function withdraw(
-        uint256 /*assets*/,
-        address /*receiver*/,
-        address /*owner*/
-    ) public pure override returns (uint256) {
-        revert DirectWithdrawDisabled();
-    }
-
-    function redeem(
-        uint256 /*shares*/,
-        address /*receiver*/,
-        address /*owner*/
-    ) public pure override returns (uint256) {
-        revert DirectWithdrawDisabled();
-    }
 }

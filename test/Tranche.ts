@@ -105,6 +105,7 @@ describe("Tranche", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor"],
+                constructorArgs: [false], //direct withdraw disabled
             }
         )) as unknown as Tranche;
 

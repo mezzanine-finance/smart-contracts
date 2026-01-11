@@ -100,19 +100,34 @@ describe("Vault Yield Distribution", () => {
         junior = (await upgrades.deployProxy(
             TrancheFactory,
             [mzusd.target, vault.target, 1, 0, "Junior Tranche", "JLT", accessManager.target],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
             [mzusd.target, vault.target, 2, 0, "Mezzanine Tranche", "MLT", accessManager.target],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
             [mzusd.target, vault.target, 3, 0, "Senior Tranche", "sMZUSD", accessManager.target],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         // Roles

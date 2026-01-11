@@ -1,6 +1,12 @@
 [
     {
-        "inputs": [],
+        "inputs": [
+            {
+                "internalType": "bool",
+                "name": "_directWithdrawEnabled",
+                "type": "bool"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "constructor"
     },
@@ -76,7 +82,12 @@
     },
     {
         "inputs": [],
-        "name": "DirectWithdrawDisabled",
+        "name": "DirectWithdrawModeDisabled",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "DirectWithdrawModeEnabled",
         "type": "error"
     },
     {
@@ -989,6 +1000,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "directWithdrawEnabled",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
@@ -1442,17 +1466,17 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "receiver",
                 "type": "address"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "owner",
                 "type": "address"
             }
         ],
@@ -1460,11 +1484,11 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],
-        "stateMutability": "pure",
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -1732,17 +1756,17 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "receiver",
                 "type": "address"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "owner",
                 "type": "address"
             }
         ],
@@ -1750,11 +1774,11 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             }
         ],
-        "stateMutability": "pure",
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
