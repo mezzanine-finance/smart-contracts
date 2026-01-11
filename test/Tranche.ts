@@ -40,11 +40,13 @@ describe("Tranche", () => {
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
     let tranche: Tranche;
+    let whale: any;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -104,7 +106,7 @@ describe("Tranche", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false], //direct withdraw disabled
             }
         )) as unknown as Tranche;
@@ -123,6 +125,25 @@ describe("Tranche", () => {
             PUBLIC_ROLE
         );
 
+        // 1.5) Public user actions on Tranche (all user-facing functions are restricted now)
+        const trancheDepositSelector = tranche.interface.getFunction("deposit").selector;
+        const trancheRequestWithdrawalSelector =
+            tranche.interface.getFunction("requestWithdrawal").selector;
+        const trancheCancelUnstakeSelector =
+            tranche.interface.getFunction("cancelUnstake").selector;
+        const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
+
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [
+                trancheDepositSelector,
+                trancheRequestWithdrawalSelector,
+                trancheCancelUnstakeSelector,
+                trancheClaimSelector,
+            ],
+            PUBLIC_ROLE
+        );
+
         // 2) Admin-only functions on MZUSD & Vault
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
@@ -133,6 +154,26 @@ describe("Tranche", () => {
         await accessManager.setTargetFunctionRole(
             vault.target,
             [distributeYieldSelector, addTrancheSelector],
+            ADMIN_ROLE
+        );
+
+        // Tranche admin-only functions used in tests (finalize + config)
+        const finalizeEpochSelector = tranche.interface.getFunction("finalizeEpoch").selector;
+        const pauseSelector = tranche.interface.getFunction("pause").selector;
+        const unpauseSelector = tranche.interface.getFunction("unpause").selector;
+        const setUnstakeDelaySelector =
+            tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
+        const setDepositLimitsSelector = tranche.interface.getFunction("setDepositLimits").selector;
+
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [
+                finalizeEpochSelector,
+                pauseSelector,
+                unpauseSelector,
+                setUnstakeDelaySelector,
+                setDepositLimitsSelector,
+            ],
             ADMIN_ROLE
         );
 
@@ -167,8 +208,6 @@ describe("Tranche", () => {
 
     // small helper to mint MZUSD via real deposit
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        const whale = await imp(USDC_WHALE);
-
         // give user some USDC
         await usdc.connect(whale).transfer(user.address, usdcAmount6);
 

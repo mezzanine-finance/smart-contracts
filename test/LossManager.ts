@@ -66,12 +66,16 @@ describe("LossManager", () => {
 
     let lossManager: LossManager;
 
+    let whale: any;
+
     const DAY = 24 * 60 * 60;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        // Impersonate whale once for speed (reuse across tests)
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
@@ -117,7 +121,7 @@ describe("LossManager", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -128,7 +132,7 @@ describe("LossManager", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -139,7 +143,7 @@ describe("LossManager", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -191,6 +195,28 @@ describe("LossManager", () => {
         const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [depSel, reqSel], PUBLIC_ROLE);
 
+        // public: Tranche user-facing functions
+        const tDepSel = junior.interface.getFunction("deposit").selector;
+        const tReqSel = junior.interface.getFunction("requestWithdrawal").selector;
+        const tCancelSel = junior.interface.getFunction("cancelUnstake").selector;
+        const tClaimSel = junior.interface.getFunction("claim").selector;
+
+        await accessManager.setTargetFunctionRole(
+            juniorAddr,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanineAddr,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            seniorAddr,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+
         // admin: MZUSD.setVault
         const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
@@ -203,6 +229,29 @@ describe("LossManager", () => {
         await accessManager.setTargetFunctionRole(
             vaultAddr,
             [distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
+            ADMIN_ROLE
+        );
+
+        // admin: Tranche config/finalize functions (for tests/helpers)
+        const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
+        const tPauseSel = junior.interface.getFunction("pause").selector;
+        const tUnpauseSel = junior.interface.getFunction("unpause").selector;
+        const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
+        const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
+
+        await accessManager.setTargetFunctionRole(
+            juniorAddr,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanineAddr,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            seniorAddr,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
 
@@ -249,7 +298,6 @@ describe("LossManager", () => {
     });
 
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(user.address, usdcAmount6);
         await usdc.connect(user).approve(mzusdAddr, usdcAmount6);
         await (await mzusd.connect(user).deposit(usdcAmount6)).wait();

@@ -38,11 +38,13 @@ describe("Vault <-> Reservoir", () => {
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
     let vault: Vault;
+    let whale: any;
 
     before(async () => {
         [deployer, alice] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -120,7 +122,6 @@ describe("Vault <-> Reservoir", () => {
     });
 
     async function whaleTransfer(to: string, amount6: bigint) {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(to, amount6);
     }
 

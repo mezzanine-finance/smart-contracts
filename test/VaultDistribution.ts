@@ -46,12 +46,15 @@ describe("Vault Yield Distribution", () => {
     let mezzanine: Tranche;
     let senior: Tranche;
 
+    let whale: any;
+
     const DAY = 24 * 60 * 60;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
@@ -103,7 +106,7 @@ describe("Vault Yield Distribution", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -114,7 +117,7 @@ describe("Vault Yield Distribution", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -125,7 +128,7 @@ describe("Vault Yield Distribution", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [false],
             }
         )) as unknown as Tranche;
@@ -138,6 +141,28 @@ describe("Vault Yield Distribution", () => {
         const depSel = mzusd.interface.getFunction("deposit").selector;
         const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [depSel, reqSel], PUBLIC_ROLE);
+
+        // public: Tranche user-facing functions
+        const tDepSel = junior.interface.getFunction("deposit").selector;
+        const tReqSel = junior.interface.getFunction("requestWithdrawal").selector;
+        const tCancelSel = junior.interface.getFunction("cancelUnstake").selector;
+        const tClaimSel = junior.interface.getFunction("claim").selector;
+
+        await accessManager.setTargetFunctionRole(
+            junior.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanine.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            senior.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
 
         // admin: MZUSD.setVault
         const setVaultSel = mzusd.interface.getFunction("setVault").selector;
@@ -160,6 +185,29 @@ describe("Vault Yield Distribution", () => {
                 setInsuranceSel,
                 setEpochConfigSel,
             ],
+            ADMIN_ROLE
+        );
+
+        // admin: Tranche config/finalize functions (for tests/helpers)
+        const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
+        const tPauseSel = junior.interface.getFunction("pause").selector;
+        const tUnpauseSel = junior.interface.getFunction("unpause").selector;
+        const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
+        const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
+
+        await accessManager.setTargetFunctionRole(
+            junior.target,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanine.target,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            senior.target,
+            [tFinalizeSel, tPauseSel, tUnpauseSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
 
@@ -189,7 +237,6 @@ describe("Vault Yield Distribution", () => {
     });
 
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(user.address, usdcAmount6);
         await usdc.connect(user).approve(mzusd.target, usdcAmount6);
         await (await mzusd.connect(user).deposit(usdcAmount6)).wait();
