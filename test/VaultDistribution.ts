@@ -13,7 +13,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 // Role for Vault to call MZUSD.mint + Tranche.notifyYield
 const VAULT_ROLE = 2n;
@@ -99,49 +99,19 @@ describe("Vault Yield Distribution", () => {
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Junior Tranche",
-                "JLT",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
+            [mzusd.target, vault.target, 1, 0, "Junior Tranche", "JLT", accessManager.target],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                2,
-                0,
-                "Mezzanine Tranche",
-                "MLT",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
+            [mzusd.target, vault.target, 2, 0, "Mezzanine Tranche", "MLT", accessManager.target],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as Tranche;
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                3,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
+            [mzusd.target, vault.target, 3, 0, "Senior Tranche", "sMZUSD", accessManager.target],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as Tranche;
 
@@ -150,21 +120,21 @@ describe("Vault Yield Distribution", () => {
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
         // public: MZUSD deposit/requestWithdrawal
-        const depSel = mzusd.interface.getFunction("deposit")!.selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal")!.selector;
+        const depSel = mzusd.interface.getFunction("deposit").selector;
+        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [depSel, reqSel], PUBLIC_ROLE);
 
         // admin: MZUSD.setVault
-        const setVaultSel = mzusd.interface.getFunction("setVault")!.selector;
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSel], ADMIN_ROLE);
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
-        const distributeSel = vault.interface.getFunction("distributeYield")!.selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche")!.selector;
-        const updateTrancheSel = vault.interface.getFunction("updateTranche")!.selector;
-        const setFeesSel = vault.interface.getFunction("setFees")!.selector;
-        const setInsuranceSel = vault.interface.getFunction("setInsurance")!.selector;
-        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig")!.selector;
+        const distributeSel = vault.interface.getFunction("distributeYield").selector;
+        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
+        const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
+        const setFeesSel = vault.interface.getFunction("setFees").selector;
+        const setInsuranceSel = vault.interface.getFunction("setInsurance").selector;
+        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
@@ -179,12 +149,12 @@ describe("Vault Yield Distribution", () => {
         );
 
         // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint")!.selector;
+        const mintSel = mzusd.interface.getFunction("mint").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [mintSel], VAULT_ROLE);
         await accessManager.grantRole(VAULT_ROLE, vault.target, 0);
 
         // vault role: tranche.notifyYield (each tranche)
-        const notifySel = junior.interface.getFunction("notifyYield")!.selector;
+        const notifySel = junior.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(junior.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(mezzanine.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(senior.target, [notifySel], VAULT_ROLE);
@@ -244,7 +214,9 @@ describe("Vault Yield Distribution", () => {
         expect(protReceiver0).to.equal(ethers.ZeroAddress);
 
         // After setting fees, getter must reflect updates
-        await (await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)).wait();
+        await (
+            await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)
+        ).wait();
         const [perfBps1, perfReceiver1, protBps1, protReceiver1] = await vault.getFeesConfig();
         expect(perfBps1).to.equal(1111n);
         expect(perfReceiver1).to.equal(bob.address);

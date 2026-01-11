@@ -12,7 +12,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typech
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
 const MZUSD_USER_ROLE = 2n;
 
@@ -44,7 +44,7 @@ describe("MZUSD <-> USDC conversion", () => {
     let reservoir: ReservoirUSDC;
     let nettingHelper: any;
 
-    // --- Helper functions for Alice funding and deposit ---
+    // Helper functions for Alice funding and deposit
     async function fundAliceWithUSDC(amountUSDC: bigint) {
         const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(alice.address, amountUSDC);

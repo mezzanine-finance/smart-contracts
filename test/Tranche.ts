@@ -13,7 +13,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const VAULT_ROLE = 2n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
@@ -100,8 +100,6 @@ describe("Tranche", () => {
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
                 accessManager.target, // accessManager
-                false, // polJuniorMode
-                ethers.ZeroAddress, // polPayoutAddress
             ],
             {
                 kind: "uups",
@@ -111,14 +109,12 @@ describe("Tranche", () => {
         )) as unknown as Tranche;
 
         // ROLES & AccessManager wiring
-
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
         // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
         const depositSelector = mzusd.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector =
-            mzusd.interface.getFunction("requestWithdrawal").selector;
+        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
 
         await accessManager.setTargetFunctionRole(
             mzusd.target,
