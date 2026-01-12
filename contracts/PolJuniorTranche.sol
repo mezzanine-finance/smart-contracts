@@ -36,6 +36,12 @@ contract PolJuniorTranche is
         _disableInitializers();
     }
 
+    /// @notice Initializer
+    /// @param assetToken - underlying asset token (MZUSD)
+    /// @param name_ - tranche name
+    /// @param symbol_ - tranche symbol
+    /// @param accessManager - access manager address for role control
+    /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
         string memory name_,
@@ -94,6 +100,7 @@ contract PolJuniorTranche is
         emit PolPayout(yieldAmount);
     }
 
+    /// @notice Update polPayout address
     function setPolPayout(address payout) external restricted {
         if (payout == address(0)) revert ZeroAddress();
         polPayout = payout;

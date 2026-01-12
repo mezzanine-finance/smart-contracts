@@ -34,7 +34,7 @@ contract LossManager is
     uint256 public constant MZ_DECIMALS = 18;
     uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
 
-    IMZUSD public mzusd;
+    IMZUSD public mzusd; // protocol stablecoin contract
     address[] public trancheOrder; // order to burn from
     uint256 public maxLossPerTxUSDC; // 0 = no limit
 
@@ -59,6 +59,10 @@ contract LossManager is
         _disableInitializers();
     }
 
+    /// @param accessManager controls access to restricted functions
+    /// @param _mzusd protocol stablecoin contract
+    /// @param order tranche burn order
+    /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
     function initialize(
         address accessManager,
         address _mzusd,
@@ -92,16 +96,21 @@ contract LossManager is
         emit LossApplied(usdcLoss, _toMZ(usdcLoss), _copyOrder(orderLen), cuts);
     }
 
+    //SETTERS
+
+    // @notice sets tranche burn order
     function setTrancheOrder(address[] memory order) external restricted {
         _setTrancheOrder(order);
     }
 
+    // @notice sets tranche group id for paired loss sharing
     function setTrancheGroup(address tranche, uint256 groupId) external restricted {
         if (tranche == address(0)) revert ZeroAddress();
         trancheGroup[tranche] = groupId;
         emit TrancheGroupUpdated(tranche, groupId);
     }
 
+    // @notice sets max loss per tx in USDC 6d (0 = no limit)
     function setMaxLossPerTxUSDC(uint256 maxLossValue) external restricted {
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
@@ -115,9 +124,13 @@ contract LossManager is
         _unpause();
     }
 
+    //GETTERS
+
     function trancheOrderLength() external view returns (uint256) {
         return trancheOrder.length;
     }
+
+    //INTERNAL HELPERS
 
     function _setTrancheOrder(address[] memory order) internal {
         if (order.length == 0) revert ZeroLength();
@@ -133,6 +146,7 @@ contract LossManager is
         return usdcAmount * SCALE;
     }
 
+    // @notice burns up to remainingMZ from tranches in order, returns any leftover amount
     function _applyLossAcrossOrder(
         uint256 remainingMZ,
         uint256[] memory cuts
@@ -149,6 +163,7 @@ contract LossManager is
         return remainingMZ;
     }
 
+    // @notice applies loss step at index i, returns next index and amount burned
     function _applyLossStep(
         uint256 i,
         uint256 remainingMZ,
@@ -162,6 +177,7 @@ contract LossManager is
         return _burnPair(i, remainingMZ, cuts, t0, t1);
     }
 
+    // @notice checks if trancheOrder[i] and trancheOrder[i+1] form a pair, returns info
     function _pairAt(
         uint256 i
     ) internal view returns (bool isPair, address t0, address t1, uint256 gid) {
@@ -177,10 +193,12 @@ contract LossManager is
         return (true, t0, t1, gid);
     }
 
+    // @notice gets totalAssets (TVL) of a tranche
     function _tvl(address tranche) internal view returns (uint256) {
         return ITranche(tranche).totalAssets();
     }
 
+    // @notice burns from a single tranche at index i, returns next index and amount burned
     function _burnSequential(
         uint256 i,
         uint256 remainingMZ,
@@ -196,6 +214,7 @@ contract LossManager is
         return (i + 1, toBurn0);
     }
 
+    // @notice burns from a pair of tranches at index i and i+1, returns next index and amount burned
     function _burnPair(
         uint256 i,
         uint256 remainingMZ,
@@ -217,7 +236,7 @@ contract LossManager is
         uint256 burn1 = tvl1 == 0 ? 0 : (lossForPair * tvl1) / pairTVL;
         if (burn1 > tvl1) burn1 = tvl1;
 
-        // Allocate rounding remainder: prefer first tranche then second
+        // Allocate rounding remainder - prefer first tranche then second
         uint256 rem = lossForPair - (burn0 + burn1);
         if (rem != 0) {
             uint256 cap0 = tvl0 - burn0;
@@ -227,6 +246,7 @@ contract LossManager is
                 rem -= add0;
             }
         }
+        // Allocate any remaining remainder to second tranche
         if (rem != 0) {
             uint256 cap1 = tvl1 - burn1;
             if (cap1 != 0) {
@@ -248,6 +268,7 @@ contract LossManager is
         return (i + 2, lossForPair);
     }
 
+    // @notice creates a copy of the current tranche order for event emission
     function _copyOrder(uint256 orderLen) internal view returns (address[] memory orderCopy) {
         orderCopy = new address[](orderLen);
         for (uint256 j = 0; j < orderLen; j++) {

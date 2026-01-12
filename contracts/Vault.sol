@@ -12,15 +12,14 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 interface IMZUSD {
     function mint(address to, uint256 amount) external;
 }
-
-interface IReservoir {
-    function deposit(uint256 amount) external;
-    function withdraw(uint256 amount, address to) external;
-}
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
     function totalAssets() external view returns (uint256);
     function notifyYield(uint256 amount) external;
+}
+interface IReservoir {
+    function deposit(uint256 amount) external;
+    function withdraw(uint256 amount, address to) external;
 }
 
 contract Vault is
@@ -30,6 +29,7 @@ contract Vault is
     UUPSUpgradeable,
     AccessManagedUpgradeable
 {
+    /// @notice Info for each registered tranche
     struct TrancheInfo {
         address tranche;
         uint16 weightBps;
@@ -44,31 +44,32 @@ contract Vault is
     uint256 public constant MAX_TRANCHES = 50;
 
     TrancheInfo[] public tranches;
+    // check if address is registered tranche
     mapping(address => bool) public isTranche;
 
-    IERC20 public immutable usdc;
-    IMZUSD public mzusd;
-    IReservoir public reservoir;
+    IERC20 public immutable usdc; // address of USDC token
+    IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
+    IReservoir public reservoir; // address of reservoir contract for idle USDC
 
-    address public insurance;
-    address public performanceFeeReceiver;
-    address public protocolFeeReceiver;
+    address public insurance; // address of insurance contract for tranche yield insurance allocation
+    address public performanceFeeReceiver; // receiver of performance/curators fees
+    address public protocolFeeReceiver; // receiver of protocols fees
 
-    uint256 public idleBufferUSDC;
-    uint256 public currentEpochId;
+    uint256 public idleBufferUSDC; // target idle USDC buffer in vault
+    uint256 public currentEpochId; // current epoch ID for yield distribution
 
     // precomputed buffer bounds
-    uint256 public bufferLowUSDC;
-    uint256 public bufferHighUSDC;
+    uint256 public bufferLowUSDC; // lower bound for idle USDC before pulling from reservoir
+    uint256 public bufferHighUSDC; // upper bound for idle USDC before sending to reservoir
 
     // epochs
-    uint64 public epochStart;
-    uint64 public epochDuration;
+    uint64 public epochStart; // start timestamp of current epoch
+    uint64 public epochDuration; // duration of each epoch in seconds
 
-    uint16 public hysteresisBps;
-    uint16 public insuranceBps;
-    uint16 public performanceFeeBps;
-    uint16 public protocolFeeBps;
+    uint16 public hysteresisBps; // hysteresis band around idle buffer target
+    uint16 public insuranceBps; // portion of yield allocated to insurance (bps of total yield)
+    uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
+    uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
 
     event FeesUpdated(
         uint256 performanceBps,
@@ -111,6 +112,10 @@ contract Vault is
         _disableInitializers();
     }
 
+    /// @notice Initializer
+    /// @param _mzusd - address of MZUSD token
+    /// @param _reservoir - address of reservoir contract
+    /// @param accessManager - access manager address for role control
     function initialize(
         address _mzusd,
         address _reservoir,
@@ -139,6 +144,10 @@ contract Vault is
         _updateBufferBounds();
     }
 
+    /// @dev withdraw USDC from vault to specified address
+    /// @param to - address to receive withdrawn USDC
+    /// @param amount - amount of USDC to withdraw
+    /// @dev used for MZUSD redemptions
     function withdraw(address to, uint256 amount) external nonReentrant whenNotPaused restricted {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
@@ -173,6 +182,13 @@ contract Vault is
         emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
     }
 
+    /// @dev distribute yield reported in USDC to tranches
+    /// @param usdcReported - amount of USDC yield to distribute
+    /// @dev mints MZUSD at 1:1 with USDC reported
+    /// @dev called once per epoch after yield is reported
+    /// @dev fees are minted in MZUSD and sent to fee receivers
+    /// @dev yield is allocated to tranches based on their weights and TVL
+    /// @dev portion of yield can be allocated to insurance if configured
     function distributeYield(uint256 usdcReported) external nonReentrant whenNotPaused restricted {
         if (usdcReported == 0) revert ZeroAmount();
         if (tranches.length == 0) revert NoTranchesAdded();
@@ -195,6 +211,8 @@ contract Vault is
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
     }
 
+    //SETTERS
+    /// @notice Update reservoir address
     function setReservoir(address _reservoir) external restricted {
         if (_reservoir == address(0)) revert ZeroAddress();
         if (address(reservoir) == _reservoir) revert SameValue();
@@ -202,6 +220,7 @@ contract Vault is
         emit ReservoirUpdated(_reservoir);
     }
 
+    /// @notice Update MZUSD address
     function setMZUSD(address _mzusd) external restricted {
         if (_mzusd == address(0)) revert ZeroAddress();
         if (address(mzusd) == _mzusd) revert SameValue();
@@ -209,6 +228,8 @@ contract Vault is
         emit MZUSDChanged(_mzusd);
     }
 
+    /// @notice Update fees configuration
+    /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed BPS
     function setFees(
         uint256 _performanceFeeBps,
         address _performanceFeeReceiver,
@@ -234,6 +255,7 @@ contract Vault is
         );
     }
 
+    /// @notice Register a new tranche
     function addTranche(TrancheInfo calldata info) external restricted {
         if (info.tranche == address(0)) revert ZeroAddress();
         if (isTranche[info.tranche]) revert TrancheExists();
@@ -245,6 +267,10 @@ contract Vault is
         emit TrancheRegistered(info.tranche, info.weightBps, info.enabled);
     }
 
+    /// @notice Update tranche info
+    /// @param idx - index of tranche in tranches array
+    /// @param weightBps - new weight in bps
+    /// @param enabled - whether tranche is enabled for yield allocation
     function updateTranche(uint256 idx, uint256 weightBps, bool enabled) external restricted {
         if (idx >= tranches.length) revert TrancheIndexOOB();
         if (weightBps > BPS) revert TooBigBps();
@@ -253,6 +279,9 @@ contract Vault is
         emit TrancheUpdated(idx, weightBps, enabled);
     }
 
+    /// @notice Update insurance address and bps
+    /// @param _insurance - new insurance address
+    /// @param bps - new insurance bps
     function setInsurance(address _insurance, uint256 bps) external restricted {
         if (_insurance == address(0)) revert ZeroAddress();
         if (_insurance == insurance) revert SameValue();
@@ -262,6 +291,9 @@ contract Vault is
         emit InsuranceUpdated(_insurance, bps);
     }
 
+    /// @notice Update idle USDC buffer and hysteresis band
+    /// @param target - target idle USDC buffer
+    /// @param bandBps - hysteresis band in bps
     function setBuffer(uint256 target, uint256 bandBps) external restricted {
         if (bandBps > BPS) revert TooBigBps();
         if (target == 0) revert ZeroAmount();
@@ -271,6 +303,9 @@ contract Vault is
         emit BufferUpdated(target, bandBps);
     }
 
+    /// @notice Update epoch duration
+    /// @param _epochDuration - new epoch duration in seconds
+    /// @param resetStart - whether to reset epoch start timestamp to now
     function setEpochConfig(uint256 _epochDuration, bool resetStart) external restricted {
         if (
             _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
@@ -294,6 +329,7 @@ contract Vault is
         _unpause();
     }
 
+    //GETTERS
     function tranchesLength() external view returns (uint256) {
         return tranches.length;
     }
@@ -306,6 +342,11 @@ contract Vault is
         return (bufferLowUSDC, bufferHighUSDC);
     }
 
+    /// @notice Get tranche info by index
+    /// @param idx - index of tranche in tranches array
+    /// @return tranche - tranche address
+    /// @return weightBps - tranche weight in bps
+    /// @return enabled - whether tranche is enabled for yield allocation
     function getTrancheInfo(
         uint256 idx
     ) external view returns (address tranche, uint256 weightBps, bool enabled) {
@@ -313,6 +354,7 @@ contract Vault is
         return (t.tranche, t.weightBps, t.enabled);
     }
 
+    /// @notice Get current fees configuration
     function getFeesConfig()
         external
         view
@@ -321,6 +363,9 @@ contract Vault is
         return (performanceFeeBps, performanceFeeReceiver, protocolFeeBps, protocolFeeReceiver);
     }
 
+    //INTERNAL HELPERS
+    /// @notice Advance epoch and validate that enough time has passed
+    /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         uint256 ts = block.timestamp;
         uint256 duration = epochDuration;
@@ -335,6 +380,11 @@ contract Vault is
         return epochId;
     }
 
+    /// @notice Mint fees in MZUSD based on minted gross amount
+    /// @param mintedGross - gross amount of MZUSD minted for yield distribution
+    /// @return mintedForAllocation - amount of MZUSD left for tranche allocation after fees
+    /// @return performanceFeeMZUSD - amount of MZUSD minted as performance fee
+    /// @return protocolFeeMZUSD - amount of MZUSD minted as protocol fee
     function _mintFees(
         uint256 mintedGross
     )
@@ -347,6 +397,11 @@ contract Vault is
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
 
+    /// @notice Handle fee minting
+    /// @param bps - fee in basis points
+    /// @param receiver - address to receive the fee
+    /// @param mintedGross - gross amount of MZUSD minted for yield distribution
+    /// @return feeAmount - amount of MZUSD minted as fee
     function _handleFee(
         uint16 bps,
         address receiver,
@@ -364,11 +419,15 @@ contract Vault is
         mzusd.mint(receiver, feeAmount);
     }
 
+    /// @notice Allocate yield to tranches based on weights and TVL
+    /// @param allocatableMZUSD - amount of MZUSD available for allocation to tranches
+    /// @return actuallyAllocated - amount of MZUSD actually allocated to tranches
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
         uint256 amountForTranches = allocatableMZUSD;
 
+        // handle insurance cut
         address insurance_ = insurance;
         uint16 insuranceBps_ = insuranceBps;
         IERC20 mzusdToken = IERC20(address(mzusd));
@@ -388,6 +447,7 @@ contract Vault is
 
         address firstEnabledTranche;
 
+        // calculate scores for each tranche and total score
         for (uint256 i = 0; i < trancheCount; i++) {
             TrancheInfo storage t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
@@ -406,6 +466,7 @@ contract Vault is
         if (totalWeightsBps == 0) revert WeightsZero();
         if (totalScore == 0) revert TVLZero();
 
+        // allocate yield based on scores
         uint256 allocated;
         for (uint256 i = 0; i < trancheCount; i++) {
             uint256 score = scores[i];
@@ -418,6 +479,7 @@ contract Vault is
             allocated += part;
         }
 
+        // handle any dust due to rounding
         if (amountForTranches > allocated) {
             address dustRecipient = insurance_ != address(0) ? insurance_ : firstEnabledTranche;
             if (dustRecipient == address(0)) {
@@ -429,6 +491,7 @@ contract Vault is
         return amountForTranches;
     }
 
+    /// @notice Update buffer bounds based on idle buffer and hysteresis
     function _updateBufferBounds() internal {
         uint256 buffer = idleBufferUSDC;
         uint16 bandBps = hysteresisBps;
@@ -440,6 +503,10 @@ contract Vault is
         bufferHighUSDC = high;
     }
 
+    /// @notice Approve token if current allowance is insufficient
+    /// @param token - the ERC20 token to approve
+    /// @param spender - the address which will spend the tokens
+    /// @param amount - the amount of tokens to approve
     function _approveIfNeeded(IERC20 token, address spender, uint256 amount) internal {
         uint256 currentAllowance = token.allowance(address(this), spender);
         if (currentAllowance < amount) {

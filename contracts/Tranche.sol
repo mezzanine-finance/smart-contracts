@@ -19,6 +19,7 @@ interface IVault {
 // solhint-disable-next-line max-line-length
 // @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
+/// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
 contract Tranche is
     Initializable,
     ERC4626Upgradeable,
@@ -44,8 +45,10 @@ contract Tranche is
     address public vault;
     uint256 public trancheId;
 
+    // unstake delay in epochs for umbrella withdrawals
     uint256 public unstakeDelayEpochs;
 
+    // deposit limits
     bool public depositLimitEnabled;
     uint256 public maxDepositCap;
     uint256 public maxDepositTvlBps;
@@ -108,11 +111,20 @@ contract Tranche is
     error DirectWithdrawModeDisabled();
     error EthTransferFailed(address to, uint256 attemptedAmount);
 
+    /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
     constructor(bool _directWithdrawEnabled) {
         directWithdrawEnabled = _directWithdrawEnabled;
         _disableInitializers();
     }
 
+    /// @notice Initializer
+    /// @param assetToken - underlying asset token (MZUSD)
+    /// @param vaultAddress - address of the Vault
+    /// @param trancheIdentifier - tranche identifier within the vault
+    /// @param initialUnstakeDelayEpochs - initial unstake delay in epochs
+    /// @param name_ - tranche name
+    /// @param symbol_ - tranche symbol
+    /// @param accessManager - access manager address for role control
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -151,6 +163,12 @@ contract Tranche is
     }
 
     // CORE USER FUNCTIONS
+
+    /// @notice Deposit assets into the tranche, respecting deposit limits.
+    /// @dev Overrides ERC4626 deposit to enforce deposit limits.
+    /// @param assets The amount of the underlying asset to deposit.
+    /// @param receiver The address receiving the tranche shares.
+    /// @return shares The amount of tranche shares minted to the receiver.
     function deposit(
         uint256 assets,
         address receiver
@@ -160,6 +178,10 @@ contract Tranche is
         shares = super.deposit(assets, receiver);
     }
 
+    /// @notice Request an unstake by locking shares under the umbrella for N epochs.
+    /// @dev Shares are transferred from user to tranche contract and kept there until
+    ///      the epoch is finalized by admin. After finalization, user can claim their assets
+    /// @param shares - amount of tranche shares to unstake
     function requestWithdrawal(
         uint256 shares
     ) external nonReentrant whenNotPaused whenDirectDisabled restricted {
@@ -209,6 +231,8 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
+    /// @notice Claim assets for finalized epoch after admin has finalized it.
+    /// @param epochId The epoch for which to claim assets.
     function claim(
         uint256 epochId
     ) external nonReentrant whenNotPaused whenDirectDisabled restricted {
@@ -229,8 +253,9 @@ contract Tranche is
         emit WithdrawalClaimed(_msgSender(), epochId, userAssets);
     }
 
-    // CORE ADMIN FUNCTIONS
-
+    /// @notice Finalize an epoch after it has passed on the vault.
+    /// @dev Burns umbrella shares for the epoch and records finalized data for user claims.
+    /// @param epochId The epoch to finalize.
     function finalizeEpoch(
         uint256 epochId
     ) external nonReentrant whenNotPaused restricted whenDirectDisabled {
@@ -257,6 +282,8 @@ contract Tranche is
         emit EpochFinalized(epochId, sharesToFinalize, assetsToCredit);
     }
 
+    // ERC4626 exit points (role-controlled via AccessManager)
+    // @dev For direct withdraw mode this is enabled as normal
     function withdraw(
         uint256 assets,
         address receiver,
@@ -273,6 +300,7 @@ contract Tranche is
         return super.withdraw(assets, receiver, owner);
     }
 
+    // @dev For direct withdraw mode this is enabled as normal
     function redeem(
         uint256 shares,
         address receiver,
@@ -290,7 +318,6 @@ contract Tranche is
     }
 
     // Linear yield streaming
-
     /// @notice Registers yieldAmount of MZUSD as yield to be streamed linearly over next epoch.
     /// @dev Assumes yieldAmount tokens are already transferred to this contract (from Vault).
     ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
@@ -315,7 +342,7 @@ contract Tranche is
         emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
     }
 
-    // Admin config
+    // SETTERS
     function pause() external restricted {
         _pause();
     }
@@ -324,11 +351,13 @@ contract Tranche is
         _unpause();
     }
 
+    /// @notice Update unstake delay in epochs
     function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
         unstakeDelayEpochs = epochsDelay;
         emit UnstakeDelayUpdated(epochsDelay);
     }
 
+    /// @notice Update deposit limits
     function setDepositLimits(bool enabled, uint256 cap, uint256 tvlBps) external restricted {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
         depositLimitEnabled = enabled;
@@ -337,8 +366,8 @@ contract Tranche is
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
+    // GETTERS
     // ERC4626 overrides (NAV with linear yield)
-
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
     function totalAssets() public view override returns (uint256) {
@@ -353,11 +382,19 @@ contract Tranche is
         return balance - unaccrued;
     }
 
-    /// @notice Convenience view: price per share using virtual NAV.
+    /// @notice Convenience view - price per share using virtual NAV
     function pricePerShare() external view returns (uint256) {
         return convertToAssets(10 ** decimals());
     }
 
+    /// @notice Get user's pending shares and claimable assets for a given epoch.
+    /// @param user - user address
+    /// @param epochId - epoch to query
+    /// @return pendingShares - shares user has pending under umbrella for that epoch
+    /// @return isFinalized - whether the epoch has been finalized by admin
+    /// @return totalShares - total shares under umbrella for that epoch
+    /// @return totalAssets_ - total assets credited to that epoch upon finalization
+    /// @return claimableAssets - assets user can claim for that epoch (0 if not finalized)
     function getUserEpochInfo(
         address user,
         uint256 epochId
@@ -383,6 +420,12 @@ contract Tranche is
         }
     }
 
+    /// @notice Get global epoch info for umbrella unstake.
+    /// @param epochId - epoch to query
+    /// @return umbrellaShares - total shares under umbrella for that epoch
+    /// @return isFinalized - whether the epoch has been finalized by admin
+    /// @return totalShares - total shares burned upon finalization
+    /// @return totalAssets_ - total assets credited to that epoch upon finalization
     function getEpochInfo(
         uint256 epochId
     )
@@ -402,6 +445,7 @@ contract Tranche is
         totalAssets_ = e.totalAssets;
     }
 
+    // INTERNAL HELPERS
     /// @notice Returns how much of current yield is still not accrued into NAV.
     /// @dev This is what we subtract from raw balance in totalAssets().
     function _unaccruedYield() internal view returns (uint256) {
