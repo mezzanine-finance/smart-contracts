@@ -63,12 +63,19 @@ contract PolJuniorTranche is
     }
 
     /// ERC4626 entry points (role-controlled via AccessManager)
-    /// @dev AccessManager should set this to PUBLIC_ROLE
+    /// @dev AccessManager should set these to PUBLIC_ROLE
     function deposit(
         uint256 assets,
         address receiver
     ) public override nonReentrant whenNotPaused restricted returns (uint256) {
         return super.deposit(assets, receiver);
+    }
+
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+        return super.mint(shares, receiver);
     }
 
     // ERC4626 exit points (role-controlled via AccessManager)
