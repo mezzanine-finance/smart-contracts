@@ -12,7 +12,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typech
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
 const MZUSD_USER_ROLE = 2n;
 
@@ -43,10 +43,10 @@ describe("MZUSD <-> USDC conversion", () => {
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
     let nettingHelper: any;
+    let whale: any;
 
-    // --- Helper functions for Alice funding and deposit ---
+    // Helper functions for Alice funding and deposit
     async function fundAliceWithUSDC(amountUSDC: bigint) {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(alice.address, amountUSDC);
         return whale;
     }
@@ -66,6 +66,7 @@ describe("MZUSD <-> USDC conversion", () => {
         [deployer, alice, bob, charlie, dave] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -184,9 +185,6 @@ describe("MZUSD <-> USDC conversion", () => {
     it("Should deposit USDC and receive MZUSD", async () => {
         const expectedMZAmount = to18(133n);
         const depositAmountUSDC = to6(133n);
-
-        // Fund Alice via the whale
-        const whale = await imp(USDC_WHALE);
 
         const whaleUSDCBefore = await usdc.balanceOf(USDC_WHALE);
         expect(whaleUSDCBefore).to.be.gt(depositAmountUSDC, "Not enough USDC balance in the whale");
@@ -328,8 +326,6 @@ describe("MZUSD <-> USDC conversion", () => {
         // Hourly cap: 500 USDC
         const capUSDC = to6(500n);
         await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
-
-        const whale = await imp(USDC_WHALE);
 
         // Fund Alice, Bob and helper with USDC
         const aliceUSDC = to6(400n);

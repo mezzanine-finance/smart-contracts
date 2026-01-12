@@ -1,6 +1,12 @@
 [
     {
-        "inputs": [],
+        "inputs": [
+            {
+                "internalType": "bool",
+                "name": "_directWithdrawEnabled",
+                "type": "bool"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "constructor"
     },
@@ -76,7 +82,12 @@
     },
     {
         "inputs": [],
-        "name": "DirectWithdrawDisabled",
+        "name": "DirectWithdrawModeDisabled",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "DirectWithdrawModeEnabled",
         "type": "error"
     },
     {
@@ -271,6 +282,22 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "attemptedAmount",
+                "type": "uint256"
+            }
+        ],
+        "name": "EthTransferFailed",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "FailedCall",
         "type": "error"
@@ -288,11 +315,6 @@
     {
         "inputs": [],
         "name": "InvalidInitialization",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "InvalidMode",
         "type": "error"
     },
     {
@@ -380,11 +402,6 @@
     {
         "inputs": [],
         "name": "ZeroPassedShares",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroPolPayoutAddressWhileModeIsOn",
         "type": "error"
     },
     {
@@ -522,38 +539,6 @@
             }
         ],
         "name": "Initialized",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            },
-            {
-                "indexed": false,
-                "internalType": "address",
-                "name": "payout",
-                "type": "address"
-            }
-        ],
-        "name": "PolJuniorUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "PolPayout",
         "type": "event"
     },
     {
@@ -995,6 +980,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "directWithdrawEnabled",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
@@ -1150,16 +1148,6 @@
                 "internalType": "address",
                 "name": "accessManager",
                 "type": "address"
-            },
-            {
-                "internalType": "bool",
-                "name": "polJuniorMode",
-                "type": "bool"
-            },
-            {
-                "internalType": "address",
-                "name": "polPayoutAddress",
-                "type": "address"
             }
         ],
         "name": "initialize",
@@ -1175,19 +1163,6 @@
                 "internalType": "bytes4",
                 "name": "",
                 "type": "bytes4"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "isPolJunior",
-        "outputs": [
-            {
-                "internalType": "bool",
-                "name": "",
-                "type": "bool"
             }
         ],
         "stateMutability": "view",
@@ -1312,7 +1287,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1343,19 +1318,6 @@
         "name": "notifyYield",
         "outputs": [],
         "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "polPayout",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
         "type": "function"
     },
     {
@@ -1464,17 +1426,17 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "receiver",
                 "type": "address"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "owner",
                 "type": "address"
             }
         ],
@@ -1482,7 +1444,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],
@@ -1498,6 +1460,24 @@
             }
         ],
         "name": "requestWithdrawal",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "rescueETH",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1541,32 +1521,12 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "payout",
-                "type": "address"
-            }
-        ],
-        "name": "setPolPayout",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "uint256",
                 "name": "epochsDelay",
                 "type": "uint256"
             }
         ],
         "name": "setUnstakeDelayEpochs",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "sweepPol",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1767,17 +1727,17 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "receiver",
                 "type": "address"
             },
             {
                 "internalType": "address",
-                "name": "",
+                "name": "owner",
                 "type": "address"
             }
         ],
@@ -1785,7 +1745,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             }
         ],

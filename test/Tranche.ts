@@ -13,7 +13,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const VAULT_ROLE = 2n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
@@ -40,11 +40,13 @@ describe("Tranche", () => {
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
     let tranche: Tranche;
+    let whale: any;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -100,18 +102,16 @@ describe("Tranche", () => {
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
                 accessManager.target, // accessManager
-                false, // polJuniorMode
-                ethers.ZeroAddress, // polPayoutAddress
             ],
             {
                 kind: "uups",
                 initializer: "initialize",
-                unsafeAllow: ["constructor"],
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false], //direct withdraw disabled
             }
         )) as unknown as Tranche;
 
         // ROLES & AccessManager wiring
-
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
@@ -208,8 +208,6 @@ describe("Tranche", () => {
 
     // small helper to mint MZUSD via real deposit
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        const whale = await imp(USDC_WHALE);
-
         // give user some USDC
         await usdc.connect(whale).transfer(user.address, usdcAmount6);
 

@@ -12,7 +12,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 // Role for Vault to call Reservoir.deposit/withdraw
 const VAULT_ROLE = 2n;
@@ -38,11 +38,13 @@ describe("Vault <-> Reservoir", () => {
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
     let vault: Vault;
+    let whale: any;
 
     before(async () => {
         [deployer, alice] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -120,7 +122,6 @@ describe("Vault <-> Reservoir", () => {
     });
 
     async function whaleTransfer(to: string, amount6: bigint) {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(to, amount6);
     }
 

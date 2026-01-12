@@ -183,7 +183,6 @@ library EmergencyPolicyV1 {
         uint256 idx;
 
         rules[idx++] = RuleDef(TRANCHE_DEPOSIT, RoleKind.Public, MASK_L0);
-        rules[idx++] = RuleDef(TRANCHE_MINT, RoleKind.Public, MASK_L0);
         rules[idx++] = RuleDef(TRANCHE_REQUEST_WITHDRAWAL, RoleKind.Public, MASK_L0_L1);
         rules[idx++] = RuleDef(TRANCHE_CANCEL_UNSTAKE, RoleKind.Public, MASK_L0_L1);
         rules[idx++] = RuleDef(TRANCHE_CLAIM, RoleKind.Public, MASK_L0_L1);

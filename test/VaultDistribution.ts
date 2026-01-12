@@ -13,7 +13,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 // Role for Vault to call MZUSD.mint + Tranche.notifyYield
 const VAULT_ROLE = 2n;
@@ -46,12 +46,15 @@ describe("Vault Yield Distribution", () => {
     let mezzanine: Tranche;
     let senior: Tranche;
 
+    let whale: any;
+
     const DAY = 24 * 60 * 60;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
@@ -99,50 +102,35 @@ describe("Vault Yield Distribution", () => {
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Junior Tranche",
-                "JLT",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [mzusd.target, vault.target, 1, 0, "Junior Tranche", "JLT", accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                2,
-                0,
-                "Mezzanine Tranche",
-                "MLT",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [mzusd.target, vault.target, 2, 0, "Mezzanine Tranche", "MLT", accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                3,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [mzusd.target, vault.target, 3, 0, "Senior Tranche", "sMZUSD", accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         // Roles
@@ -159,6 +147,28 @@ describe("Vault Yield Distribution", () => {
         await accessManager.setTargetFunctionRole(
             mzusd.target,
             [approveSel, transferSel, transferFromSel],
+            PUBLIC_ROLE
+        );
+
+        // public: Tranche user-facing functions
+        const tDepSel = junior.interface.getFunction("deposit").selector;
+        const tReqSel = junior.interface.getFunction("requestWithdrawal").selector;
+        const tCancelSel = junior.interface.getFunction("cancelUnstake").selector;
+        const tClaimSel = junior.interface.getFunction("claim").selector;
+
+        await accessManager.setTargetFunctionRole(
+            junior.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanine.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            senior.target,
+            [tDepSel, tReqSel, tCancelSel, tClaimSel],
             PUBLIC_ROLE
         );
 
@@ -183,6 +193,27 @@ describe("Vault Yield Distribution", () => {
                 setInsuranceSel,
                 setEpochConfigSel,
             ],
+            ADMIN_ROLE
+        );
+
+        // admin: Tranche config/finalize functions (for tests/helpers)
+        const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
+        const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
+        const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
+
+        await accessManager.setTargetFunctionRole(
+            junior.target,
+            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mezzanine.target,
+            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            senior.target,
+            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
 
@@ -238,7 +269,6 @@ describe("Vault Yield Distribution", () => {
     });
 
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        const whale = await imp(USDC_WHALE);
         await usdc.connect(whale).transfer(user.address, usdcAmount6);
         await usdc.connect(user).approve(mzusd.target, usdcAmount6);
         await (await mzusd.connect(user).deposit(usdcAmount6)).wait();

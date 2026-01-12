@@ -85,18 +85,13 @@ describe("EmergencyLevelManager", () => {
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                false,
-                ethers.ZeroAddress,
-            ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [mzusd.target, vault.target, 1, 0, "Senior Tranche", "sMZUSD", accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false],
+            }
         )) as unknown as Tranche;
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);

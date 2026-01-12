@@ -70,6 +70,22 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "attemptedAmount",
+                "type": "uint256"
+            }
+        ],
+        "name": "EthTransferFailed",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "FailedCall",
         "type": "error"
@@ -204,6 +220,25 @@
             }
         ],
         "name": "MaxLossPerTxUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "groupId",
+                "type": "uint256"
+            }
+        ],
+        "name": "TrancheGroupUpdated",
         "type": "event"
     },
     {
@@ -394,6 +429,24 @@
         "inputs": [
             {
                 "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "rescueETH",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
                 "name": "newAuthority",
                 "type": "address"
             }
@@ -419,6 +472,24 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "groupId",
+                "type": "uint256"
+            }
+        ],
+        "name": "setTrancheGroup",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address[]",
                 "name": "order",
                 "type": "address[]"
@@ -427,6 +498,25 @@
         "name": "setTrancheOrder",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "trancheGroup",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

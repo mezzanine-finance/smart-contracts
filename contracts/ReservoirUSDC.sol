@@ -37,6 +37,7 @@ contract ReservoirUSDC is
 
     error ZeroAmount();
     error ZeroAddress();
+    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -55,14 +56,14 @@ contract ReservoirUSDC is
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(uint256 amount) external restricted nonReentrant {
+    function deposit(uint256 amount) external nonReentrant restricted {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(_msgSender(), address(this), amount);
         emit Deposited(_msgSender(), amount);
     }
 
     /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.
-    function withdraw(uint256 amount, address to) external restricted nonReentrant {
+    function withdraw(uint256 amount, address to) external nonReentrant restricted {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 
@@ -74,6 +75,26 @@ contract ReservoirUSDC is
     /// @notice helper to see how much USDC is on balance
     function totalAssets() external view returns (uint256) {
         return usdc.balanceOf(address(this));
+    }
+
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
