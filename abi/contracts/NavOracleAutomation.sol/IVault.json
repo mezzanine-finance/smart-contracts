@@ -1,0 +1,15 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "usdcReported",
+                "type": "uint256"
+            }
+        ],
+        "name": "distributeYield",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
