@@ -653,6 +653,19 @@
     },
     {
         "inputs": [],
+        "name": "advanceEpoch",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "newEpochId",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "authority",
         "outputs": [
             {

@@ -12,13 +12,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 // aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
-
     function burn(address from, uint256 amount) external;
 }
-
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
     function totalAssets() external view returns (uint256);
+}
+// aderyn-fp-next-line(reused-contract-name)
+interface IVaultEpoch {
+    function advanceEpoch() external returns (uint256);
 }
 
 /// @title LossManager
@@ -37,6 +39,7 @@ contract LossManager is
     IMZUSD public mzusd; // protocol stablecoin contract
     address[] public trancheOrder; // order to burn from
     uint256 public maxLossPerTxUSDC; // 0 = no limit
+    address public vault; // vault reference for mandatory epoch advancement
 
     /// @notice Optional group id for proportional loss sharing across a PAIR of tranches.
     /// @dev If trancheOrder[i] and trancheOrder[i+1] are contiguous and share the same non-zero group id,
@@ -53,6 +56,7 @@ contract LossManager is
     error ZeroLength();
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
+    event VaultUpdated(address indexed vault);
     error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor() {
@@ -86,6 +90,13 @@ contract LossManager is
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
+        // Advance the epoch as part of loss materialization so epoch-based withdrawal flows
+        // do not get stuck in periods where yield is zero but losses are applied.
+        address v = vault;
+        if (v == address(0)) revert ZeroAddress();
+        // Hard-fail if epoch cannot be advanced (e.g., too soon / missing permissions).
+        IVaultEpoch(v).advanceEpoch();
+
         uint256 remainingMZ = _toMZ(usdcLoss);
         uint256 orderLen = trancheOrder.length;
         uint256[] memory cuts = new uint256[](orderLen);
@@ -114,6 +125,13 @@ contract LossManager is
     function setMaxLossPerTxUSDC(uint256 maxLossValue) external restricted {
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
+    }
+
+    /// @notice Sets the Vault address used to advance epochs on loss application (mandatory for applyLoss).
+    function setVault(address _vault) external restricted {
+        if (_vault == address(0)) revert ZeroAddress();
+        vault = _vault;
+        emit VaultUpdated(_vault);
     }
 
     function pause() external restricted {

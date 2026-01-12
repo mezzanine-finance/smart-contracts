@@ -190,10 +190,18 @@ contract Vault is
     /// @dev yield is allocated to tranches based on their weights and TVL
     /// @dev portion of yield can be allocated to insurance if configured
     function distributeYield(uint256 usdcReported) external nonReentrant whenNotPaused restricted {
-        if (usdcReported == 0) revert ZeroAmount();
         if (tranches.length == 0) revert NoTranchesAdded();
 
+        // Always advance epoch on distribution call, even if yield is 0.
+        // This prevents epoch-based withdrawal flows from getting stuck.
         uint256 newEpochId = _advanceEpochAndValidate();
+
+        if (usdcReported == 0) {
+            emit FeesPaid(0, 0, newEpochId);
+            emit YieldDistributed(0, 0, newEpochId);
+            return;
+        }
+
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(mintedGross);
@@ -319,6 +327,18 @@ contract Vault is
             emit EpochAdvanced(currentEpochId, ts);
         }
         emit EpochDurationSet(_epochDuration);
+    }
+
+    /// @notice Advances the epoch if enough time has passed.
+    /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
+    function advanceEpoch()
+        external
+        nonReentrant
+        whenNotPaused
+        restricted
+        returns (uint256 newEpochId)
+    {
+        return _advanceEpochAndValidate();
     }
 
     function pause() external restricted {
