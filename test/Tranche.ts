@@ -147,13 +147,14 @@ describe("Tranche", () => {
         // 2) Admin-only functions on MZUSD & Vault
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
+        const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
 
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [distributeYieldSelector, addTrancheSelector],
+            [distributeYieldSelector, advanceEpochSelector, addTrancheSelector],
             ADMIN_ROLE
         );
 
@@ -519,7 +520,7 @@ describe("Tranche", () => {
 
         expect(balanceAtFinalize).to.be.gte(streamAmount);
         // getting weird @typescript-eslint/restrict-plus-operands error, but it's obviously false positive
-         
+
         const expectedTotalAssetsFinal = balanceAtFinalize - streamAmount + accrued;
 
         // In theory this should match exactly, but depending on the exact ERC4626 conversion math
@@ -1319,7 +1320,7 @@ describe("Tranche", () => {
 
         const accrued = dur === 0n ? 0n : (streamAmount * elapsed) / dur;
         // getting weird @typescript-eslint/restrict-plus-operands error, but it's obviously false positive
-         
+
         const navAtFinalize = balanceAtFinalize - streamAmount + accrued;
 
         // ERC4626 convertToAssets(shares) uses shares * totalAssets / totalSupply (floor)

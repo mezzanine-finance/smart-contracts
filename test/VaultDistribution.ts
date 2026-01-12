@@ -170,6 +170,7 @@ describe("Vault Yield Distribution", () => {
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
+        const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setFeesSel = vault.interface.getFunction("setFees").selector;
@@ -179,6 +180,7 @@ describe("Vault Yield Distribution", () => {
             vault.target,
             [
                 distributeSel,
+                advanceEpochSel,
                 addTrancheSel,
                 updateTrancheSel,
                 setFeesSel,
@@ -759,5 +761,15 @@ describe("Vault Yield Distribution", () => {
         await expect(
             vault.connect(deployer).setEpochConfig(MAX + 1, false)
         ).to.be.revertedWithCustomError(vault, "InvalidEpochDuration");
+    });
+
+    it("Distribution works with Yield = 0 ", async () => {
+        const before = await vault.currentEpochId();
+
+        await time.increase(DAY);
+        await expect(vault.connect(deployer).distributeYield(0)).to.not.be.reverted;
+
+        const after = await vault.currentEpochId();
+        expect(after).to.equal(before + 1n);
     });
 });
