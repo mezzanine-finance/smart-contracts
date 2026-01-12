@@ -81,26 +81,6 @@ async function main() {
         deployedAt: new Date().toISOString(),
     });
 
-    console.log("\nConfiguring AccessManager roles for MZUSD (PUBLIC_ROLE)...");
-    const accessManager = await ethers.getContractAt(
-        "AccessManager",
-        accessManagerAddress,
-        deployer
-    );
-    const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
-
-    const depositSelector = MZUSDFactory.interface.getFunction("deposit")!.selector;
-    const requestWithdrawalSelector =
-        MZUSDFactory.interface.getFunction("requestWithdrawal")!.selector;
-
-    const txSetPublicRole = await accessManager.setTargetFunctionRole(
-        proxyAddress,
-        [depositSelector, requestWithdrawalSelector],
-        PUBLIC_ROLE
-    );
-    await txSetPublicRole.wait();
-    console.log("setTargetFunctionRole for deposit/requestWithdrawal -> PUBLIC_ROLE done");
-
     // Verify implementation (proxy verification is optional)
     await verifyContract(implAddress, [usdcAddress]);
 

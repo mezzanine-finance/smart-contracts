@@ -7,8 +7,6 @@ import {
 } from "./utils/deployments";
 import {DEPLOY_INFO} from "./deployInfo";
 
-const VAULT_WITHDRAW_ROLE = 1n;
-
 async function verifyContract(address: string, constructorArguments: any[] = []) {
     if (network.name === "hardhat") {
         console.log("Skipping verification on hardhat network");
@@ -102,32 +100,6 @@ async function main() {
     const txSetVault = await mzusd.setVault(vaultAddress);
     await txSetVault.wait();
     console.log("MZUSD.vault =", vaultAddress);
-
-    // AccessManager rights: Vault.withdraw -> VAULT_WITHDRAW_ROLE -> MZUSD
-    console.log("\nConfiguring AccessManager roles...");
-    const accessManager = await ethers.getContractAt(
-        "AccessManager",
-        accessManagerAddress,
-        deployer
-    );
-
-    const withdrawSelector = VaultFactory.interface.getFunction("withdraw")!.selector;
-
-    const txTargetRole = await accessManager.setTargetFunctionRole(
-        vaultAddress,
-        [withdrawSelector],
-        VAULT_WITHDRAW_ROLE
-    );
-    await txTargetRole.wait();
-    console.log("setTargetFunctionRole for Vault.withdraw done");
-
-    const txGrantRole = await accessManager.grantRole(
-        VAULT_WITHDRAW_ROLE,
-        mzusdAddress,
-        0 // executionDelay
-    );
-    await txGrantRole.wait();
-    console.log("grantRole(VAULT_WITHDRAW_ROLE, MZUSD) done");
 
     // Verify implementation
     await verifyContract(vaultImpl, [usdcAddress]);

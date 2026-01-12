@@ -9,6 +9,15 @@ export interface DeployInfo {
     // for example 1_000_000 = 1_000_000 USDC, 0 = cap disabled
     mzusdHourlyCap: string;
 
+    // emergency level roles (optional, defaults to accessManagerAdmin)
+    emergencyEscalate?: string;
+    emergencyRelax?: string;
+
+    // emergency delays in seconds (optional, defaults to 48h for relax/upgrade/admin)
+    relaxDelaySeconds?: number;
+    upgradeDelaySeconds?: number;
+    adminDelaySeconds?: number;
+
     tranche?: {
         id: number;
         unstakeDelayEpochs: number;
@@ -59,6 +68,11 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
         usdc: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
         accessManagerAdmin: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         mzusdHourlyCap: "1000000",
+        emergencyEscalate: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
+        emergencyRelax: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
+        relaxDelaySeconds: 2 * 24 * 60 * 60,
+        upgradeDelaySeconds: 2 * 24 * 60 * 60,
+        adminDelaySeconds: 2 * 24 * 60 * 60,
         tranche: {
             id: 1,
             unstakeDelayEpochs: 0,

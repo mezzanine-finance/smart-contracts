@@ -21,6 +21,12 @@ function main() {
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
     const trancheRecord = getLatestDeployment(deployments, netName, "Tranche");
+    const emergencyRecord = getLatestDeployment(deployments, netName, "EmergencyLevelManager");
+    const configuratorRecord = getLatestDeployment(
+        deployments,
+        netName,
+        "AccessManagerConfiguratorV1"
+    );
 
     const rpcConfig = network.config as {url?: string | string[]; chainId?: number};
     const rpcUrl =
@@ -45,11 +51,14 @@ function main() {
         formatAddress("ReservoirUSDC (proxy)", reservoirRecord?.address),
         formatAddress("Vault (proxy)", vaultRecord?.address),
         formatAddress("Tranche (proxy)", trancheRecord?.address),
+        formatAddress("EmergencyLevelManager (proxy)", emergencyRecord?.address),
+        formatAddress("AccessManagerConfiguratorV1", configuratorRecord?.address),
         "---",
         formatAddress("MZUSD implementation", mzusdRecord?.implementation),
         formatAddress("ReservoirUSDC implementation", reservoirRecord?.implementation),
         formatAddress("Vault implementation", vaultRecord?.implementation),
         formatAddress("Tranche implementation", trancheRecord?.implementation),
+        formatAddress("EmergencyLevelManager implementation", emergencyRecord?.implementation),
     ];
 
     console.log("\n" + summaryLines.join("\n") + "\n");
