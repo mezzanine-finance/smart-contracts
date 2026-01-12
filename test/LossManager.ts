@@ -245,19 +245,22 @@ describe("LossManager", () => {
         const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
         const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
 
+        await accessManager.setTargetFunctionRole(juniorAddr, [tFinalizeSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(mezzanineAddr, [tFinalizeSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(seniorAddr, [tFinalizeSel], PUBLIC_ROLE);
         await accessManager.setTargetFunctionRole(
             juniorAddr,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
             mezzanineAddr,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
             seniorAddr,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
 

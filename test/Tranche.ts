@@ -156,6 +156,7 @@ describe("Tranche", () => {
         const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
         const trancheWithdrawSelector = tranche.interface.getFunction("withdraw").selector;
         const trancheRedeemSelector = tranche.interface.getFunction("redeem").selector;
+        const trancheFinalizeSelector = tranche.interface.getFunction("finalizeEpoch").selector;
         const trancheApproveSelector = tranche.interface.getFunction("approve").selector;
         const trancheTransferSelector = tranche.interface.getFunction("transfer").selector;
         const trancheTransferFromSelector = tranche.interface.getFunction("transferFrom").selector;
@@ -170,6 +171,7 @@ describe("Tranche", () => {
                 trancheClaimSelector,
                 trancheWithdrawSelector,
                 trancheRedeemSelector,
+                trancheFinalizeSelector,
                 trancheApproveSelector,
                 trancheTransferSelector,
                 trancheTransferFromSelector,

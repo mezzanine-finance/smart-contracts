@@ -192,7 +192,7 @@ library EmergencyPolicyV1 {
         rules[idx++] = RuleDef(SELECTOR_TRANSFER, RoleKind.Public, MASK_L0_L1);
         rules[idx++] = RuleDef(SELECTOR_TRANSFER_FROM, RoleKind.Public, MASK_L0_L1);
 
-        rules[idx++] = RuleDef(TRANCHE_FINALIZE_EPOCH, RoleKind.ProtocolAdmin, MASK_L0_L1);
+        rules[idx++] = RuleDef(TRANCHE_FINALIZE_EPOCH, RoleKind.Public, MASK_L0_L1);
         rules[idx++] = RuleDef(TRANCHE_NOTIFY_YIELD, RoleKind.Vault, MASK_L0);
         rules[idx++] = RuleDef(TRANCHE_SET_UNSTAKE_DELAY, RoleKind.ProtocolAdmin, MASK_L0);
         rules[idx++] = RuleDef(TRANCHE_SET_DEPOSIT_LIMITS, RoleKind.ProtocolAdmin, MASK_L0);

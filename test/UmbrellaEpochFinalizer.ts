@@ -1,0 +1,350 @@
+import {expect} from "chai";
+import {ethers, upgrades, network} from "hardhat";
+import {parseUnits} from "ethers";
+import {
+    impersonateAccount,
+    setBalance,
+    takeSnapshot,
+    time,
+} from "@nomicfoundation/hardhat-network-helpers";
+import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
+
+import {
+    IERC20,
+    MZUSD,
+    ReservoirUSDC,
+    Tranche,
+    UmbrellaEpochFinalizer,
+    Vault,
+} from "../typechain-types";
+
+// Mainnet USDC constants
+const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
+const VAULT_ROLE = 2n;
+
+const DAY = 24 * 60 * 60;
+const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
+const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
+
+async function imp(addr: string) {
+    // Give the whale some ETH for gas
+    await setBalance(addr, to18(10));
+    await impersonateAccount(addr);
+    return ethers.getSigner(addr);
+}
+
+describe("UmbrellaEpochFinalizer", () => {
+    let snapshot: SnapshotRestorer;
+
+    let deployer: any;
+    let alice: any;
+    let bob: any;
+
+    let accessManager: any;
+    let usdc: IERC20;
+    let mzusd: MZUSD;
+    let reservoir: ReservoirUSDC;
+    let vault: Vault;
+    let tranche: Tranche;
+    let whale: any;
+
+    let ADMIN_ROLE: bigint;
+    let PUBLIC_ROLE: bigint;
+
+    before(async () => {
+        [deployer, alice, bob] = await ethers.getSigners();
+
+        usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        whale = await imp(USDC_WHALE);
+        upgrades.silenceWarnings();
+
+        await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
+
+        const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
+        accessManager = await AccessManagerFactory.deploy(deployer.address);
+        await accessManager.waitForDeployment();
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                0, // _hourlyLimitUSDC (0 = limit is off)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as MZUSD;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        })) as unknown as ReservoirUSDC;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [mzusd.target, reservoir.target, accessManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as Vault;
+
+        const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+        tranche = (await upgrades.deployProxy(
+            TrancheFactory,
+            [
+                mzusd.target, // assetToken (MZUSD as IERC20)
+                vault.target, // vaultAddress
+                1, // trancheIdentifier
+                0, // initialUnstakeDelayEpochs
+                "Senior Tranche", // name
+                "sMZUSD", // symbol
+                accessManager.target, // accessManager
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [false], // direct withdraw disabled
+            }
+        )) as unknown as Tranche;
+
+        ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
+
+        // MZUSD public user actions + token ops
+        const depositSelector = mzusd.interface.getFunction("deposit").selector;
+        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
+        const approveSelector = mzusd.interface.getFunction("approve").selector;
+        const transferSelector = mzusd.interface.getFunction("transfer").selector;
+        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
+
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [depositSelector, requestWithdrawalSelector],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [approveSelector, transferSelector, transferFromSelector],
+            PUBLIC_ROLE
+        );
+
+        // Admin-only functions on MZUSD & Vault
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
+        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
+        await accessManager.setTargetFunctionRole(
+            vault.target,
+            [distributeYieldSelector, addTrancheSelector],
+            ADMIN_ROLE
+        );
+
+        // Public user actions on Tranche (ERC4626 + token ops)
+        const trancheDepositSelector = tranche.interface.getFunction("deposit").selector;
+        const trancheMintSelector = tranche.interface.getFunction("mint").selector;
+        const trancheRequestWithdrawalSelector =
+            tranche.interface.getFunction("requestWithdrawal").selector;
+        const trancheCancelUnstakeSelector =
+            tranche.interface.getFunction("cancelUnstake").selector;
+        const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
+        const trancheWithdrawSelector = tranche.interface.getFunction("withdraw").selector;
+        const trancheRedeemSelector = tranche.interface.getFunction("redeem").selector;
+        const trancheApproveSelector = tranche.interface.getFunction("approve").selector;
+        const trancheTransferSelector = tranche.interface.getFunction("transfer").selector;
+        const trancheTransferFromSelector = tranche.interface.getFunction("transferFrom").selector;
+
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [
+                trancheDepositSelector,
+                trancheMintSelector,
+                trancheRequestWithdrawalSelector,
+                trancheCancelUnstakeSelector,
+                trancheClaimSelector,
+                trancheWithdrawSelector,
+                trancheRedeemSelector,
+                trancheApproveSelector,
+                trancheTransferSelector,
+                trancheTransferFromSelector,
+            ],
+            PUBLIC_ROLE
+        );
+
+        // Admin-only tranche functions used in tests
+        const trancheFinalizeSelector = tranche.interface.getFunction("finalizeEpoch").selector;
+        const trancheDelaySelector =
+            tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [trancheFinalizeSelector],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [trancheDelaySelector],
+            ADMIN_ROLE
+        );
+
+        // Vault role allowed to mint MZUSD and push yield to tranches
+        const mintSelector = mzusd.interface.getFunction("mint").selector;
+        await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
+
+        const notifySelector = tranche.interface.getFunction("notifyYield").selector;
+        await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
+
+        await accessManager.grantRole(
+            VAULT_ROLE,
+            vault.target,
+            0 // executionDelay
+        );
+
+        // Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
+        await mzusd.setVault(vault.target);
+
+        await vault.addTranche({
+            tranche: tranche.target,
+            weightBps: 10_000,
+            enabled: true,
+        });
+
+        snapshot = await takeSnapshot();
+    });
+
+    afterEach(async () => {
+        await snapshot.restore();
+    });
+
+    async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
+        await usdc.connect(whale).transfer(user.address, usdcAmount6);
+        await usdc.connect(user).approve(mzusd.target, usdcAmount6);
+        await (await mzusd.connect(user).deposit(usdcAmount6)).wait();
+        return await mzusd.balanceOf(user.address);
+    }
+
+    async function mintAndDepositIntoTranche(user: any, usdcAmount6: bigint) {
+        const mintedMZ = await mintMZUSDFor(user, usdcAmount6);
+        await mzusd.connect(user).approve(tranche.target, mintedMZ);
+        await (await tranche.connect(user).deposit(mintedMZ, user.address)).wait();
+        const shares = await tranche.balanceOf(user.address);
+        return {mintedMZ, shares};
+    }
+
+    async function advanceEpoch(usdcReported: bigint = to6(1n)) {
+        await time.increase(DAY);
+        await (await vault.connect(deployer).distributeYield(usdcReported)).wait();
+    }
+
+    async function preparePendingEpoch(user: any) {
+        await tranche.connect(deployer).setUnstakeDelayEpochs(1n);
+        const {shares} = await mintAndDepositIntoTranche(user, to6(100n));
+        await (await tranche.connect(user).requestWithdrawal(shares)).wait();
+
+        // currentEpochId starts at 1, so advance twice to make current-1 == targetEpoch
+        await advanceEpoch();
+        await advanceEpoch();
+
+        const currentEpoch = await vault.currentEpochId();
+        const candidate = currentEpoch - 1n;
+        return {shares, candidate};
+    }
+
+    it("checkUpkeep returns false when there is no work", async () => {
+        await mintAndDepositIntoTranche(alice, to6(1n));
+        await advanceEpoch();
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+        expect(performData).to.equal("0x");
+    });
+
+    it("finalizes the previous epoch when work exists", async () => {
+        const {shares, candidate} = await preparePendingEpoch(alice);
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(true);
+
+        const decoded = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], performData);
+        expect(decoded[0]).to.equal(candidate);
+
+        await finalizer.connect(bob).performUpkeep(performData);
+
+        const [totalShares, , isFinalized] = await tranche.finalizedEpochs(candidate);
+        expect(isFinalized).to.equal(true);
+        expect(totalShares).to.equal(shares);
+        expect(await tranche.umbrellaSharesByEpoch(candidate)).to.equal(0n);
+    });
+
+    it("performUpkeep works without any role grants", async () => {
+        const {candidate} = await preparePendingEpoch(alice);
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(true);
+
+        await finalizer.connect(bob).performUpkeep(performData);
+
+        const [, , isFinalized] = await tranche.finalizedEpochs(candidate);
+        expect(isFinalized).to.equal(true);
+    });
+
+    it("reverts on stale performData", async () => {
+        await preparePendingEpoch(alice);
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(true);
+
+        await advanceEpoch();
+
+        await expect(finalizer.performUpkeep(performData)).to.be.revertedWithCustomError(
+            finalizer,
+            "StaleEpoch"
+        );
+    });
+
+    it("anyone can finalize directly", async () => {
+        const {candidate} = await preparePendingEpoch(alice);
+
+        await tranche.connect(bob).finalizeEpoch(candidate);
+
+        const [, , isFinalized] = await tranche.finalizedEpochs(candidate);
+        expect(isFinalized).to.equal(true);
+        expect(await tranche.umbrellaSharesByEpoch(candidate)).to.equal(0n);
+    });
+});

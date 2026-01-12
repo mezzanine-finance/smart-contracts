@@ -95,5 +95,8 @@
     },
     "overrides": {
         "hardhat-gas-reporter": "2.2.2"
+    },
+    "dependencies": {
+        "@chainlink/contracts": "^1.5.0"
     }
 }

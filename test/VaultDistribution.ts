@@ -201,19 +201,22 @@ describe("Vault Yield Distribution", () => {
         const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
         const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
 
+        await accessManager.setTargetFunctionRole(junior.target, [tFinalizeSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(mezzanine.target, [tFinalizeSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(senior.target, [tFinalizeSel], PUBLIC_ROLE);
         await accessManager.setTargetFunctionRole(
             junior.target,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
             mezzanine.target,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
             senior.target,
-            [tFinalizeSel, tSetUnstakeDelaySel, tSetDepositLimitsSel],
+            [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
 
