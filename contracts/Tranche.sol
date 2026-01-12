@@ -174,8 +174,21 @@ contract Tranche is
         address receiver
     ) public override nonReentrant whenNotPaused restricted returns (uint256 shares) {
         _checkDepositLimit(assets);
-        // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
+    }
+
+    /// @notice Mint tranche shares by depositing assets, respecting deposit limits.
+    /// @dev Overrides ERC4626 mint to enforce deposit limits.
+    /// @param shares The amount of tranche shares to mint.
+    /// @param receiver The address receiving the tranche shares.
+    /// @return assets The amount of the underlying asset deposited.
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public override nonReentrant whenNotPaused restricted returns (uint256 assets) {
+        uint256 assetsRequired = convertToAssets(shares);
+        _checkDepositLimit(assetsRequired);
+        assets = super.mint(shares, receiver);
     }
 
     /// @notice Request an unstake by locking shares under the umbrella for N epochs.
