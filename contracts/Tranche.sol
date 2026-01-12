@@ -9,6 +9,7 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IVault {
     function currentEpochId() external view returns (uint256);
     function epochDuration() external view returns (uint256);
@@ -34,6 +35,7 @@ contract Tranche is
         bool isFinalized;
     }
 
+    // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BASIS_POINTS = 10_000;
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
@@ -164,6 +166,7 @@ contract Tranche is
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         uint256 targetEpoch = currentVaultEpoch + unstakeDelayEpochs;
 
@@ -190,6 +193,7 @@ contract Tranche is
         if (shares > userShares) revert InvalidShares();
 
         if (finalizedEpochs[epochId].isFinalized) revert AlreadyFinalized();
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentEpochOnVault = IVault(vault).currentEpochId();
         if (currentEpochOnVault > epochId) revert TooLateToCancel();
 
@@ -230,6 +234,7 @@ contract Tranche is
     function finalizeEpoch(
         uint256 epochId
     ) external nonReentrant whenNotPaused restricted whenDirectDisabled {
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -298,6 +303,7 @@ contract Tranche is
             revert YieldStreamIsActive();
         }
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint256 duration = IVault(vault).epochDuration();
         if (duration == 0) revert ZeroEpochDuration();
 
@@ -450,6 +456,7 @@ contract Tranche is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -462,5 +469,6 @@ contract Tranche is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

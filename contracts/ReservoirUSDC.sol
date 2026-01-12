@@ -10,11 +10,8 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 
 interface IStrategy {
     function invest(uint256 amount) external returns (bool);
-
     function divest(uint256 amount) external returns (uint256);
-
     function harvest() external;
-
     function totalAssets() external view returns (uint256);
 }
 
@@ -85,6 +82,7 @@ contract ReservoirUSDC is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -97,5 +95,6 @@ contract ReservoirUSDC is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

@@ -9,6 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IVault {
     function withdraw(address to, uint256 amountUSDC) external;
 }
@@ -60,6 +61,7 @@ contract MZUSD is
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
         if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
 
@@ -312,6 +314,7 @@ contract MZUSD is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -324,5 +327,6 @@ contract MZUSD is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD {
     function mint(address to, uint256 amount) external;
 }
@@ -16,7 +17,7 @@ interface IReservoir {
     function deposit(uint256 amount) external;
     function withdraw(uint256 amount, address to) external;
 }
-
+// aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
     function totalAssets() external view returns (uint256);
     function notifyYield(uint256 amount) external;
@@ -35,6 +36,7 @@ contract Vault is
         bool enabled;
     }
 
+    // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BPS = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
     uint256 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
@@ -126,6 +128,7 @@ contract Vault is
         mzusd = IMZUSD(_mzusd);
         reservoir = IReservoir(_reservoir);
 
+        // aderyn-ignore-next-line(large-numeric-literal)
         idleBufferUSDC = 1_000_000 * 1e6;
         hysteresisBps = 500;
 
@@ -175,7 +178,6 @@ contract Vault is
         if (tranches.length == 0) revert NoTranchesAdded();
 
         uint256 newEpochId = _advanceEpochAndValidate();
-
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(mintedGross);
@@ -188,7 +190,6 @@ contract Vault is
         }
 
         mzusd.mint(address(this), allocatableMZUSD);
-
         uint256 actuallyAllocated = _allocateYieldToTranches(allocatableMZUSD);
 
         emit YieldDistributed(usdcReported, actuallyAllocated, newEpochId);
@@ -454,6 +455,7 @@ contract Vault is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -466,5 +468,6 @@ contract Vault is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address newImpl) internal override restricted {}
 }

@@ -9,12 +9,14 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
 
     function burn(address from, uint256 amount) external;
 }
 
+// aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
     function totalAssets() external view returns (uint256);
 }
@@ -119,6 +121,7 @@ contract LossManager is
 
     function _setTrancheOrder(address[] memory order) internal {
         if (order.length == 0) revert ZeroLength();
+        // aderyn-ignore-next-line(require-revert-in-loop)
         for (uint256 i = 0; i < order.length; i++) {
             if (order[i] == address(0)) revert ZeroAddress();
         }
@@ -260,6 +263,7 @@ contract LossManager is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -272,5 +276,6 @@ contract LossManager is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }
