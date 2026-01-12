@@ -19,7 +19,8 @@ const envs = process.env;
 
 //The solc compiler optimizer is disabled by default to keep the Hardhat stack traces' line numbers the same.
 //To enable, set `RUN_OPTIMIZER` to `true` in the `.env` file.
-const optimizerRuns = isOptionTrue(envs.RUN_OPTIMIZER) || isOptionTrue(envs.REPORT_GAS);
+// const optimizerRuns = isOptionTrue(envs.RUN_OPTIMIZER) || isOptionTrue(envs.REPORT_GAS);
+const optimizerRuns = true;
 const optimizerRunNum = envs.OPTIMIZER_RUN_NUM ? +envs.OPTIMIZER_RUN_NUM : 200;
 const enableForking = isOptionTrue(envs.FORKING);
 
