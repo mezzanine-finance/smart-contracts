@@ -12,7 +12,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typech
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
 const MZUSD_USER_ROLE = 2n;
 
@@ -141,14 +141,23 @@ describe("MZUSD <-> USDC conversion", () => {
         );
 
         // AccessManager wiring for MZUSD user-facing restricted functions
+        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const depositSelector = mzusd.interface.getFunction("deposit").selector;
         const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
+        const approveSelector = mzusd.interface.getFunction("approve").selector;
+        const transferSelector = mzusd.interface.getFunction("transfer").selector;
+        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
 
         // Assign USER role for deposit / requestWithdrawal
         await accessManager.setTargetFunctionRole(
             mzusd.target,
             [depositSelector, requestWithdrawalSelector],
             MZUSD_USER_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [approveSelector, transferSelector, transferFromSelector],
+            PUBLIC_ROLE
         );
 
         // Grant MZUSD_USER_ROLE to all actors that call deposit/requestWithdrawal in tests

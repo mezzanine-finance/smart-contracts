@@ -13,7 +13,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, LossManager} from "../type
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
 
 const VAULT_ROLE = 2n;
 const LOSS_MANAGER_ROLE = 3n;
@@ -27,7 +27,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe.only("LossManager", () => {
+describe("LossManager", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -170,20 +170,28 @@ describe.only("LossManager", () => {
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        // public: MZUSD deposit/requestWithdrawal
-        const depSel = mzusd.interface.getFunction("deposit")!.selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal")!.selector;
+        // public: MZUSD deposit/requestWithdrawal + token ops
+        const depSel = mzusd.interface.getFunction("deposit").selector;
+        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
+        const approveSel = mzusd.interface.getFunction("approve").selector;
+        const transferSel = mzusd.interface.getFunction("transfer").selector;
+        const transferFromSel = mzusd.interface.getFunction("transferFrom").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [depSel, reqSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(
+            mzusdAddr,
+            [approveSel, transferSel, transferFromSel],
+            PUBLIC_ROLE
+        );
 
         // admin: MZUSD.setVault
-        const setVaultSel = mzusd.interface.getFunction("setVault")!.selector;
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
 
         // admin: vault distribute + tranche management + epoch config (for integration test)
-        const distributeSel = vault.interface.getFunction("distributeYield")!.selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche")!.selector;
-        const updateTrancheSel = vault.interface.getFunction("updateTranche")!.selector;
-        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig")!.selector;
+        const distributeSel = vault.interface.getFunction("distributeYield").selector;
+        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
+        const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
+        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vaultAddr,
             [distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
@@ -191,9 +199,9 @@ describe.only("LossManager", () => {
         );
 
         // LossManager admin functions
-        const applyLossSel = lossManager.interface.getFunction("applyLoss")!.selector;
-        const setOrderSel = lossManager.interface.getFunction("setTrancheOrder")!.selector;
-        const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC")!.selector;
+        const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
+        const setOrderSel = lossManager.interface.getFunction("setTrancheOrder").selector;
+        const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
             [applyLossSel, setOrderSel, setMaxSel],
@@ -201,20 +209,46 @@ describe.only("LossManager", () => {
         );
 
         // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint")!.selector;
+        const mintSel = mzusd.interface.getFunction("mint").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [mintSel], VAULT_ROLE);
         await accessManager.grantRole(VAULT_ROLE, vaultAddr, 0);
 
         // loss manager role: MZUSD.burn
-        const burnSel = mzusd.interface.getFunction("burn")!.selector;
+        const burnSel = mzusd.interface.getFunction("burn").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [burnSel], LOSS_MANAGER_ROLE);
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         // vault role: tranche.notifyYield
-        const notifySel = junior.interface.getFunction("notifyYield")!.selector;
+        const notifySel = junior.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(juniorAddr, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(mezzanineAddr, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(seniorAddr, [notifySel], VAULT_ROLE);
+
+        const trancheDepositSel = junior.interface.getFunction("deposit").selector;
+        const trancheMintSel = junior.interface.getFunction("mint").selector;
+        const trancheRequestSel = junior.interface.getFunction("requestWithdrawal").selector;
+        const trancheCancelSel = junior.interface.getFunction("cancelUnstake").selector;
+        const trancheClaimSel = junior.interface.getFunction("claim").selector;
+        const trancheWithdrawSel = junior.interface.getFunction("withdraw").selector;
+        const trancheRedeemSel = junior.interface.getFunction("redeem").selector;
+        const trancheApproveSel = junior.interface.getFunction("approve").selector;
+        const trancheTransferSel = junior.interface.getFunction("transfer").selector;
+        const trancheTransferFromSel = junior.interface.getFunction("transferFrom").selector;
+        const trancheSelectors = [
+            trancheDepositSel,
+            trancheMintSel,
+            trancheRequestSel,
+            trancheCancelSel,
+            trancheClaimSel,
+            trancheWithdrawSel,
+            trancheRedeemSel,
+            trancheApproveSel,
+            trancheTransferSel,
+            trancheTransferFromSel,
+        ];
+        await accessManager.setTargetFunctionRole(juniorAddr, trancheSelectors, PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(mezzanineAddr, trancheSelectors, PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(seniorAddr, trancheSelectors, PUBLIC_ROLE);
 
         // wire and register
         await mzusd.setVault(vaultAddr);
@@ -250,7 +284,9 @@ describe.only("LossManager", () => {
             try {
                 const parsed = lossManager.interface.parseLog(l);
                 if (parsed?.name === "LossApplied") return parsed;
-            } catch {}
+            } catch {
+                // Ignore logs that don't match LossApplied.
+            }
         }
         return null;
     }

@@ -13,7 +13,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
 
 // Role for Vault to call MZUSD.mint + Tranche.notifyYield
 const VAULT_ROLE = 2n;
@@ -149,22 +149,30 @@ describe("Vault Yield Distribution", () => {
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        // public: MZUSD deposit/requestWithdrawal
-        const depSel = mzusd.interface.getFunction("deposit")!.selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal")!.selector;
+        // public: MZUSD deposit/requestWithdrawal + token ops
+        const depSel = mzusd.interface.getFunction("deposit").selector;
+        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
+        const approveSel = mzusd.interface.getFunction("approve").selector;
+        const transferSel = mzusd.interface.getFunction("transfer").selector;
+        const transferFromSel = mzusd.interface.getFunction("transferFrom").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [depSel, reqSel], PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [approveSel, transferSel, transferFromSel],
+            PUBLIC_ROLE
+        );
 
         // admin: MZUSD.setVault
-        const setVaultSel = mzusd.interface.getFunction("setVault")!.selector;
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSel], ADMIN_ROLE);
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
-        const distributeSel = vault.interface.getFunction("distributeYield")!.selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche")!.selector;
-        const updateTrancheSel = vault.interface.getFunction("updateTranche")!.selector;
-        const setFeesSel = vault.interface.getFunction("setFees")!.selector;
-        const setInsuranceSel = vault.interface.getFunction("setInsurance")!.selector;
-        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig")!.selector;
+        const distributeSel = vault.interface.getFunction("distributeYield").selector;
+        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
+        const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
+        const setFeesSel = vault.interface.getFunction("setFees").selector;
+        const setInsuranceSel = vault.interface.getFunction("setInsurance").selector;
+        const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
@@ -179,15 +187,41 @@ describe("Vault Yield Distribution", () => {
         );
 
         // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint")!.selector;
+        const mintSel = mzusd.interface.getFunction("mint").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [mintSel], VAULT_ROLE);
         await accessManager.grantRole(VAULT_ROLE, vault.target, 0);
 
         // vault role: tranche.notifyYield (each tranche)
-        const notifySel = junior.interface.getFunction("notifyYield")!.selector;
+        const notifySel = junior.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(junior.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(mezzanine.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(senior.target, [notifySel], VAULT_ROLE);
+
+        const trancheDepositSel = junior.interface.getFunction("deposit").selector;
+        const trancheMintSel = junior.interface.getFunction("mint").selector;
+        const trancheRequestSel = junior.interface.getFunction("requestWithdrawal").selector;
+        const trancheCancelSel = junior.interface.getFunction("cancelUnstake").selector;
+        const trancheClaimSel = junior.interface.getFunction("claim").selector;
+        const trancheWithdrawSel = junior.interface.getFunction("withdraw").selector;
+        const trancheRedeemSel = junior.interface.getFunction("redeem").selector;
+        const trancheApproveSel = junior.interface.getFunction("approve").selector;
+        const trancheTransferSel = junior.interface.getFunction("transfer").selector;
+        const trancheTransferFromSel = junior.interface.getFunction("transferFrom").selector;
+        const trancheSelectors = [
+            trancheDepositSel,
+            trancheMintSel,
+            trancheRequestSel,
+            trancheCancelSel,
+            trancheClaimSel,
+            trancheWithdrawSel,
+            trancheRedeemSel,
+            trancheApproveSel,
+            trancheTransferSel,
+            trancheTransferFromSel,
+        ];
+        await accessManager.setTargetFunctionRole(junior.target, trancheSelectors, PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(mezzanine.target, trancheSelectors, PUBLIC_ROLE);
+        await accessManager.setTargetFunctionRole(senior.target, trancheSelectors, PUBLIC_ROLE);
 
         // wire and register
         await mzusd.setVault(vault.target);
@@ -244,7 +278,9 @@ describe("Vault Yield Distribution", () => {
         expect(protReceiver0).to.equal(ethers.ZeroAddress);
 
         // After setting fees, getter must reflect updates
-        await (await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)).wait();
+        await (
+            await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)
+        ).wait();
         const [perfBps1, perfReceiver1, protBps1, protReceiver1] = await vault.getFeesConfig();
         expect(perfBps1).to.equal(1111n);
         expect(perfReceiver1).to.equal(bob.address);

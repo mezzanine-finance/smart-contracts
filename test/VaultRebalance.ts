@@ -12,7 +12,7 @@ import {Vault, ReservoirUSDC, MZUSD, IERC20} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
 
 // Role for Vault to call Reservoir.deposit/withdraw
 const VAULT_ROLE = 2n;
@@ -88,8 +88,8 @@ describe("Vault <-> Reservoir", () => {
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        const rebalanceSelector = vault.interface.getFunction("rebalance")!.selector;
-        const setBufferSelector = vault.interface.getFunction("setBuffer")!.selector;
+        const rebalanceSelector = vault.interface.getFunction("rebalance").selector;
+        const setBufferSelector = vault.interface.getFunction("setBuffer").selector;
 
         await accessManager.setTargetFunctionRole(
             vault.target,
@@ -97,8 +97,8 @@ describe("Vault <-> Reservoir", () => {
             ADMIN_ROLE
         );
 
-        const reservoirDepositSelector = reservoir.interface.getFunction("deposit")!.selector;
-        const reservoirWithdrawSelector = reservoir.interface.getFunction("withdraw")!.selector;
+        const reservoirDepositSelector = reservoir.interface.getFunction("deposit").selector;
+        const reservoirWithdrawSelector = reservoir.interface.getFunction("withdraw").selector;
 
         await accessManager.setTargetFunctionRole(
             reservoir.target,

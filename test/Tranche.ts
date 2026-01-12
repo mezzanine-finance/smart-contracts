@@ -13,7 +13,7 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const USDC_WHALE = "0x38AAEF3782910bdd9eA3566C839788Af6FF9B200";
+const USDC_WHALE = "0x01b8697695EAb322A339c4bf75740Db75dc9375E";
 const VAULT_ROLE = 2n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
@@ -115,14 +115,21 @@ describe("Tranche", () => {
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        // 1) Public user actions on MZUSD (deposit / requestWithdrawal)
+        // 1) Public user actions on MZUSD (deposit / requestWithdrawal + token ops)
         const depositSelector = mzusd.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector =
-            mzusd.interface.getFunction("requestWithdrawal").selector;
+        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
+        const approveSelector = mzusd.interface.getFunction("approve").selector;
+        const transferSelector = mzusd.interface.getFunction("transfer").selector;
+        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
 
         await accessManager.setTargetFunctionRole(
             mzusd.target,
             [depositSelector, requestWithdrawalSelector],
+            PUBLIC_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [approveSelector, transferSelector, transferFromSelector],
             PUBLIC_ROLE
         );
 
@@ -139,7 +146,38 @@ describe("Tranche", () => {
             ADMIN_ROLE
         );
 
-        // 3) Vault role allowed to mint MZUSD and push yield to tranches
+        // 3) Public user actions on Tranche (ERC4626 + token ops)
+        const trancheDepositSelector = tranche.interface.getFunction("deposit").selector;
+        const trancheMintSelector = tranche.interface.getFunction("mint").selector;
+        const trancheRequestWithdrawalSelector =
+            tranche.interface.getFunction("requestWithdrawal").selector;
+        const trancheCancelUnstakeSelector =
+            tranche.interface.getFunction("cancelUnstake").selector;
+        const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
+        const trancheWithdrawSelector = tranche.interface.getFunction("withdraw").selector;
+        const trancheRedeemSelector = tranche.interface.getFunction("redeem").selector;
+        const trancheApproveSelector = tranche.interface.getFunction("approve").selector;
+        const trancheTransferSelector = tranche.interface.getFunction("transfer").selector;
+        const trancheTransferFromSelector = tranche.interface.getFunction("transferFrom").selector;
+
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [
+                trancheDepositSelector,
+                trancheMintSelector,
+                trancheRequestWithdrawalSelector,
+                trancheCancelUnstakeSelector,
+                trancheClaimSelector,
+                trancheWithdrawSelector,
+                trancheRedeemSelector,
+                trancheApproveSelector,
+                trancheTransferSelector,
+                trancheTransferFromSelector,
+            ],
+            PUBLIC_ROLE
+        );
+
+        // 4) Vault role allowed to mint MZUSD and push yield to tranches
         const mintSelector = mzusd.interface.getFunction("mint").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
 
@@ -152,7 +190,7 @@ describe("Tranche", () => {
             0 // executionDelay
         );
 
-        // 4) Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
+        // 5) Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
         await mzusd.setVault(vault.target);
 
         await vault.addTranche({
