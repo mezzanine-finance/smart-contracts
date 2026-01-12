@@ -5,7 +5,6 @@ pragma solidity 0.8.30;
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -24,7 +23,6 @@ interface ITrancheLike {
 contract LossManager is
     Initializable,
     AccessManagedUpgradeable,
-    PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
@@ -59,7 +57,6 @@ contract LossManager is
         if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
-        __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
@@ -69,7 +66,7 @@ contract LossManager is
     }
 
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(uint256 usdcLoss) external whenNotPaused nonReentrant restricted {
+    function applyLoss(uint256 usdcLoss) external nonReentrant restricted {
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
@@ -107,14 +104,6 @@ contract LossManager is
     function setMaxLossPerTxUSDC(uint256 maxLossValue) external restricted {
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
-    }
-
-    function pause() external restricted {
-        _pause();
-    }
-
-    function unpause() external restricted {
-        _unpause();
     }
 
     function trancheOrderLength() external view returns (uint256) {

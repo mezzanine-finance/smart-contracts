@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -23,7 +23,6 @@ contract Tranche is
     ERC4626Upgradeable,
     AccessManagedUpgradeable,
     ReentrancyGuardUpgradeable,
-    PausableUpgradeable,
     UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
@@ -133,7 +132,6 @@ contract Tranche is
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __Pausable_init();
         __UUPSUpgradeable_init();
 
         vault = vaultAddress;
@@ -151,14 +149,24 @@ contract Tranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override whenNotPaused nonReentrant returns (uint256 shares) {
+    ) public override restricted nonReentrant returns (uint256 shares) {
         if (isPolJunior) revert InvalidMode();
         _checkDepositLimit(assets);
         // ERC4626 uses totalAssets() (with virtual NAV) under the hood:
         shares = super.deposit(assets, receiver);
     }
 
-    function requestWithdrawal(uint256 shares) external whenNotPaused nonReentrant {
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public override restricted nonReentrant returns (uint256 assets) {
+        if (isPolJunior) revert InvalidMode();
+        assets = previewMint(shares);
+        _checkDepositLimit(assets);
+        assets = super.mint(shares, receiver);
+    }
+
+    function requestWithdrawal(uint256 shares) external restricted nonReentrant {
         if (isPolJunior) revert InvalidMode();
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
@@ -179,7 +187,7 @@ contract Tranche is
     ///      for epochs that have not yet been finalized.
     /// @param epochId The epoch for which the user wants to cancel their unstake.
     /// @param shares The amount of shares to cancel (returned back to the user).
-    function cancelUnstake(uint256 epochId, uint256 shares) external nonReentrant whenNotPaused {
+    function cancelUnstake(uint256 epochId, uint256 shares) external restricted nonReentrant {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -201,7 +209,7 @@ contract Tranche is
         emit UnstakeCancelled(_msgSender(), epochId, shares);
     }
 
-    function claim(uint256 epochId) external nonReentrant whenNotPaused {
+    function claim(uint256 epochId) external restricted nonReentrant {
         uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -219,9 +227,31 @@ contract Tranche is
         emit WithdrawalClaimed(_msgSender(), epochId, userAssets);
     }
 
+    function transfer(
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transfer(to, value);
+    }
+
+    function approve(
+        address spender,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.approve(spender, value);
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transferFrom(from, to, value);
+    }
+
     // CORE ADMIN FUNCTIONS
 
-    function finalizeEpoch(uint256 epochId) external nonReentrant whenNotPaused restricted {
+    function finalizeEpoch(uint256 epochId) external nonReentrant restricted {
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 
@@ -270,14 +300,6 @@ contract Tranche is
     }
 
     // Admin config
-    function pause() external restricted {
-        _pause();
-    }
-
-    function unpause() external restricted {
-        _unpause();
-    }
-
     function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
         unstakeDelayEpochs = epochsDelay;
         emit UnstakeDelayUpdated(epochsDelay);
@@ -431,7 +453,7 @@ contract Tranche is
         uint256 /*assets*/,
         address /*receiver*/,
         address /*owner*/
-    ) public pure override returns (uint256) {
+    ) public override restricted returns (uint256) {
         revert DirectWithdrawDisabled();
     }
 
@@ -439,7 +461,7 @@ contract Tranche is
         uint256 /*shares*/,
         address /*receiver*/,
         address /*owner*/
-    ) public pure override returns (uint256) {
+    ) public override restricted returns (uint256) {
         revert DirectWithdrawDisabled();
     }
 }

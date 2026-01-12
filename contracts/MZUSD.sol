@@ -126,6 +126,22 @@ contract MZUSD is
         emit Withdrawal(sender, amountMZ, usdcOut);
     }
 
+    function transfer(address to, uint256 value) public override restricted returns (bool) {
+        return super.transfer(to, value);
+    }
+
+    function approve(address spender, uint256 value) public override restricted returns (bool) {
+        return super.approve(spender, value);
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override restricted returns (bool) {
+        return super.transferFrom(from, to, value);
+    }
+
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
