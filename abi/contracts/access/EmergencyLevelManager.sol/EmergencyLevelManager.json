@@ -202,6 +202,19 @@
         "anonymous": false,
         "inputs": [
             {
+                "indexed": false,
+                "internalType": "uint8",
+                "name": "currentLevel",
+                "type": "uint8"
+            }
+        ],
+        "name": "LevelSynced",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": true,
                 "internalType": "address",
                 "name": "implementation",

@@ -39,6 +39,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
     uint8 public currentLevel;
 
     event LevelChanged(uint8 indexed previousLevel, uint8 indexed newLevel);
+    event LevelSynced(uint8 currentLevel);
 
     error InvalidLevel(uint8 level);
     error ZeroAddress();
@@ -120,6 +121,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
     /// @notice Re-apply the current level rules.
     function syncLevel() external restricted {
         _applyRulesForLevel(currentLevel);
+        emit LevelSynced(currentLevel);
     }
 
     function _applyLevel(uint8 newLevel) internal {
