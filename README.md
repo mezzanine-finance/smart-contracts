@@ -1,4 +1,4 @@
-# King Retail Contract
+# Smart contracts template
 
 ## Installation
 
