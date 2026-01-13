@@ -36,6 +36,12 @@ contract PolJuniorTranche is
         _disableInitializers();
     }
 
+    /// @notice Initializer
+    /// @param assetToken - underlying asset token (MZUSD)
+    /// @param name_ - tranche name
+    /// @param symbol_ - tranche symbol
+    /// @param accessManager - access manager address for role control
+    /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
         string memory name_,
@@ -57,12 +63,19 @@ contract PolJuniorTranche is
     }
 
     /// ERC4626 entry points (role-controlled via AccessManager)
-    /// @dev AccessManager should set this to PUBLIC_ROLE
+    /// @dev AccessManager should set these to PUBLIC_ROLE
     function deposit(
         uint256 assets,
         address receiver
     ) public override nonReentrant whenNotPaused restricted returns (uint256) {
         return super.deposit(assets, receiver);
+    }
+
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+        return super.mint(shares, receiver);
     }
 
     // ERC4626 exit points (role-controlled via AccessManager)
@@ -94,6 +107,7 @@ contract PolJuniorTranche is
         emit PolPayout(yieldAmount);
     }
 
+    /// @notice Update polPayout address
     function setPolPayout(address payout) external restricted {
         if (payout == address(0)) revert ZeroAddress();
         polPayout = payout;
@@ -116,6 +130,7 @@ contract PolJuniorTranche is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -128,5 +143,6 @@ contract PolJuniorTranche is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }
