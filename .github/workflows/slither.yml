@@ -1,11 +1,28 @@
 name: slither
 
 on:
+  pull_request:
+    branches: [main, dev]
   workflow_dispatch:
+    inputs:
+      fail_on:
+        description: "Fail the workflow if Slither finds issues of this severity or higher (manual runs only override)"
+        required: false
+        default: "high"
+        type: choice
+        options:
+          - none
+          - high
+          - medium
+          - low
+          - all
 
 jobs:
   slither:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
@@ -23,13 +40,26 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Run Slither (SARIF)
+        uses: crytic/slither-action@v0.4.1
+        id: slither
         with:
-          python-version: "3.11"
+          ignore-compile: true
+          sarif: reports/slither/results.sarif
+          # PRs: fail on HIGH+. Manual runs: allow overriding via input.
+          fail-on: ${{ github.event_name == 'pull_request' && 'high' || (github.event.inputs.fail_on || 'high') }}
+          slither-args: "--exclude-informational --exclude-low"
 
-      - name: Install Slither
-        run: pip install slither-analyzer
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.slither.outputs.sarif }}
 
-      - name: Run Slither
-        run: npm run slither
+      - name: Upload Slither report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-report
+          path: reports/slither/
+          if-no-files-found: error
