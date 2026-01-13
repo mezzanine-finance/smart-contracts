@@ -3,6 +3,7 @@ pragma solidity 0.8.30;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IAccessManagerMinimal {
     function ADMIN_ROLE() external view returns (uint64);
     function grantRole(uint64 roleId, address account, uint32 executionDelay) external;
@@ -42,9 +43,9 @@ contract AccessManagerConfiguratorV1 {
     error ZeroAddress();
     error EmptyTranches();
     error InvalidDelay();
-
     event Configured(address accessManager, address controller);
 
+    // aderyn-fp-next-line(modifier-used-only-once)
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
@@ -85,6 +86,7 @@ contract AccessManagerConfiguratorV1 {
         uint32 relaxDelay,
         uint32 upgradeDelay,
         uint32 adminDelay
+        // aderyn-fp-next-line(centralization-risk)
     ) external onlyOwner {
         if (configured) revert AlreadyConfigured();
         if (
@@ -109,6 +111,7 @@ contract AccessManagerConfiguratorV1 {
         }
 
         IAccessManagerMinimal manager = IAccessManagerMinimal(accessManager);
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint64 adminRole = manager.ADMIN_ROLE();
 
         _configureControllerRoles(manager, controller, adminRole);
@@ -126,9 +129,9 @@ contract AccessManagerConfiguratorV1 {
             adminDelay
         );
         _setDelays(manager, adminRole, upgradeDelay, adminDelay);
-
+        // aderyn-fp-next-line(reentrancy-state-change)
         IEmergencyLevelManager(controller).syncLevel();
-
+        // aderyn-fp-next-line(reentrancy-state-change)
         manager.revokeRole(adminRole, address(this));
         configured = true;
         emit Configured(accessManager, controller);

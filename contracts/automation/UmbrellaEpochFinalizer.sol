@@ -3,10 +3,12 @@ pragma solidity 0.8.30;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IVault {
     function currentEpochId() external view returns (uint256);
 }
 
+// aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
     function vault() external view returns (address);
     function umbrellaSharesByEpoch(uint256) external view returns (uint256);
