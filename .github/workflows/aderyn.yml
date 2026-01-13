@@ -11,7 +11,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      security-events: write
 
     steps:
       - name: Checkout
@@ -29,57 +28,9 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      # Generate reports as files so we can persist them as artifacts.
-      - name: Install Aderyn (CLI)
-        run: npm install -g @cyfrin/aderyn
-
-      - name: Run Aderyn (generate report files)
-        if: always()
-        continue-on-error: true
-        run: |
-          set -e
-          mkdir -p reports/aderyn
-          aderyn
-          # Aderyn typically writes report.md (and may also emit json/sarif depending on version/config)
-          mv -f report.* reports/aderyn/ 2>/dev/null || true
-          # If Aderyn (or wrappers) emit standalone SARIF files in the repo root, capture them too.
-          for f in *.sarif *.sarif.json *.sarif.gz; do
-            [ -e "$f" ] || continue
-            mv -f "$f" reports/aderyn/
-          done
-
-      - name: Upload Aderyn report artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aderyn-report
-          path: reports/aderyn/
-          if-no-files-found: warn
-
-      - name: Detect Aderyn SARIF file
-        id: aderyn_sarif
-        if: always()
-        run: |
-          set -e
-          SARIF_PATH="$(ls -1 reports/aderyn/*.sarif* 2>/dev/null | head -n 1 || true)"
-          echo "sarif_path=$SARIF_PATH" >> "$GITHUB_OUTPUT"
-          if [ -n "$SARIF_PATH" ]; then
-            echo "Found SARIF: $SARIF_PATH"
-          else
-            echo "No SARIF found under reports/aderyn/"
-          fi
-
-      - name: Upload Aderyn SARIF to GitHub Code Scanning (if present)
-        if: ${{ always() && steps.aderyn_sarif.outputs.sarif_path != '' }}
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.aderyn_sarif.outputs.sarif_path }}
-          category: aderyn
-
       # Gate PRs based on severity thresholds.
       - name: Aderyn Check
         uses: Cyfrin/aderyn-ci@v0
         with:
           fail-on: high
-          warn-on: low
+          warn-on: low,medium,informational

@@ -4,18 +4,6 @@ on:
   pull_request:
     branches: [main, dev]
   workflow_dispatch:
-    inputs:
-      fail_on:
-        description: "Fail the workflow if Slither finds issues of this severity or higher (manual runs only override)"
-        required: false
-        default: "high"
-        type: choice
-        options:
-          - none
-          - high
-          - medium
-          - low
-          - all
 
 jobs:
   slither:
@@ -23,7 +11,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      security-events: write
 
     steps:
       - name: Checkout
@@ -41,45 +28,9 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Prepare Slither reports folder
-        run: mkdir -p reports/slither
-
-      - name: Run Slither (SARIF)
+      - name: Run Slither
         uses: crytic/slither-action@v0.4.1
         id: slither
         with:
           ignore-compile: true
-          sarif: reports/slither/results.sarif
-          # PRs: fail on HIGH+. Manual runs: allow overriding via input.
-          fail-on: ${{ github.event_name == 'pull_request' && 'high' || (github.event.inputs.fail_on || 'high') }}
-          slither-args: "--exclude-informational --exclude-low"
-
-      - name: Detect Slither SARIF file
-        id: slither_sarif
-        if: always()
-        run: |
-          set -e
-          SARIF_PATH="reports/slither/results.sarif"
-          if [ -f "$SARIF_PATH" ]; then
-            echo "sarif_path=$SARIF_PATH" >> "$GITHUB_OUTPUT"
-            echo "Found SARIF: $SARIF_PATH"
-          else
-            echo "sarif_path=" >> "$GITHUB_OUTPUT"
-            echo "No SARIF found at $SARIF_PATH"
-          fi
-
-      - name: Upload SARIF to GitHub Code Scanning
-        if: ${{ always() && steps.slither_sarif.outputs.sarif_path != '' }}
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.slither_sarif.outputs.sarif_path }}
-          category: slither
-
-      - name: Upload Slither report artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: slither-report
-          path: reports/slither/
-          if-no-files-found: warn
+          fail-on: high
