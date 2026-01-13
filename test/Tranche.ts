@@ -521,9 +521,8 @@ describe("Tranche", () => {
         const accrued = duration === 0n ? 0n : (streamAmount * elapsed) / duration;
 
         expect(balanceAtFinalize).to.be.gte(streamAmount);
-        // getting weird @typescript-eslint/restrict-plus-operands error, but it's obviously false positive
-         
-        const expectedTotalAssetsFinal = balanceAtFinalize - streamAmount + accrued;
+
+        const expectedTotalAssetsFinal = balanceAtFinalize - (streamAmount - accrued);
 
         // In theory this should match exactly, but depending on the exact ERC4626 conversion math
         // used during finalize (vs. our direct NAV reconstruction), a 1-wei rounding difference is possible.
@@ -1321,9 +1320,7 @@ describe("Tranche", () => {
         }
 
         const accrued = dur === 0n ? 0n : (streamAmount * elapsed) / dur;
-        // getting weird @typescript-eslint/restrict-plus-operands error, but it's obviously false positive
-         
-        const navAtFinalize = balanceAtFinalize - streamAmount + accrued;
+        const navAtFinalize = balanceAtFinalize - (streamAmount + accrued);
 
         // ERC4626 convertToAssets(shares) uses shares * totalAssets / totalSupply (floor)
         const expectedAssets3 = (bPendingFinal * navAtFinalize) / supplyBeforeFinal;
