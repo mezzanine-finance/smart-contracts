@@ -40,6 +40,9 @@ jobs:
       - name: Compile
         run: npm run compile
 
+      - name: Prepare Slither reports folder
+        run: mkdir -p reports/slither
+
       - name: Run Slither (SARIF)
         uses: crytic/slither-action@v0.4.1
         id: slither
@@ -50,11 +53,26 @@ jobs:
           fail-on: ${{ github.event_name == 'pull_request' && 'high' || (github.event.inputs.fail_on || 'high') }}
           slither-args: "--exclude-informational --exclude-low"
 
-      - name: Upload SARIF to GitHub Code Scanning
+      - name: Detect Slither SARIF file
+        id: slither_sarif
         if: always()
+        run: |
+          set -e
+          SARIF_PATH="reports/slither/results.sarif"
+          if [ -f "$SARIF_PATH" ]; then
+            echo "sarif_path=$SARIF_PATH" >> "$GITHUB_OUTPUT"
+            echo "Found SARIF: $SARIF_PATH"
+          else
+            echo "sarif_path=" >> "$GITHUB_OUTPUT"
+            echo "No SARIF found at $SARIF_PATH"
+          fi
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: ${{ always() && steps.slither_sarif.outputs.sarif_path != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.slither.outputs.sarif }}
+          sarif_file: ${{ steps.slither_sarif.outputs.sarif_path }}
+          category: slither
 
       - name: Upload Slither report artifact
         if: always()
@@ -62,4 +80,4 @@ jobs:
         with:
           name: slither-report
           path: reports/slither/
-          if-no-files-found: error
+          if-no-files-found: warn

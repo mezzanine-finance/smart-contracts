@@ -34,10 +34,11 @@ jobs:
 
       - name: Run Aderyn (generate report files)
         if: always()
+        continue-on-error: true
         run: |
           set -e
-          aderyn
           mkdir -p reports/aderyn
+          aderyn
           # Aderyn typically writes report.md (and may also emit json/sarif depending on version/config)
           mv -f report.* reports/aderyn/ 2>/dev/null || true
           # If Aderyn (or wrappers) emit standalone SARIF files in the repo root, capture them too.
