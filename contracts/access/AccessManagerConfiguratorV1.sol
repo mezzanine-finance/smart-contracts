@@ -43,6 +43,8 @@ contract AccessManagerConfiguratorV1 {
     error EmptyTranches();
     error InvalidDelay();
 
+    event Configured(address accessManager, address controller);
+
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
@@ -129,6 +131,7 @@ contract AccessManagerConfiguratorV1 {
 
         manager.revokeRole(adminRole, address(this));
         configured = true;
+        emit Configured(accessManager, controller);
     }
 
     function _configureControllerRoles(

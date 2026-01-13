@@ -36,6 +36,25 @@
         "type": "error"
     },
     {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "accessManager",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "controller",
+                "type": "address"
+            }
+        ],
+        "name": "Configured",
+        "type": "event"
+    },
+    {
         "inputs": [],
         "name": "EMERGENCY_ESCALATE_ROLE",
         "outputs": [
