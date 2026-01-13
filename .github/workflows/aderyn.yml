@@ -33,4 +33,4 @@ jobs:
         uses: Cyfrin/aderyn-ci@v0
         with:
           fail-on: high
-          warn-on: low,medium,informational
+          warn-on: any
