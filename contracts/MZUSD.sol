@@ -9,12 +9,15 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IVault {
     function withdraw(address to, uint256 amountUSDC) external;
 }
 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
+/// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
+/// @notice Supports global hourly redemption cap in USDC (6 decimals).
 contract MZUSD is
     Initializable,
     ERC20Upgradeable,
@@ -32,7 +35,9 @@ contract MZUSD is
 
     /// @notice global hourly redemption cap in USDC (6 decimals); 0 = disabled (no redemptions)
     uint256 public globalHourlyRedemptionCapUSDC;
+    /// @notice start timestamp of current redemption window
     uint64 public windowStartTimestamp;
+    /// @notice amount of USDC redeemed in current window
     uint256 public windowUsedUSDC;
     /// @notice duration of redemption window in seconds (e.g. 1 hours)
     uint256 public redemptionWindowDuration;
@@ -60,6 +65,7 @@ contract MZUSD is
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
         if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
 
@@ -67,6 +73,8 @@ contract MZUSD is
         _disableInitializers();
     }
 
+    /// @param accessManager - address of AccessManager contract for role management
+    /// @param _hourlyLimitUSDC - initial global hourly redemption cap in USDC (6 decimals)
     function initialize(address accessManager, uint256 _hourlyLimitUSDC) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
@@ -83,6 +91,7 @@ contract MZUSD is
     }
 
     /// @notice deposit USDC and mint MZUSD 1:1
+    /// @param amountUSDC - amount of USDC to deposit (6 decimals)
     function deposit(uint256 amountUSDC) external nonReentrant restricted {
         if (address(vault) == address(0)) revert ZeroAddress();
         if (amountUSDC == 0) revert ZeroAmount();
@@ -101,6 +110,7 @@ contract MZUSD is
     }
 
     /// @notice request withdrawal of MZUSD for USDC
+    /// @param amountMZ - amount of MZUSD to burn (18 decimals)
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
     function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
@@ -142,14 +152,24 @@ contract MZUSD is
         return super.transferFrom(from, to, value);
     }
 
+    //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
+
+    /// @notice mint MZUSD to an address
+    /// @dev Used by authorized contracts to mint MZUSD
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
 
+    /// @notice burn MZUSD from an address
+    /// @dev Used by authorized contracts to burn MZUSD
     function burn(address from, uint256 amount) external restricted {
         _burn(from, amount);
     }
 
+    //SETTERS
+
+    /// @notice set global hourly redemption cap in USDC (6 decimals)
+    /// @param newCapUSDC - new cap value; 0 = disable redemptions
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
         if (newCapUSDC == 0) revert ZeroCap();
         if (globalHourlyRedemptionCapUSDC == newCapUSDC) revert SameValue();
@@ -157,6 +177,8 @@ contract MZUSD is
         emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
 
+    /// @notice set the Vault contract address
+    /// @param _vault - address of the Vault contract
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (address(vault) == _vault) revert SameValue();
@@ -164,6 +186,8 @@ contract MZUSD is
         emit SetVault(address(vault));
     }
 
+    /// @notice set the duration of the redemption window
+    /// @param newDuration - new duration in seconds
     function setRedemptionWindowDuration(uint256 newDuration) external restricted {
         if (newDuration == 0) revert ZeroDuration();
         if (redemptionWindowDuration == newDuration) revert SameValue();
@@ -180,6 +204,11 @@ contract MZUSD is
         emit RedemptionWindowDurationUpdated(newDuration);
     }
 
+    //GETTERS
+
+    /// @notice view remaining USDC available for redemption in current window
+    /// @return remainingUSDC - amount of USDC left that can be redeemed in current window
+    /// @return windowStart - start timestamp of the current redemption window
     function getRemainingGlobalHourlyCap()
         public
         view
@@ -203,6 +232,7 @@ contract MZUSD is
         return (remainingUSDC, windowStartTimestamp);
     }
 
+    /// @notice Pure calculator - converts USDC amount to MZUSD.
     function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
         return amountUSDC * SCALE;
     }
@@ -219,6 +249,8 @@ contract MZUSD is
         return MZ_DECIMALS;
     }
 
+    /// @notice preview withdrawal details without executing
+    /// @param amountMZ - amount of MZUSD to burn (18 decimals)
     function previewWithdrawalFlat(
         uint256 amountMZ
     )
@@ -286,6 +318,11 @@ contract MZUSD is
         }
     }
 
+    ///INTERNAL HELPERS
+
+    /// @notice apply atomic netting of deposits against withdrawals within the same tx
+    /// @param usdcOut - initial USDC amount to withdraw
+    /// @return adjusted USDC amount to withdraw after netting
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {
         uint256 txDeposited = _txDepositedUSDC;
         if (txDeposited == 0) {
@@ -300,6 +337,7 @@ contract MZUSD is
         }
     }
 
+    /// @notice check and consume from the global hourly redemption cap
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalHourlyRedemptionCapUSDC;
 
@@ -328,6 +366,7 @@ contract MZUSD is
     ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
     ///      or mistaken transfers. This function is not part of the normal protocol
     ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
     function rescueETH(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
 
@@ -340,5 +379,6 @@ contract MZUSD is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

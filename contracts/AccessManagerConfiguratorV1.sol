@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
 interface IAccessManagerMinimal {
     function ADMIN_ROLE() external view returns (uint64);
     function grantRole(uint64 roleId, address account, uint32 executionDelay) external;
@@ -144,6 +146,9 @@ contract AccessManagerConfiguratorV1 {
 
         selectors[0] = IEmergencyLevelManager.syncLevel.selector;
         manager.setTargetFunctionRole(controller, selectors, adminRole);
+
+        selectors[0] = UUPSUpgradeable.upgradeToAndCall.selector;
+        manager.setTargetFunctionRole(controller, selectors, UPGRADE_ROLE);
 
         manager.grantRole(adminRole, controller, 0);
     }

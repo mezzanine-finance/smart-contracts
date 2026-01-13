@@ -231,14 +231,19 @@ describe("LossManager", () => {
 
         // admin: vault distribute + tranche management + epoch config (for integration test)
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
+        const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
+
         await accessManager.setTargetFunctionRole(
             vaultAddr,
             [distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
             ADMIN_ROLE
         );
+
+        // LossManager must be able to advance epochs (applyLoss hard-fails otherwise)
+        await accessManager.setTargetFunctionRole(vaultAddr, [advanceEpochSel], LOSS_MANAGER_ROLE);
 
         // admin: Tranche config/finalize functions (for tests/helpers)
         const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
@@ -269,11 +274,16 @@ describe("LossManager", () => {
         const setOrderSel = lossManager.interface.getFunction("setTrancheOrder").selector;
         const setGroupSel = lossManager.interface.getFunction("setTrancheGroup").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
+        const setVaultLmSel = lossManager.interface.getFunction("setVault").selector;
+
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setGroupSel, setMaxSel],
+            [applyLossSel, setOrderSel, setGroupSel, setMaxSel, setVaultLmSel],
             ADMIN_ROLE
         );
+
+        // wire LossManager -> Vault (mandatory for applyLoss)
+        await (await lossManager.connect(deployer).setVault(vaultAddr)).wait();
 
         // vault role: MZUSD.mint
         const mintSel = mzusd.interface.getFunction("mint").selector;
@@ -420,6 +430,7 @@ describe("LossManager", () => {
             const tx1 = await lossManager.connect(deployer).setTrancheOrder(order);
             await tx1.wait();
 
+            await time.increase(DAY);
             const tx2 = await lossManager.connect(deployer).applyLoss(to6(1n));
             const receipt2 = await tx2.wait();
 
@@ -466,6 +477,7 @@ describe("LossManager", () => {
         const m0 = await mzusd.balanceOf(mezzanineAddr);
         const s0 = await mzusd.balanceOf(seniorAddr);
 
+        await time.increase(DAY);
         // Apply loss = 10 USDC -> burn 10e18: junior(5) + mezz(5)
         await (await lossManager.connect(deployer).applyLoss(to6(10n))).wait();
 
@@ -484,6 +496,7 @@ describe("LossManager", () => {
         const m1 = await mzusd.balanceOf(mezzanineAddr);
         const s1 = await mzusd.balanceOf(seniorAddr);
 
+        await time.increase(DAY);
         // Apply loss = 11 USDC -> burn 11e18: senior burns 9, remaining 2 burns from mezz (mezz has 2 left after the first loss)
         await (await lossManager.connect(deployer).applyLoss(to6(11n))).wait();
 
@@ -492,7 +505,7 @@ describe("LossManager", () => {
         expect(await mzusd.balanceOf(juniorAddr)).to.equal(j1);
     });
 
-    it("Integration (deposits + vault distributeYield (streaming) + applyLoss during active stream)", async () => {
+    it("Integration (deposits + vault distributeYield (streaming) + applyLoss)", async () => {
         // 1) Deposit principal into each tranche (100 each)
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
         await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(100n)));
@@ -514,18 +527,20 @@ describe("LossManager", () => {
         const jBalBefore = await mzusd.balanceOf(juniorAddr);
         const mBalBefore = await mzusd.balanceOf(mezzanineAddr);
         const sBalBefore = await mzusd.balanceOf(seniorAddr);
+        const duration = await vault.epochDuration();
 
-        // Hardhat mines a new block for the next tx, which would advance timestamp by ~1s and accrue a tiny bit of yield
-        // execute applyLoss at streamStart + 1 to have deterministic 1-second accrual
+        // applyLoss advances epoch internally -> make it allowed
+        await time.increase(duration);
+
+        // execute applyLoss at streamStart + duration + 1 (yield fully accrued)
         const streamStart = await junior.yieldStreamStart();
-        await time.setNextBlockTimestamp(Number(streamStart + 1n));
+        await time.setNextBlockTimestamp(Number(streamStart + duration + 1n));
 
         const lossMZ = to18(180n);
         const juniorYield = await junior.yieldStreamingAmount();
-        const accruedJunior1s = (juniorYield * 1n) / BigInt(DAY);
+        const accruedJunior = juniorYield; // full accrual at end+1s
 
-        // At +1s, junior virtual NAV = principal + accrued(1s). LossManager burns up to tvl
-        const expectedJuniorBurn = to18(100n) + accruedJunior1s;
+        const expectedJuniorBurn = to18(100n) + accruedJunior;
         const remainingAfterJunior = lossMZ - expectedJuniorBurn;
 
         await (await lossManager.connect(deployer).applyLoss(to6(180n))).wait();
@@ -541,20 +556,16 @@ describe("LossManager", () => {
         // Immediately after loss, junior virtual NAV should become 0 (because balance = unaccrued yield)
         expect(await junior.totalAssets()).to.equal(0n);
 
-        // 4) As time moves forward, unaccrued decreases and virtual NAV grows again (yield accrues)
-        await time.increase(DAY / 2);
-
-        // Junior should now have some accrued yield reflected as virtual NAV (>0)
-        expect(await junior.totalAssets()).to.be.gt(0n);
-
-        // importantly - totalAssets should never underflow/revert (guarded)
-        // This asserts system stays coherent even with loss during streaming
+        // No further streaming in this epoch; ensure getters remain stable (no underflows)
+        await time.increase(duration / 2n);
+        expect(await junior.totalAssets()).to.equal(0n);
         expect(await mezzanine.totalAssets()).to.be.gt(0n);
         expect(await senior.totalAssets()).to.be.gt(0n);
     });
 
     it("Revert InsufficientCover if total cover is not enough", async () => {
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
+        await time.increase(DAY);
         await expect(
             lossManager.connect(deployer).applyLoss(to6(11n))
         ).to.be.revertedWithCustomError(lossManager, "InsufficientCover");
@@ -605,6 +616,7 @@ describe("LossManager", () => {
         const p0 = await mzusd.balanceOf(polAddr);
 
         // loss 40 -> split 1:3 -> 10 and 30
+        await time.increase(DAY);
         await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
 
         expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(10n));
@@ -639,7 +651,7 @@ describe("LossManager", () => {
             const pBal0 = await mzusd.balanceOf(polAddr);
 
             const {burn0, burn1, lossForPair} = computePairBurns(lossMZ, jTvl, pTvl);
-
+            await time.increase(DAY);
             await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
 
             expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
@@ -683,6 +695,7 @@ describe("LossManager", () => {
 
             const {burn0, burn1} = computePairBurns(remaining, jTvl, pTvl);
 
+            await time.increase(DAY);
             await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
 
             expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - burnMezz);
@@ -709,6 +722,7 @@ describe("LossManager", () => {
         const m0 = await mzusd.balanceOf(mezzanineAddr);
         const p0 = await mzusd.balanceOf(polAddr);
 
+        await time.increase(DAY);
         await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
 
         // Sequential burns only from junior (it has enough)
