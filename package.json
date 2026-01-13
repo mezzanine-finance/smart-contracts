@@ -6,7 +6,7 @@
     "scripts": {
         "gen:docs": "rm -rf docs && npx hardhat docgen",
         "gen:abi": "rm -rf abi && npx hardhat export-abi",
-        "coverage": "npm run clean:cov && SERIAL=true npx hardhat coverage",
+        "coverage": "npx hardhat coverage",
         "slither": "npm run clean:build && slither .",
         "slither:md": "npm run clean:build && bash scripts/commands/slither.sh",
         "size": "npm run compile:force && npx hardhat size-contracts",
