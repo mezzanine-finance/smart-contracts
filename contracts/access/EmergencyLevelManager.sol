@@ -91,7 +91,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         return tranches.length;
     }
 
-    function totalRulesCount() public view returns (uint256) {
+    function totalRulesCount() external view returns (uint256) {
         return
             EmergencyPolicyV1.rulesCountMZUSD() +
             EmergencyPolicyV1.rulesCountReservoir() +
