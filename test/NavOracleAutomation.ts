@@ -173,11 +173,17 @@ describe("NavOracleAutomation", () => {
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(
             vault.target,
             [distributeYieldSelector, addTrancheSelector],
             ADMIN_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            vault.target,
+            [advanceEpochSelector],
+            LOSS_MANAGER_ROLE
         );
 
         // Public user actions on Tranche (ERC4626 + token ops)
@@ -262,6 +268,7 @@ describe("NavOracleAutomation", () => {
             weightBps: 10_000,
             enabled: true,
         });
+        await lossManager.setVault(vault.target);
 
         snapshot = await takeSnapshot();
     });
@@ -366,7 +373,7 @@ describe("NavOracleAutomation", () => {
         expect(await navAutomation.hasPendingNav()).to.equal(false);
     });
 
-    it("zero-yield path reverts via Vault.distributeYield(0)", async () => {
+    it("zero-yield path advances epoch and clears pending NAV", async () => {
         await mintAndDepositIntoTranche(oracle, to6(80n));
 
         const totalSupplyMZ = await mzusd.totalSupply();
@@ -375,11 +382,11 @@ describe("NavOracleAutomation", () => {
         await navAutomation.connect(oracle).submitNav(totalSupplyUSDC);
         await time.increase(DAY);
 
-        await expect(navAutomation.performUpkeep("0x")).to.be.revertedWithCustomError(
-            vault,
-            "ZeroAmount"
-        );
-        expect(await navAutomation.hasPendingNav()).to.equal(true);
+        const epochBefore = await vault.currentEpochId();
+        await navAutomation.performUpkeep("0x");
+        const epochAfter = await vault.currentEpochId();
+        expect(epochAfter).to.equal(epochBefore + 1n);
+        expect(await navAutomation.hasPendingNav()).to.equal(false);
     });
 
     it("veto period 0 applies immediately", async () => {
