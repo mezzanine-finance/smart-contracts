@@ -1,7 +1,8 @@
 import {expect} from "chai";
-import {ethers, upgrades, network} from "hardhat";
+import hre, {ethers, upgrades, network} from "hardhat";
 import {takeSnapshot} from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
+import chalk from "chalk";
 import {
     AccessManagerConfiguratorV1,
     EmergencyLevelManager,
@@ -28,6 +29,14 @@ const RELAX_DELAY = 2 * 24 * 60 * 60;
 const UPGRADE_DELAY = RELAX_DELAY;
 const ADMIN_DELAY = RELAX_DELAY;
 
+const isCoverageRun = (hre as any).__SOLIDITY_COVERAGE_RUNNING === true;
+const itIfNotCoverage = isCoverageRun ? it.skip : it;
+if (isCoverageRun)
+    console.log(
+        chalk.red(
+            "Coverage run detected, skipping gas headroom test due to very poor ram performance in this testcase on coverage. To run all tests, use 'npx hardhat test'."
+        )
+    );
 describe("EmergencyLevelManager", () => {
     let snapshot: SnapshotRestorer;
 
@@ -288,7 +297,7 @@ describe("EmergencyLevelManager", () => {
         expect(adminGrantDelay).to.equal(BigInt(ADMIN_DELAY));
     });
 
-    it("Has enough gas headroom for full apply", async () => {
+    itIfNotCoverage("Has enough gas headroom for full apply", async () => {
         const gasEstimate = await manager
             .connect(guardian)
             .getFunction("escalateTo")
