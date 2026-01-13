@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip > /dev/null
           python -m pip install -q slither-analyzer==0.11.3 > /dev/null
 
-      - name: Run Slither (generate JSON)
+      - name: Run Slither
         shell: bash
         run: |
           set -euo pipefail
