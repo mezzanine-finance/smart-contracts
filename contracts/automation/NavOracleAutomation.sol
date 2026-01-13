@@ -5,6 +5,7 @@ import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/autom
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IVault {
     function distributeYield(uint256 usdcReported) external;
 }
@@ -75,6 +76,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     function submitNav(uint256 navUSDC) external restricted {
         if (hasPendingNav) revert PendingNavExists();
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint256 totalSupplyMZ = mzusd.totalSupply();
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 

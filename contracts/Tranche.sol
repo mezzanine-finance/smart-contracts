@@ -289,7 +289,6 @@ contract Tranche is
     /// @param epochId The epoch to finalize.
     function finalizeEpoch(uint256 epochId) external nonReentrant restricted whenDirectDisabled {
         // aderyn-fp-next-line(reentrancy-state-change)
-
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
 

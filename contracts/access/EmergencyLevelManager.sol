@@ -7,6 +7,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {EmergencyPolicyV1} from "./EmergencyPolicyV1.sol";
 
+// aderyn-fp-next-line(reused-contract-name)
 interface IAccessManagerMinimal {
     function setTargetFunctionRole(
         address target,
@@ -47,6 +48,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
     error LevelNotIncreased(uint8 current, uint8 requested);
     error LevelNotDecreased(uint8 current, uint8 requested);
     error InvalidRoleKind();
+    error EthTransferFailed(address to, uint256 amount);
 
     function initialize(
         address accessManager_,
@@ -267,5 +269,27 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         return (mask & (uint8(1) << level)) != 0;
     }
 
+    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
+    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
+    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
+    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
+    ///      via the proxy and no ETH should remain here, but having an explicit
+    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
+    ///      or mistaken transfers. This function is not part of the normal protocol
+    ///      flow and is restricted to the admin role.
+    // aderyn-ignore-next-line(state-change-without-event)
+    function rescueETH(address to, uint256 amount) external restricted {
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 bal = address(this).balance;
+        if (amount > bal) {
+            amount = bal;
+        }
+
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthTransferFailed(to, amount);
+    }
+
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }
