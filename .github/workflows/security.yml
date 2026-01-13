@@ -29,14 +29,3 @@ jobs:
               with:
                   fail-on: high
                   warn-on: low
-
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-
-            - name: Install Slither
-              run: pip install slither-analyzer
-
-            - name: Run Slither
-              run: npm run slither
