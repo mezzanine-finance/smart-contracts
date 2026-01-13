@@ -71,6 +71,7 @@ jobs:
 
       - name: Upload Aderyn SARIF to GitHub Code Scanning (if present)
         if: ${{ always() && steps.aderyn_sarif.outputs.sarif_path != '' }}
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.aderyn_sarif.outputs.sarif_path }}
