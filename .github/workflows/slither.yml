@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
 
     steps:
       - name: Checkout
@@ -28,9 +27,89 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Run Slither
-        uses: crytic/slither-action@v0.4.1
-        id: slither
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
-          ignore-compile: true
-          fail-on: high
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Slither (quiet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip > /dev/null
+          python -m pip install -q slither-analyzer==0.11.3 > /dev/null
+
+      - name: Run Slither (generate JSON)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep CI logs clean: write full details to slither.json, print a curated summary in the next step.
+          slither . --ignore-compile --exclude-dependencies --disable-color --json slither.json > /dev/null
+
+      - name: Fail on High (and print summary)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          p = Path('slither.json')
+          if not p.exists():
+              print('slither.json not found (Slither did not produce output).')
+              sys.exit(2)
+
+          data = json.loads(p.read_text())
+          if not data.get('success', False):
+              print('Slither failed:', data.get('error'))
+              sys.exit(2)
+
+          detectors = (data.get('results') or {}).get('detectors') or []
+
+          def impact_key(d):
+              return str(d.get('impact') or '').strip().lower()
+
+          counts = {'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+          for d in detectors:
+              k = impact_key(d)
+              if k in counts:
+                  counts[k] += 1
+
+          print('Slither findings summary:')
+          print(f"  High: {counts['high']} | Medium: {counts['medium']} | Low: {counts['low']} | Informational: {counts['informational']}")
+
+          def first_loc(det):
+              els = det.get('elements') or []
+              if not els:
+                  return None
+              sm = (els[0].get('source_mapping') or {})
+              fn = sm.get('filename_short') or sm.get('filename_relative') or sm.get('filename')
+              lines = sm.get('lines')
+              if fn and isinstance(lines, list) and lines:
+                  if len(lines) == 1:
+                      return f"{fn}:{lines[0]}"
+                  return f"{fn}:{min(lines)}-{max(lines)}"
+              return fn
+
+          # Print High findings (compact)
+          high = [d for d in detectors if impact_key(d) == 'high']
+          if high:
+              print('\nHigh findings:')
+              for i, d in enumerate(high, 1):
+                  loc = first_loc(d)
+                  check = d.get('check') or 'unknown-check'
+                  desc = (d.get('description') or '').strip().splitlines()[0]
+                  loc_part = f" ({loc})" if loc else ''
+                  print(f"  {i}. {check}{loc_part} — {desc}")
+
+          # Fail job if any High
+          sys.exit(1 if counts['high'] > 0 else 0)
+          PY
+
+      - name: Upload Slither report
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-report
+          path: slither.json
