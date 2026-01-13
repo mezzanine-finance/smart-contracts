@@ -395,6 +395,11 @@
                 "type": "address"
             },
             {
+                "internalType": "address",
+                "name": "polJunior_",
+                "type": "address"
+            },
+            {
                 "internalType": "address[]",
                 "name": "tranches_",
                 "type": "address[]"
@@ -439,6 +444,19 @@
     {
         "inputs": [],
         "name": "mzusd",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "polJunior",
         "outputs": [
             {
                 "internalType": "address",

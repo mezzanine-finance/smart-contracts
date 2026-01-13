@@ -34,6 +34,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
     address public vault;
     address public reservoir;
     address public lossManager;
+    address public polJunior;
     address[] public tranches;
     uint8 public currentLevel;
 
@@ -52,6 +53,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         address vault_,
         address reservoir_,
         address lossManager_,
+        address polJunior_,
         address[] calldata tranches_,
         uint8 initialLevel
     ) external initializer {
@@ -60,7 +62,8 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
             mzusd_ == address(0) ||
             vault_ == address(0) ||
             reservoir_ == address(0) ||
-            lossManager_ == address(0)
+            lossManager_ == address(0) ||
+            polJunior_ == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -75,6 +78,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         vault = vault_;
         reservoir = reservoir_;
         lossManager = lossManager_;
+        polJunior = polJunior_;
         currentLevel = initialLevel;
 
         for (uint256 i = 0; i < tranches_.length; i++) {
@@ -93,7 +97,8 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
             EmergencyPolicyV1.rulesCountReservoir() +
             EmergencyPolicyV1.rulesCountVault() +
             EmergencyPolicyV1.rulesCountLossManager() +
-            EmergencyPolicyV1.rulesCountTranche() * tranches.length;
+            EmergencyPolicyV1.rulesCountTranche() * tranches.length +
+            EmergencyPolicyV1.rulesCountPolJunior();
     }
 
     /// @notice Escalate to a higher emergency level.
@@ -129,6 +134,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         _applyRules(reservoir, EmergencyPolicyV1.rulesReservoir(), level);
         _applyRules(vault, EmergencyPolicyV1.rulesVault(), level);
         _applyRules(lossManager, EmergencyPolicyV1.rulesLossManager(), level);
+        _applyRules(polJunior, EmergencyPolicyV1.rulesPolJunior(), level);
 
         EmergencyPolicyV1.RuleDef[] memory trancheRules = EmergencyPolicyV1.rulesTranche();
         uint256 trancheCount = tranches.length;

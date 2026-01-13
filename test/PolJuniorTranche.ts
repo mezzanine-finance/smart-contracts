@@ -114,7 +114,14 @@ describe("PolJuniorTranche", () => {
 
         // POL tranche: deposit should be callable by everyone (PUBLIC_ROLE)
         const polDepositSel = pol.interface.getFunction("deposit").selector;
-        await accessManager.setTargetFunctionRole(polAddr, [polDepositSel], PUBLIC_ROLE);
+        const polApproveSel = pol.interface.getFunction("approve").selector;
+        const polTransferSel = pol.interface.getFunction("transfer").selector;
+        const polTransferFromSel = pol.interface.getFunction("transferFrom").selector;
+        await accessManager.setTargetFunctionRole(
+            polAddr,
+            [polDepositSel, polApproveSel, polTransferSel, polTransferFromSel],
+            PUBLIC_ROLE
+        );
 
         // POL tranche: withdraw/redeem should be ADMIN only
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
@@ -127,13 +134,7 @@ describe("PolJuniorTranche", () => {
 
         // POL tranche: admin-only management endpoints
         const polSetPayoutSel = pol.interface.getFunction("setPolPayout").selector;
-        const polPauseSel = pol.interface.getFunction("pause").selector;
-        const polUnpauseSel = pol.interface.getFunction("unpause").selector;
-        await accessManager.setTargetFunctionRole(
-            polAddr,
-            [polSetPayoutSel, polPauseSel, polUnpauseSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(polAddr, [polSetPayoutSel], ADMIN_ROLE);
 
         // public: MZUSD deposit/requestWithdrawal
         const depSel = mzusd.interface.getFunction("deposit").selector;

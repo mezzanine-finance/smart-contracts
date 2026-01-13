@@ -50,6 +50,7 @@ async function main() {
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
     const lossManagerRecord = getLatestDeployment(deployments, netName, "LossManager");
+    const polJuniorRecord = getLatestDeployment(deployments, netName, "PolJuniorTranche");
 
     const trancheAddresses = getTrancheAddresses(deployments, netName);
 
@@ -58,6 +59,7 @@ async function main() {
     const reservoirAddress = reservoirRecord?.address;
     const vaultAddress = vaultRecord?.address;
     const lossManagerAddress = lossManagerRecord?.address;
+    const polJuniorAddress = polJuniorRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
@@ -66,6 +68,9 @@ async function main() {
         throw new Error(
             "Core contracts not deployed. Deploy MZUSD/Reservoir/Vault/LossManager first."
         );
+    }
+    if (!polJuniorAddress) {
+        throw new Error("PolJuniorTranche not deployed for this network. Deploy it first.");
     }
     if (trancheAddresses.length === 0) {
         throw new Error("No Tranche deployments found. Deploy tranches first.");
@@ -76,6 +81,7 @@ async function main() {
     console.log("ReservoirUSDC:", reservoirAddress);
     console.log("Vault:", vaultAddress);
     console.log("LossManager:", lossManagerAddress);
+    console.log("PolJuniorTranche:", polJuniorAddress);
     console.log("Tranches:", trancheAddresses.join(", "));
 
     const accessManager = await ethers.getContractAt(
@@ -108,6 +114,7 @@ async function main() {
             vaultAddress,
             reservoirAddress,
             lossManagerAddress,
+            polJuniorAddress,
             trancheAddresses,
             0,
         ],

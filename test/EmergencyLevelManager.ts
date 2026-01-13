@@ -7,6 +7,7 @@ import {
     EmergencyLevelManager,
     LossManager,
     MZUSD,
+    PolJuniorTranche,
     ReservoirUSDC,
     Tranche,
     Vault,
@@ -39,6 +40,7 @@ describe("EmergencyLevelManager", () => {
     let reservoir: ReservoirUSDC;
     let vault: Vault;
     let tranche: Tranche;
+    let pol: PolJuniorTranche;
     let lossManager: LossManager;
     let manager: EmergencyLevelManager;
     let configurator: AccessManagerConfiguratorV1;
@@ -94,6 +96,13 @@ describe("EmergencyLevelManager", () => {
             }
         )) as unknown as Tranche;
 
+        const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
+        pol = (await upgrades.deployProxy(
+            PolFactory,
+            [mzusd.target, "POL Junior Tranche", "pJLT", accessManager.target, deployer.address],
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+        )) as unknown as PolJuniorTranche;
+
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
@@ -110,6 +119,7 @@ describe("EmergencyLevelManager", () => {
                 vault.target,
                 reservoir.target,
                 lossManager.target,
+                pol.target,
                 [tranche.target],
                 LEVEL_L0,
             ],

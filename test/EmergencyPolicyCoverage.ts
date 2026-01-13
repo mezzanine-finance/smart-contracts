@@ -4,6 +4,7 @@ import {expect} from "chai";
 
 const TARGET_SOURCES: Record<string, string> = {
     MZUSD: "contracts/MZUSD.sol",
+    PolJuniorTranche: "contracts/PolJuniorTranche.sol",
     ReservoirUSDC: "contracts/ReservoirUSDC.sol",
     Vault: "contracts/Vault.sol",
     Tranche: "contracts/Tranche.sol",
@@ -16,6 +17,7 @@ const RULE_FUNCTION_TARGETS: Record<string, string> = {
     rulesVault: "Vault",
     rulesTranche: "Tranche",
     rulesLossManager: "LossManager",
+    rulesPolJunior: "PolJuniorTranche",
 };
 
 function stripComments(source: string): string {
@@ -89,7 +91,7 @@ function getPolicyFunctionNames(source: string): Record<string, Set<string>> {
 describe("EmergencyPolicyV1 coverage", () => {
     it("covers all restricted entrypoints for configured targets", () => {
         const policySource = fs.readFileSync(
-            path.join(__dirname, "..", "contracts", "EmergencyPolicyV1.sol"),
+            path.join(__dirname, "..", "contracts", "access", "EmergencyPolicyV1.sol"),
             "utf8"
         );
         const policyFunctions = getPolicyFunctionNames(policySource);

@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -17,7 +16,6 @@ contract PolJuniorTranche is
     ERC4626Upgradeable,
     AccessManagedUpgradeable,
     ReentrancyGuardUpgradeable,
-    PausableUpgradeable,
     UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
@@ -56,7 +54,6 @@ contract PolJuniorTranche is
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __Pausable_init();
         __UUPSUpgradeable_init();
 
         polPayout = polPayoutAddress;
@@ -67,15 +64,37 @@ contract PolJuniorTranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256) {
         return super.deposit(assets, receiver);
     }
 
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256) {
         return super.mint(shares, receiver);
+    }
+
+    function transfer(
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transfer(to, value);
+    }
+
+    function approve(
+        address spender,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.approve(spender, value);
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transferFrom(from, to, value);
     }
 
     // ERC4626 exit points (role-controlled via AccessManager)
@@ -84,7 +103,7 @@ contract PolJuniorTranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256) {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -92,7 +111,7 @@ contract PolJuniorTranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant whenNotPaused restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256) {
         return super.redeem(shares, receiver, owner);
     }
 
@@ -112,14 +131,6 @@ contract PolJuniorTranche is
         if (payout == address(0)) revert ZeroAddress();
         polPayout = payout;
         emit PolPayoutUpdated(payout);
-    }
-
-    function pause() external restricted {
-        _pause();
-    }
-
-    function unpause() external restricted {
-        _unpause();
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.

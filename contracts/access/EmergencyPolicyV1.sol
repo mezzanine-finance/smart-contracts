@@ -3,11 +3,12 @@ pragma solidity 0.8.30;
 
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {LossManager} from "./LossManager.sol";
-import {MZUSD} from "./MZUSD.sol";
-import {ReservoirUSDC} from "./ReservoirUSDC.sol";
-import {Tranche} from "./Tranche.sol";
-import {Vault} from "./Vault.sol";
+import {LossManager} from "../LossManager.sol";
+import {MZUSD} from "../MZUSD.sol";
+import {PolJuniorTranche} from "../PolJuniorTranche.sol";
+import {ReservoirUSDC} from "../ReservoirUSDC.sol";
+import {Tranche} from "../Tranche.sol";
+import {Vault} from "../Vault.sol";
 
 /// @title EmergencyPolicyV1
 /// @notice Hardcoded emergency access policy for Phase 1.
@@ -42,6 +43,7 @@ library EmergencyPolicyV1 {
     uint256 internal constant VAULT_RULES_COUNT = 15;
     uint256 internal constant TRANCHE_RULES_COUNT = 17;
     uint256 internal constant LOSS_MANAGER_RULES_COUNT = 8;
+    uint256 internal constant POL_JUNIOR_RULES_COUNT = 12;
 
     /// @notice MZUSD rules: ingress only in L0, egress in L0/L1, no user ops in L2.
     /// @dev L2 keeps only emergency/admin actions (rescue/upgrade/authority) and loss burns.
@@ -221,6 +223,49 @@ library EmergencyPolicyV1 {
         );
     }
 
+    /// @notice POL Junior rules: ingress only in L0; admin withdrawals allowed in L0/L1.
+    function rulesPolJunior() internal pure returns (RuleDef[] memory rules) {
+        rules = new RuleDef[](POL_JUNIOR_RULES_COUNT);
+        uint256 idx;
+
+        rules[idx++] = RuleDef(PolJuniorTranche.deposit.selector, RoleKind.Public, MASK_L0);
+        rules[idx++] = RuleDef(PolJuniorTranche.mint.selector, RoleKind.Public, MASK_L0);
+        rules[idx++] = RuleDef(
+            PolJuniorTranche.withdraw.selector,
+            RoleKind.ProtocolAdmin,
+            MASK_L0_L1
+        );
+        rules[idx++] = RuleDef(
+            PolJuniorTranche.redeem.selector,
+            RoleKind.ProtocolAdmin,
+            MASK_L0_L1
+        );
+        rules[idx++] = RuleDef(PolJuniorTranche.notifyYield.selector, RoleKind.Vault, MASK_L0);
+        rules[idx++] = RuleDef(PolJuniorTranche.approve.selector, RoleKind.Public, MASK_L0_L1);
+        rules[idx++] = RuleDef(PolJuniorTranche.transfer.selector, RoleKind.Public, MASK_L0_L1);
+        rules[idx++] = RuleDef(PolJuniorTranche.transferFrom.selector, RoleKind.Public, MASK_L0_L1);
+        rules[idx++] = RuleDef(
+            PolJuniorTranche.setPolPayout.selector,
+            RoleKind.ProtocolAdmin,
+            MASK_L0
+        );
+        rules[idx++] = RuleDef(
+            PolJuniorTranche.rescueETH.selector,
+            RoleKind.ProtocolAdmin,
+            MASK_L0_L1_L2
+        );
+        rules[idx++] = RuleDef(
+            AccessManagedUpgradeable.setAuthority.selector,
+            RoleKind.AccessAdmin,
+            MASK_L2
+        );
+        rules[idx++] = RuleDef(
+            UUPSUpgradeable.upgradeToAndCall.selector,
+            RoleKind.Upgrade,
+            MASK_L0_L1_L2
+        );
+    }
+
     function rulesCountMZUSD() internal pure returns (uint256) {
         return MZUSD_RULES_COUNT;
     }
@@ -239,5 +284,9 @@ library EmergencyPolicyV1 {
 
     function rulesCountLossManager() internal pure returns (uint256) {
         return LOSS_MANAGER_RULES_COUNT;
+    }
+
+    function rulesCountPolJunior() internal pure returns (uint256) {
+        return POL_JUNIOR_RULES_COUNT;
     }
 }
