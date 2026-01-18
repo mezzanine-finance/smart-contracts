@@ -216,7 +216,7 @@
                 "type": "uint256"
             }
         ],
-        "name": "GlobalHourlyCapExceeded",
+        "name": "GlobalRedemptionCapExceeded",
         "type": "error"
     },
     {
@@ -375,7 +375,7 @@
                 "type": "uint256"
             }
         ],
-        "name": "GlobalHourlyRedemptionCapUpdated",
+        "name": "GlobalRedemptionCapUpdated",
         "type": "event"
     },
     {
@@ -664,7 +664,7 @@
     },
     {
         "inputs": [],
-        "name": "getRemainingGlobalHourlyCap",
+        "name": "getRemainingGlobalRedemptionCap",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -682,7 +682,7 @@
     },
     {
         "inputs": [],
-        "name": "globalHourlyRedemptionCapUSDC",
+        "name": "globalRedemptionCapUSDC",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -702,7 +702,7 @@
             },
             {
                 "internalType": "uint256",
-                "name": "_hourlyLimitUSDC",
+                "name": "_initialCapUSDC",
                 "type": "uint256"
             }
         ],
@@ -917,7 +917,7 @@
                 "type": "uint256"
             }
         ],
-        "name": "setGlobalHourlyRedemptionCap",
+        "name": "setGlobalRedemptionCap",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

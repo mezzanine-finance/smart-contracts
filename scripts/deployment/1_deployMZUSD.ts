@@ -49,22 +49,26 @@ async function main() {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
     }
 
-    const hourlyCapHuman = info.mzusdHourlyCap;
-    const hourlyCapUSDC = parseUnits(hourlyCapHuman, 6);
+    const redemptionCapHuman = info.mzusdRedemptionCap;
+    const redemptionCapUSDC = parseUnits(redemptionCapHuman, 6);
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
-    console.log("Hourly cap (USDC):", hourlyCapHuman);
+    console.log("Redemption cap (USDC):", redemptionCapHuman);
 
     upgrades.silenceWarnings();
 
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-    const mzusd = await upgrades.deployProxy(MZUSDFactory, [accessManagerAddress, hourlyCapUSDC], {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor", "state-variable-immutable"],
-        constructorArgs: [usdcAddress],
-    });
+    const mzusd = await upgrades.deployProxy(
+        MZUSDFactory,
+        [accessManagerAddress, redemptionCapUSDC],
+        {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [usdcAddress],
+        }
+    );
     const tx = mzusd.deploymentTransaction();
     await mzusd.waitForDeployment();
 

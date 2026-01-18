@@ -61,7 +61,7 @@ library EmergencyPolicyV1 {
         rules[idx++] = RuleDef(MZUSD.burn.selector, RoleKind.LossManager, MASK_L0_L1_L2);
 
         rules[idx++] = RuleDef(
-            MZUSD.setGlobalHourlyRedemptionCap.selector,
+            MZUSD.setGlobalRedemptionCap.selector,
             RoleKind.ProtocolAdmin,
             MASK_L0_L1
         );

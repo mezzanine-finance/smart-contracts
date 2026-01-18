@@ -5,9 +5,9 @@ export interface DeployInfo {
     // who will be the admin of AccessManager
     accessManagerAdmin: string;
 
-    // global hourly cap for MZUSD in USDC (without 6 decimals)
+    // global redemption cap for MZUSD in USDC (without 6 decimals)
     // for example 1_000_000 = 1_000_000 USDC, 0 = cap disabled
-    mzusdHourlyCap: string;
+    mzusdRedemptionCap: string;
 
     // emergency level roles (optional, defaults to accessManagerAdmin)
     emergencyEscalate?: string;
@@ -34,7 +34,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
     mainnet: {
         usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC mainnet
         accessManagerAdmin: "0xYourAdminAddressHere",
-        mzusdHourlyCap: "1000000", // 1m USDC per hour
+        mzusdRedemptionCap: "1000000", // 1m USDC per window
         tranche: {
             id: 1,
             unstakeDelayEpochs: 0,
@@ -51,7 +51,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
     sepolia: {
         usdc: "0xYourMockOrUSDCOnSepolia",
         accessManagerAdmin: "0xYourSepoliaAdmin",
-        mzusdHourlyCap: "0",
+        mzusdRedemptionCap: "0",
         tranche: {
             id: 1,
             unstakeDelayEpochs: 0,
@@ -67,7 +67,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
     buildbear: {
         usdc: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
         accessManagerAdmin: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
-        mzusdHourlyCap: "1000000",
+        mzusdRedemptionCap: "1000000",
         emergencyEscalate: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         emergencyRelax: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         relaxDelaySeconds: 2 * 24 * 60 * 60,

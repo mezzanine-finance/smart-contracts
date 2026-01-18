@@ -14,16 +14,16 @@ interface IMZUSD is IERC20 {
     // @notice usage restricted to Vault; mint assets to Tranche + fee lock
     function mint(address to, uint256 amount) external;
 
-    /// @notice set global hourly redemption cap (USDC, 6 decimals)
-    function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external;
+    /// @notice set global redemption cap (USDC, 6 decimals)
+    function setGlobalRedemptionCap(uint256 newCapUSDC) external;
 
     /// @notice set vault address
     function setVault(address _vault) external;
 
-    /// @notice remaining global hourly redemption cap
+    /// @notice remaining global redemption cap
     /// @return remainingUSDC remaining cap in USDC (6 decimals)
     /// @return windowStart start timestamp of current window
-    function getRemainingGlobalHourlyCap()
+    function getRemainingGlobalRedemptionCap()
         external
         view
         returns (uint256 remainingUSDC, uint256 windowStart);

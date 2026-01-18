@@ -80,7 +80,7 @@ describe("MZUSD <-> USDC conversion", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                usdcTotalSupply, // _hourlyLimitUSDC (max allowed; configured below in tests)
+                usdcTotalSupply, // _initialCapUSDC (max allowed; configured below in tests)
             ],
             {
                 kind: "uups",
@@ -120,8 +120,8 @@ describe("MZUSD <-> USDC conversion", () => {
         await expect(mzusd.setVault(vault.target))
             .to.emit(mzusd, "SetVault")
             .withArgs(vault.target);
-        await expect(mzusd.setGlobalHourlyRedemptionCap(to6(1_000_000n)))
-            .to.emit(mzusd, "GlobalHourlyRedemptionCapUpdated")
+        await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
+            .to.emit(mzusd, "GlobalRedemptionCapUpdated")
             .withArgs(to6(1_000_000n)); // 1 million USDC per hour
 
         // AccessManager wiring for Vault.withdraw -> MZUSD
@@ -278,20 +278,20 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(depositAmountUSDC);
     });
 
-    it("Should cap global hourly redemption at USDC total supply", async () => {
-        await expect(mzusd.setGlobalHourlyRedemptionCap(usdcTotalSupply))
-            .to.emit(mzusd, "GlobalHourlyRedemptionCapUpdated")
+    it("Should cap global redemption at USDC total supply", async () => {
+        await expect(mzusd.setGlobalRedemptionCap(usdcTotalSupply))
+            .to.emit(mzusd, "GlobalRedemptionCapUpdated")
             .withArgs(usdcTotalSupply);
 
-        await expect(mzusd.setGlobalHourlyRedemptionCap(usdcTotalSupply + 1n))
+        await expect(mzusd.setGlobalRedemptionCap(usdcTotalSupply + 1n))
             .to.be.revertedWithCustomError(mzusd, "CapExceedsTotalSupply")
             .withArgs(usdcTotalSupply + 1n, usdcTotalSupply);
     });
 
-    it("Should enforce the global hourly redemption cap", async () => {
-        // Set a small hourly cap: 150 USDC
+    it("Should enforce the global redemption cap", async () => {
+        // Set a small cap: 150 USDC
         const capUSDC = to6(150n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         const depositAmountUSDC = to6(200n);
 
@@ -317,7 +317,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         await expect(
             mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ)
-        ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
+        ).to.be.revertedWithCustomError(mzusd, "GlobalRedemptionCapExceeded");
 
         // Move time forward by 1 hour to reset the rolling window
         await time.increase(3600);
@@ -332,9 +332,9 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should handle complex flows with multiple users and helper netting patterns", async () => {
-        // Hourly cap: 500 USDC
+        // Redemption cap: 500 USDC
         const capUSDC = to6(500n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         // Fund Alice, Bob and helper with USDC
         const aliceUSDC = to6(400n);
@@ -350,8 +350,8 @@ describe("MZUSD <-> USDC conversion", () => {
         await usdc.connect(alice).approve(mzusd.target, aliceUSDC);
         await mzusd.connect(alice).deposit(aliceUSDC);
 
-        let [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
-        expect(remainingCap).to.equal(capUSDC, "Deposit should not consume the hourly cap");
+        let [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
+        expect(remainingCap).to.equal(capUSDC, "Deposit should not consume the redemption cap");
 
         //2. Alice withdraws 150 MZUSD -> 150 USDC (pure outflow)
 
@@ -359,7 +359,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const txA1 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw1MZ);
         await txA1.wait();
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(capUSDC - remainingCap).to.equal(
             to6(150n),
             "Alice first withdrawal should consume 150 USDC of the cap"
@@ -370,7 +370,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await usdc.connect(bob).approve(mzusd.target, bobUSDC);
         await mzusd.connect(bob).deposit(bobUSDC);
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(capUSDC - remainingCap).to.equal(to6(150n), "Bob deposit should not touch the cap");
 
         //4. Bob withdraws 70 MZUSD -> 70 USDC
@@ -379,7 +379,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const txB1 = await mzusd.connect(bob).requestWithdrawal(bobWithdraw1MZ);
         await txB1.wait();
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         // total used so far: 150 (Alice) + 70 (Bob) = 220
         expect(capUSDC - remainingCap).to.equal(
             to6(220n),
@@ -403,7 +403,7 @@ describe("MZUSD <-> USDC conversion", () => {
             .withdrawThenDeposit(mzusd.target, usdc.target, helperWTD_MZ, helperWTD_DepUSDC);
         await txH1.wait();
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         // total used now: 220 + 60 = 280
         expect(capUSDC - remainingCap).to.equal(
             to6(280n),
@@ -427,7 +427,7 @@ describe("MZUSD <-> USDC conversion", () => {
             .withdrawDepositWithdraw(mzusd.target, usdc.target, w1MZ, depUSDC, w2MZ);
         await txH2.wait();
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         // total used now: 280 + 60 = 340
         expect(capUSDC - remainingCap).to.equal(
             to6(340n),
@@ -440,7 +440,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const txA2 = await mzusd.connect(alice).requestWithdrawal(aliceWithdraw2MZ);
         await txA2.wait();
 
-        [remainingCap] = await mzusd.getRemainingGlobalHourlyCap();
+        [remainingCap] = await mzusd.getRemainingGlobalRedemptionCap();
         // total used: 340 + 150 = 490
         expect(capUSDC - remainingCap).to.equal(
             to6(490n),
@@ -453,7 +453,7 @@ describe("MZUSD <-> USDC conversion", () => {
         //   deposit = 100
         //   usdcOut = 90
         //   txDeposited (100) >= usdcOut (90) -> _applyAtomicNetting returns 0
-        // So this tx MUST NOT consume any additional hourly cap.
+        // So this tx MUST NOT consume any additional redemption cap.
 
         const helperNetDepositUSDC = to6(100n);
         const helperNetWithdrawMZ = to18(90n);
@@ -461,7 +461,7 @@ describe("MZUSD <-> USDC conversion", () => {
         // top up helper just in case
         await usdc.connect(whale).transfer(nettingHelper.target, helperNetDepositUSDC);
 
-        const [capBeforeNetting] = await mzusd.getRemainingGlobalHourlyCap();
+        const [capBeforeNetting] = await mzusd.getRemainingGlobalRedemptionCap();
 
         const txHN = await nettingHelper
             .connect(deployer)
@@ -473,7 +473,7 @@ describe("MZUSD <-> USDC conversion", () => {
             );
         await txHN.wait();
 
-        const [capAfterNetting] = await mzusd.getRemainingGlobalHourlyCap();
+        const [capAfterNetting] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(capAfterNetting).to.equal(
             capBeforeNetting,
             "Atomic D>W netting (depositAndWithdraw) should not consume the cap"
@@ -481,12 +481,12 @@ describe("MZUSD <-> USDC conversion", () => {
 
         //8. Bob tries to withdraw 20 MZUSD -> 20 USDC
         // 490 + 20 > 500 =>
-        // must revert on GlobalHourlyCapExceeded
+        // must revert on GlobalRedemptionCapExceeded
 
         const bobWithdraw2MZ = to18(20n);
         await expect(
             mzusd.connect(bob).requestWithdrawal(bobWithdraw2MZ)
-        ).to.be.revertedWithCustomError(mzusd, "GlobalHourlyCapExceeded");
+        ).to.be.revertedWithCustomError(mzusd, "GlobalRedemptionCapExceeded");
     });
 
     it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
@@ -508,11 +508,11 @@ describe("MZUSD <-> USDC conversion", () => {
         await expect(mzusd.connect(alice).requestWithdrawal(to18(50n))).to.be.reverted;
     });
 
-    it("Should correctly compute remaining global hourly cap and preview functions", async () => {
+    it("Should correctly compute remaining global redemption cap and preview functions", async () => {
         // 1) cap = USDC total supply -> max allowed
-        await mzusd.setGlobalHourlyRedemptionCap(usdcTotalSupply);
+        await mzusd.setGlobalRedemptionCap(usdcTotalSupply);
 
-        let [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        let [remaining, windowStart] = await mzusd.getRemainingGlobalRedemptionCap();
         const storedWindowStart = await mzusd.windowStartTimestamp();
 
         expect(remaining).to.equal(usdcTotalSupply);
@@ -520,7 +520,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // 2) cap > 0, window is active, usage < cap and = cap
         const capUSDC = to6(150n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         const depositAmountUSDC = to6(200n);
 
@@ -530,7 +530,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const w1MZ = to18(40n);
         await mzusd.connect(alice).requestWithdrawal(w1MZ);
 
-        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        [remaining, windowStart] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(remaining).to.equal(capUSDC - to6(40n));
         expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
 
@@ -538,7 +538,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const w2MZ = to18(110n);
         await mzusd.connect(alice).requestWithdrawal(w2MZ);
 
-        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        [remaining, windowStart] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(remaining).to.equal(0n);
         expect(windowStart).to.equal(await mzusd.windowStartTimestamp());
 
@@ -546,7 +546,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await time.increase(3601);
 
         const latestTs = await time.latest();
-        [remaining, windowStart] = await mzusd.getRemainingGlobalHourlyCap();
+        [remaining, windowStart] = await mzusd.getRemainingGlobalRedemptionCap();
 
         expect(remaining).to.equal(capUSDC);
         expect(windowStart).to.equal(BigInt(latestTs));
@@ -572,9 +572,9 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should correctly preview withdrawal flat data including cap and liquidity", async () => {
-        // Set a finite hourly cap so we can observe usage
+        // Set a finite cap so we can observe usage
         const capUSDC = to6(150n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         // Fund Alice and deposit 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
@@ -588,7 +588,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await mzusd.connect(alice).requestWithdrawal(firstWithdrawMZ);
 
         // After this withdrawal, cap usage should be 60 USDC
-        const [remainingCapAfterFirst] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingCapAfterFirst] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(capUSDC - remainingCapAfterFirst).to.equal(to6(60n));
 
         // Now preview withdrawing 100 USDC + small dust
@@ -645,7 +645,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(wouldExceedGlobalCap).to.equal(true);
 
         // Now switch to the max allowed cap and check the view adapts
-        await mzusd.setGlobalHourlyRedemptionCap(usdcTotalSupply);
+        await mzusd.setGlobalRedemptionCap(usdcTotalSupply);
 
         const [
             ,
@@ -685,9 +685,9 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(wouldExceedGlobalCap2).to.equal(false);
     });
 
-    it("Should allow deposits and withdrawals when hourly cap is effectively unlimited", async () => {
+    it("Should allow deposits and withdrawals when redemption cap is effectively unlimited", async () => {
         // Effectively disable cap by setting it to total supply (no practical limit)
-        await mzusd.setGlobalHourlyRedemptionCap(usdcTotalSupply);
+        await mzusd.setGlobalRedemptionCap(usdcTotalSupply);
 
         const depositAmountUSDC = to6(300n); // 300 USDC
 
@@ -698,7 +698,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceMZ).to.equal(to18(300n));
 
         // Getter should report max remaining cap when cap is effectively disabled
-        const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingBefore] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(remainingBefore).to.equal(usdcTotalSupply);
 
         const firstWithdrawMZ = to18(200n); // 200 USDC
@@ -713,7 +713,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceMZAfter).to.equal(0n);
         expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
 
-        const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingAfter] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(remainingAfter).to.equal(usdcTotalSupply - depositAmountUSDC);
     });
 
@@ -738,7 +738,7 @@ describe("MZUSD <-> USDC conversion", () => {
     it("Should reset window usage when shortening redemption duration past current window", async () => {
         // Set a finite cap to observe remaining/used values
         const capUSDC = to6(200n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         // Alice deposits 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
@@ -749,7 +749,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
         // Capture window state after withdrawal
-        const [remainingBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingBefore] = await mzusd.getRemainingGlobalRedemptionCap();
         const usedBefore = capUSDC - remainingBefore;
         const windowStartBefore = await mzusd.windowStartTimestamp();
         const durationBefore = await mzusd.redemptionWindowDuration();
@@ -780,7 +780,7 @@ describe("MZUSD <-> USDC conversion", () => {
         const storedDurationShort = await mzusd.redemptionWindowDuration();
         const windowStartAfter = await mzusd.windowStartTimestamp();
         const usedAfter = await mzusd.windowUsedUSDC();
-        const [remainingAfter] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingAfter] = await mzusd.getRemainingGlobalRedemptionCap();
 
         expect(storedDurationShort).to.equal(shorterDuration);
 
@@ -794,7 +794,7 @@ describe("MZUSD <-> USDC conversion", () => {
     it("Should keep previewWithdrawalFlat aligned with cap getter and window duration", async () => {
         // 1) Set a finite cap and consume part of it
         const capUSDC = to6(200n);
-        await mzusd.setGlobalHourlyRedemptionCap(capUSDC);
+        await mzusd.setGlobalRedemptionCap(capUSDC);
 
         // Alice deposits 200 USDC -> 200 MZUSD
         const depositAmountUSDC = to6(200n);
@@ -805,7 +805,7 @@ describe("MZUSD <-> USDC conversion", () => {
         await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
         // Check state via small getter
-        const [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingBefore, windowStartBefore] = await mzusd.getRemainingGlobalRedemptionCap();
         const usedBefore = capUSDC - remainingBefore;
         const durationBefore = await mzusd.redemptionWindowDuration();
 
@@ -857,7 +857,7 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(storedDurationShort).to.equal(shorterDuration);
 
         // Small getter should see a NEW window with full cap
-        const [remainingAfter, windowStartAfter] = await mzusd.getRemainingGlobalHourlyCap();
+        const [remainingAfter, windowStartAfter] = await mzusd.getRemainingGlobalRedemptionCap();
         expect(remainingAfter).to.equal(capUSDC);
 
         // 4) Big getter again with the same amount
@@ -929,7 +929,7 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Should reject zero cap in setter", async () => {
-        await expect(mzusd.setGlobalHourlyRedemptionCap(0)).to.be.revertedWithCustomError(
+        await expect(mzusd.setGlobalRedemptionCap(0)).to.be.revertedWithCustomError(
             mzusd,
             "ZeroCap"
         );

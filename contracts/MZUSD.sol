@@ -13,7 +13,7 @@ interface IVault {
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
 /// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
-/// @notice Supports global hourly redemption cap in USDC (6 decimals).
+/// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
 contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     IERC20 public immutable usdc;
 
@@ -26,8 +26,8 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     uint40 public windowStartTimestamp;
     /// @notice duration of redemption window in seconds (e.g. 1 hours)
     uint32 public redemptionWindowDuration;
-    /// @notice global hourly redemption cap in USDC (6 decimals); must be > 0
-    uint256 public globalHourlyRedemptionCapUSDC;
+    /// @notice global redemption cap in USDC (6 decimals); must be > 0
+    uint256 public globalRedemptionCapUSDC;
     /// @notice amount of USDC redeemed in current window
     uint256 public windowUsedUSDC;
 
@@ -36,7 +36,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
-    event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
+    event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event SetVault(address vault);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
 
@@ -48,7 +48,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     error SameValue();
     error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
-    error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
+    error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error EthTransferFailed(address to, uint256 attemptedAmount);
 
@@ -64,8 +64,8 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     }
 
     /// @param accessManager - address of AccessManager contract for role management
-    /// @param _hourlyLimitUSDC - initial global hourly redemption cap in USDC (6 decimals)
-    function initialize(address accessManager, uint256 _hourlyLimitUSDC) external initializer {
+    /// @param _initialCapUSDC - initial global redemption cap in USDC (6 decimals)
+    function initialize(address accessManager, uint256 _initialCapUSDC) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
         }
@@ -73,7 +73,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
 
-        _setGlobalHourlyRedemptionCap(_hourlyLimitUSDC);
+        _setGlobalRedemptionCap(_initialCapUSDC);
         windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
     }
@@ -152,11 +152,11 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     //SETTERS
 
-    /// @notice set global hourly redemption cap in USDC (6 decimals)
+    /// @notice set global redemption cap in USDC (6 decimals)
     /// @param newCapUSDC - new cap value; must be > 0 and <= USDC total supply
-    function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
-        if (globalHourlyRedemptionCapUSDC == newCapUSDC) revert SameValue();
-        _setGlobalHourlyRedemptionCap(newCapUSDC);
+    function setGlobalRedemptionCap(uint256 newCapUSDC) external restricted {
+        if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
+        _setGlobalRedemptionCap(newCapUSDC);
     }
 
     /// @notice set the Vault contract address
@@ -191,12 +191,12 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @notice view remaining USDC available for redemption in current window
     /// @return remainingUSDC - amount of USDC left that can be redeemed in current window
     /// @return windowStart - start timestamp of the current redemption window
-    function getRemainingGlobalHourlyCap()
+    function getRemainingGlobalRedemptionCap()
         public
         view
         returns (uint256 remainingUSDC, uint40 windowStart)
     {
-        uint256 cap = globalHourlyRedemptionCapUSDC;
+        uint256 cap = globalRedemptionCapUSDC;
 
         if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
             // New window would start on next withdrawal; expose full cap and current timestamp.
@@ -256,10 +256,10 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         }
         hasSufficientLiquidity = vaultLiquidityUSDC >= usdcOut;
 
-        globalCapUSDC = globalHourlyRedemptionCapUSDC;
+        globalCapUSDC = globalRedemptionCapUSDC;
         isGlobalCapZero = (globalCapUSDC == 0);
 
-        (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
+        (windowRemainingUSDC, windowStart) = getRemainingGlobalRedemptionCap();
 
         uint256 storedUsed = windowUsedUSDC;
         if (globalCapUSDC > 0 && windowRemainingUSDC <= globalCapUSDC) {
@@ -297,9 +297,9 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         return usdcOut - coveredUSDC;
     }
 
-    /// @notice check and consume from the global hourly redemption cap
+    /// @notice check and consume from the global redemption cap
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
-        uint256 cap = globalHourlyRedemptionCapUSDC;
+        uint256 cap = globalRedemptionCapUSDC;
 
         if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
             windowStartTimestamp = uint40(block.timestamp);
@@ -307,12 +307,12 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         }
 
         uint256 newTotal = windowUsedUSDC + usdcAmount;
-        if (newTotal > cap) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
+        if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, windowUsedUSDC, usdcAmount);
 
         windowUsedUSDC = newTotal;
     }
 
-    function _setGlobalHourlyRedemptionCap(uint256 newCapUSDC) internal {
+    function _setGlobalRedemptionCap(uint256 newCapUSDC) internal {
         if (newCapUSDC == 0) {
             revert ZeroCap();
         }
@@ -322,8 +322,8 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
             revert CapExceedsTotalSupply(newCapUSDC, totalSupplyUSDC);
         }
 
-        globalHourlyRedemptionCapUSDC = newCapUSDC;
-        emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
+        globalRedemptionCapUSDC = newCapUSDC;
+        emit GlobalRedemptionCapUpdated(newCapUSDC);
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.

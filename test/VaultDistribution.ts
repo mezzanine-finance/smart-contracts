@@ -69,7 +69,7 @@ describe("Vault Yield Distribution", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
+                usdcTotalSupply, // _initialCapUSDC (max allowed)
             ],
             {
                 kind: "uups",

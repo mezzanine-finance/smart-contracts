@@ -64,8 +64,8 @@ Legend:
 | `calculateWithdrawalAmounts(uint256)` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `decimals()` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `deposit(uint256)` | nonpayable | yes | external | external nonReentrant restricted | user-ingress | L0 |
-| `getRemainingGlobalHourlyCap()` | view | yes | public |  | read | L0,L1,L2,L3 |
-| `globalHourlyRedemptionCapUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
+| `getRemainingGlobalRedemptionCap()` | view | yes | public |  | read | L0,L1,L2,L3 |
+| `globalRedemptionCapUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `initialize(address, uint256)` | nonpayable | yes | external | external initializer | init | L0 |
 | `isConsumingScheduledOp()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `mint(address, uint256)` | nonpayable | yes | external | external restricted | protocol-flow | L0 |
@@ -76,7 +76,7 @@ Legend:
 | `requestWithdrawal(uint256)` | nonpayable | yes | external | external nonReentrant restricted | user-egress | L0,L1 |
 | `rescueETH(address, uint256)` | nonpayable | yes | external | external restricted | emergency | L2,L3 |
 | `setAuthority(address)` | nonpayable | no | inherited |  | access-control | L0,L2,L3 |
-| `setGlobalHourlyRedemptionCap(uint256)` | nonpayable | yes | external | external restricted | admin-config | L0,L1,L2 |
+| `setGlobalRedemptionCap(uint256)` | nonpayable | yes | external | external restricted | admin-config | L0,L1,L2 |
 | `setRedemptionWindowDuration(uint256)` | nonpayable | yes | external | external restricted | admin-config | L0,L1,L2 |
 | `setVault(address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `symbol()` | view | no | inherited |  | read | L0,L1,L2,L3 |
