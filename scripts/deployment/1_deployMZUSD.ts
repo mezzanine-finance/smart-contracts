@@ -43,10 +43,15 @@ async function main() {
 
     const usdcAddress = info.usdc;
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
     const accessManagerAddress = accessManagerRecord?.address;
+    const vaultAddress = vaultRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
+    }
+    if (!vaultAddress) {
+        throw new Error("Vault not deployed for this network. Deploy it first.");
     }
 
     const redemptionCapHuman = info.mzusdRedemptionCap;
@@ -54,6 +59,7 @@ async function main() {
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
+    console.log("Vault:", vaultAddress);
     console.log("Redemption cap (USDC):", redemptionCapHuman);
 
     upgrades.silenceWarnings();
@@ -66,7 +72,7 @@ async function main() {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [usdcAddress],
+            constructorArgs: [usdcAddress, vaultAddress],
         }
     );
     const tx = mzusd.deploymentTransaction();
@@ -86,7 +92,13 @@ async function main() {
     });
 
     // Verify implementation (proxy verification is optional)
-    await verifyContract(implAddress, [usdcAddress]);
+    // Wire Vault -> MZUSD
+    const vault = await ethers.getContractAt("Vault", vaultAddress, deployer);
+    const txSetMZUSD = await vault.setMZUSD(proxyAddress);
+    await txSetMZUSD.wait();
+    console.log("Vault.mzusd =", proxyAddress);
+
+    await verifyContract(implAddress, [usdcAddress, vaultAddress]);
 
     saveDeployments(deployments);
     console.log("Deployments file updated");

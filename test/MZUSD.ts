@@ -75,38 +75,26 @@ describe("MZUSD <-> USDC conversion", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = await upgrades.deployProxy(
-            MZUSDFactory,
-            [
-                accessManager.target,
-                usdcTotalSupply, // _initialCapUSDC (max allowed; configured below in tests)
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        );
-
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = await upgrades.deployProxy(VaultFactory, [reservoir.target, accessManager.target], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [MAINNET_USDC],
         });
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = await upgrades.deployProxy(
-            VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                usdcTotalSupply, // _limitUSDC (max allowed; configured below in tests)
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
+                constructorArgs: [MAINNET_USDC, vault.target],
             }
         );
 

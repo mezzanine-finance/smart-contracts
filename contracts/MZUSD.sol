@@ -21,7 +21,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
 
-    IVault public vault;
+    IVault public immutable vault;
     /// @notice start timestamp of current redemption window
     uint40 public windowStartTimestamp;
     /// @notice duration of redemption window in seconds (e.g. 1 hours)
@@ -37,12 +37,10 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
-    event SetVault(address vault);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
 
     error ZeroAmount();
     error ZeroAddress();
-    error VaultNotSet();
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
@@ -52,14 +50,15 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error EthTransferFailed(address to, uint256 attemptedAmount);
 
-    constructor(address _usdc) {
-        if (_usdc == address(0)) revert ZeroAddress();
+    constructor(address _usdc, address _vault) {
+        if (_usdc == address(0) || _vault == address(0)) revert ZeroAddress();
 
         // aderyn-fp-next-line(reentrancy-state-change)
         uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
         if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
 
         usdc = IERC20(_usdc);
+        vault = IVault(_vault);
         _disableInitializers();
     }
 
@@ -81,7 +80,6 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
     function deposit(uint256 amountUSDC) external restricted {
-        if (address(vault) == address(0)) revert VaultNotSet();
         if (amountUSDC == 0) revert ZeroAmount();
 
         address sender = msg.sender;
@@ -157,15 +155,6 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     function setGlobalRedemptionCap(uint256 newCapUSDC) external restricted {
         if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
         _setGlobalRedemptionCap(newCapUSDC);
-    }
-
-    /// @notice set the Vault contract address
-    /// @param _vault - address of the Vault contract
-    function setVault(address _vault) external restricted {
-        if (_vault == address(0)) revert ZeroAddress();
-        if (address(vault) == _vault) revert SameValue();
-        vault = IVault(_vault);
-        emit SetVault(address(vault));
     }
 
     /// @notice set the duration of the redemption window

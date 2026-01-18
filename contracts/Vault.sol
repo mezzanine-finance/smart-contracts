@@ -111,22 +111,16 @@ contract Vault is
     }
 
     /// @notice Initializer
-    /// @param _mzusd - address of MZUSD token
     /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
-    function initialize(
-        address _mzusd,
-        address _reservoir,
-        address accessManager
-    ) external initializer {
-        if (_mzusd == address(0) || _reservoir == address(0) || accessManager == address(0)) {
+    function initialize(address _reservoir, address accessManager) external initializer {
+        if (_reservoir == address(0) || accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
 
-        mzusd = IMZUSD(_mzusd);
         reservoir = IReservoir(_reservoir);
 
         // aderyn-ignore-next-line(large-numeric-literal)

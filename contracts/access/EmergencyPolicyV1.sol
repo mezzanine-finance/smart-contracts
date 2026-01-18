@@ -38,7 +38,7 @@ library EmergencyPolicyV1 {
     uint8 internal constant MASK_L0_L1_L2 = MASK_L0 | MASK_L1 | MASK_L2;
     uint8 internal constant MASK_L0_L2 = MASK_L0 | MASK_L2;
 
-    uint256 internal constant MZUSD_RULES_COUNT = 13;
+    uint256 internal constant MZUSD_RULES_COUNT = 12;
     uint256 internal constant RESERVOIR_RULES_COUNT = 5;
     uint256 internal constant VAULT_RULES_COUNT = 15;
     uint256 internal constant TRANCHE_RULES_COUNT = 17;
@@ -70,8 +70,6 @@ library EmergencyPolicyV1 {
             RoleKind.ProtocolAdmin,
             MASK_L0_L1
         );
-        rules[idx++] = RuleDef(MZUSD.setVault.selector, RoleKind.ProtocolAdmin, MASK_L0);
-
         rules[idx++] = RuleDef(MZUSD.rescueETH.selector, RoleKind.ProtocolAdmin, MASK_L0_L1_L2);
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,

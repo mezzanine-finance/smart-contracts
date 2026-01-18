@@ -43,18 +43,13 @@ async function main() {
     const usdcAddress = info.usdc;
 
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
-    const mzusdRecord = getLatestDeployment(deployments, netName, "MZUSD");
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
 
     const accessManagerAddress = accessManagerRecord?.address;
-    const mzusdAddress = mzusdRecord?.address;
     const reservoirAddress = reservoirRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
-    }
-    if (!mzusdAddress) {
-        throw new Error("MZUSD not deployed for this network. Deploy it first.");
     }
     if (!reservoirAddress) {
         throw new Error("ReservoirUSDC not deployed for this network. Deploy it first.");
@@ -62,7 +57,6 @@ async function main() {
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
-    console.log("MZUSD:", mzusdAddress);
     console.log("ReservoirUSDC:", reservoirAddress);
 
     upgrades.silenceWarnings();
@@ -70,7 +64,7 @@ async function main() {
     const VaultFactory = await ethers.getContractFactory("Vault", deployer);
     const vault = await upgrades.deployProxy(
         VaultFactory,
-        [mzusdAddress, reservoirAddress, accessManagerAddress],
+        [reservoirAddress, accessManagerAddress],
         {
             kind: "uups",
             initializer: "initialize",
@@ -93,13 +87,6 @@ async function main() {
         txHash: tx?.hash,
         deployedAt: new Date().toISOString(),
     });
-
-    // Wiring MZUSD <-> Vault
-    console.log("\nWiring MZUSD.setVault(vault)...");
-    const mzusd = await ethers.getContractAt("MZUSD", mzusdAddress, deployer);
-    const txSetVault = await mzusd.setVault(vaultAddress);
-    await txSetVault.wait();
-    console.log("MZUSD.vault =", vaultAddress);
 
     // Verify implementation
     await verifyContract(vaultImpl, [usdcAddress]);
@@ -130,12 +117,10 @@ async function main() {
         ...(faucetUrl ? [`- Faucet: ${faucetUrl} (mint test ETH and USDC here)`] : []),
         `\nSmart contract addresses:`,
         `USDC: ${usdcAddress}`,
-        `MZUSD (proxy): ${mzusdAddress}`,
         `ReservoirUSDC (proxy): ${reservoirAddress}`,
         `Vault (proxy): ${vaultAddress}`,
         `AccessManager: ${accessManagerAddress}`,
         "---",
-        `MZUSD implementation: ${mzusdRecord?.implementation ?? "unknown"}`,
         `ReservoirUSDC implementation: ${reservoirRecord?.implementation ?? "unknown"}`,
         `Vault implementation: ${vaultImpl}`,
     ];

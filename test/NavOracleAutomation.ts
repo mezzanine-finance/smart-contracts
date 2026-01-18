@@ -71,21 +71,6 @@ describe("NavOracleAutomation", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(
-            MZUSDFactory,
-            [
-                accessManager.target,
-                usdcTotalSupply, // _initialCapUSDC (max allowed)
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        )) as unknown as MZUSD;
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -97,7 +82,7 @@ describe("NavOracleAutomation", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -105,6 +90,21 @@ describe("NavOracleAutomation", () => {
                 constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as Vault;
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                usdcTotalSupply, // _limitUSDC (max allowed)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC, vault.target],
+            }
+        )) as unknown as MZUSD;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -172,14 +172,13 @@ describe("NavOracleAutomation", () => {
         );
 
         // Admin-only functions on MZUSD & Vault
-        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [distributeYieldSelector, addTrancheSelector],
+            [setMZUSDSelector, distributeYieldSelector, addTrancheSelector],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
@@ -263,8 +262,8 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(ORACLE_ROLE, oracle.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target, 0);
 
-        // Wire MZUSD to Vault and register tranche in Vault
-        await mzusd.setVault(vault.target);
+        // Wire Vault to MZUSD and register tranche in Vault
+        await vault.setMZUSD(mzusd.target);
         await vault.addTranche({
             tranche: tranche.target,
             weightBps: 10_000,

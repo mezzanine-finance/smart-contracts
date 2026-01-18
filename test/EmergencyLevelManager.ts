@@ -71,14 +71,6 @@ describe("EmergencyLevelManager", () => {
 
         upgrades.silenceWarnings();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as MZUSD;
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -90,7 +82,7 @@ describe("EmergencyLevelManager", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -98,6 +90,19 @@ describe("EmergencyLevelManager", () => {
                 constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as Vault;
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC, vault.target],
+        })) as unknown as MZUSD;
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
+        await vault.setMZUSD(mzusd.target);
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -150,7 +155,6 @@ describe("EmergencyLevelManager", () => {
         )) as AccessManagerConfiguratorV1;
         await configurator.waitForDeployment();
 
-        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await accessManager.grantRole(ADMIN_ROLE, configurator.target, 0);
 
         await configurator.configure(
