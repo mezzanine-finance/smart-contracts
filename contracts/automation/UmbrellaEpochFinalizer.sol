@@ -22,7 +22,7 @@ interface ITranche {
 /// @notice Chainlink Automation-style helper that finalizes the previous epoch on a tranche.
 contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
     /// @notice Tranche that this finalizer services.
-    address public immutable TRANCHE;
+    ITranche public immutable tranche;
 
     error NoWork();
     error StaleEpoch();
@@ -31,7 +31,7 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
 
     constructor(address tranche_) {
         if (tranche_ == address(0)) revert ZeroAddress();
-        TRANCHE = tranche_;
+        tranche = ITranche(tranche_);
     }
 
     /// @notice Checks whether the previous epoch is ready to be finalized.
@@ -41,14 +41,14 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
     function checkUpkeep(
         bytes calldata /* checkData */
     ) external view returns (bool upkeepNeeded, bytes memory performData) {
-        address vault = ITranche(TRANCHE).vault();
+        address vault = tranche.vault();
         uint256 current = IVault(vault).currentEpochId();
         if (current <= 1) return (false, "");
 
         uint256 candidate = current - 1;
-        if (ITranche(TRANCHE).umbrellaSharesByEpoch(candidate) == 0) return (false, "");
+        if (tranche.umbrellaSharesByEpoch(candidate) == 0) return (false, "");
 
-        (, , bool isFinalized) = ITranche(TRANCHE).finalizedEpochs(candidate);
+        (, , bool isFinalized) = tranche.finalizedEpochs(candidate);
         if (isFinalized) return (false, "");
 
         return (true, abi.encode(candidate));
@@ -59,18 +59,18 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
     function performUpkeep(bytes calldata performData) external {
         uint256 epochId = abi.decode(performData, (uint256));
 
-        address vault = ITranche(TRANCHE).vault();
+        address vault = tranche.vault();
         uint256 current = IVault(vault).currentEpochId();
         if (current <= 1) revert InvalidState();
 
         uint256 candidate = current - 1;
         if (epochId != candidate) revert StaleEpoch();
 
-        if (ITranche(TRANCHE).umbrellaSharesByEpoch(candidate) == 0) revert NoWork();
+        if (tranche.umbrellaSharesByEpoch(candidate) == 0) revert NoWork();
 
-        (, , bool isFinalized) = ITranche(TRANCHE).finalizedEpochs(candidate);
+        (, , bool isFinalized) = tranche.finalizedEpochs(candidate);
         if (isFinalized) revert NoWork();
 
-        ITranche(TRANCHE).finalizeEpoch(epochId);
+        tranche.finalizeEpoch(epochId);
     }
 }
