@@ -43,6 +43,7 @@ describe("UmbrellaEpochFinalizer", () => {
 
     let accessManager: any;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
     let vault: Vault;
@@ -56,6 +57,7 @@ describe("UmbrellaEpochFinalizer", () => {
         [deployer, alice, bob] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
@@ -70,7 +72,7 @@ describe("UmbrellaEpochFinalizer", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                0, // _hourlyLimitUSDC (0 = limit is off)
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
                 kind: "uups",

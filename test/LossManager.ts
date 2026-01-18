@@ -45,6 +45,7 @@ describe("LossManager", () => {
 
     let accessManager: any;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
@@ -74,6 +75,7 @@ describe("LossManager", () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         // Impersonate whale once for speed (reuse across tests)
         whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
@@ -84,7 +86,7 @@ describe("LossManager", () => {
         await accessManager.waitForDeployment();
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, 0], {
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],

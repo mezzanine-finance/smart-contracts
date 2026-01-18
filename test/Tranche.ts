@@ -38,6 +38,7 @@ describe("Tranche", () => {
     let vault: Vault;
     let mzusd: MZUSD;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
     let reservoir: ReservoirUSDC;
     let tranche: Tranche;
     let whale: any;
@@ -46,6 +47,7 @@ describe("Tranche", () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
@@ -60,7 +62,7 @@ describe("Tranche", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                0, // _hourlyLimitUSDC (0 = limit is off)
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
                 kind: "uups",

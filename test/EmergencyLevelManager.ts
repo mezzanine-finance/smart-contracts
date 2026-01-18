@@ -6,6 +6,7 @@ import chalk from "chalk";
 import {
     AccessManagerConfiguratorV1,
     EmergencyLevelManager,
+    IERC20,
     LossManager,
     MZUSD,
     PolJuniorTranche,
@@ -45,6 +46,8 @@ describe("EmergencyLevelManager", () => {
     let governor: any;
 
     let accessManager: any;
+    let usdc: IERC20;
+    let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
     let vault: Vault;
@@ -59,6 +62,9 @@ describe("EmergencyLevelManager", () => {
 
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
+        usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
+
         const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
@@ -66,7 +72,7 @@ describe("EmergencyLevelManager", () => {
         upgrades.silenceWarnings();
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, 0], {
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],

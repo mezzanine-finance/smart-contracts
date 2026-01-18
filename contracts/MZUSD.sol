@@ -33,7 +33,7 @@ contract MZUSD is
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint256 public constant MAX_WITHDRAW_DUST_MZ = 1e6;
 
-    /// @notice global hourly redemption cap in USDC (6 decimals); 0 = disabled (no redemptions)
+    /// @notice global hourly redemption cap in USDC (6 decimals); must be > 0
     uint256 public globalHourlyRedemptionCapUSDC;
     /// @notice start timestamp of current redemption window
     uint64 public windowStartTimestamp;
@@ -56,6 +56,7 @@ contract MZUSD is
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
+    error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error NonIntegralWithdrawalAmount(uint256 amountMZ, uint256 usdcOut, uint256 dustMZ);
     error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
@@ -85,7 +86,7 @@ contract MZUSD is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
-        globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
+        _setGlobalHourlyRedemptionCap(_hourlyLimitUSDC);
         windowStartTimestamp = uint64(block.timestamp);
         redemptionWindowDuration = 1 hours;
     }
@@ -169,12 +170,10 @@ contract MZUSD is
     //SETTERS
 
     /// @notice set global hourly redemption cap in USDC (6 decimals)
-    /// @param newCapUSDC - new cap value; 0 = disable redemptions
+    /// @param newCapUSDC - new cap value; must be > 0 and <= USDC total supply
     function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
-        if (newCapUSDC == 0) revert ZeroCap();
         if (globalHourlyRedemptionCapUSDC == newCapUSDC) revert SameValue();
-        globalHourlyRedemptionCapUSDC = newCapUSDC;
-        emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
+        _setGlobalHourlyRedemptionCap(newCapUSDC);
     }
 
     /// @notice set the Vault contract address
@@ -216,8 +215,7 @@ contract MZUSD is
     {
         uint256 cap = globalHourlyRedemptionCapUSDC;
 
-        // If cap is explicitly zero, treat it as "no redemptions allowed" for this view:
-        // remaining = 0. For "no limit", callers should configure cap as type(uint256).max.
+        // Defensive branch in case cap is ever set to zero.
         if (cap == 0) {
             return (0, windowStartTimestamp);
         }
@@ -293,11 +291,7 @@ contract MZUSD is
         (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
 
         uint256 storedUsed = windowUsedUSDC;
-        if (
-            globalCapUSDC > 0 &&
-            globalCapUSDC != type(uint256).max &&
-            windowRemainingUSDC <= globalCapUSDC
-        ) {
+        if (globalCapUSDC > 0 && windowRemainingUSDC <= globalCapUSDC) {
             windowUsedUSDC_ = globalCapUSDC - windowRemainingUSDC;
         } else {
             windowUsedUSDC_ = storedUsed;
@@ -311,8 +305,6 @@ contract MZUSD is
 
         if (globalCapUSDC == 0) {
             wouldExceedGlobalCap = (usdcOut > 0);
-        } else if (globalCapUSDC == type(uint256).max) {
-            wouldExceedGlobalCap = false;
         } else {
             wouldExceedGlobalCap = (usdcOut > windowRemainingUSDC);
         }
@@ -341,7 +333,7 @@ contract MZUSD is
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalHourlyRedemptionCapUSDC;
 
-        // Cap == 0 now means "zero allowed" (hard stop). For "no limit", use type(uint256).max.
+        // Defensive: cap == 0 means "zero allowed" (hard stop).
         if (cap == 0) {
             if (usdcAmount > 0) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
             return;
@@ -356,6 +348,20 @@ contract MZUSD is
         if (newTotal > cap) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
 
         windowUsedUSDC = newTotal;
+    }
+
+    function _setGlobalHourlyRedemptionCap(uint256 newCapUSDC) internal {
+        if (newCapUSDC == 0) {
+            revert ZeroCap();
+        }
+
+        uint256 totalSupplyUSDC = usdc.totalSupply();
+        if (newCapUSDC > totalSupplyUSDC) {
+            revert CapExceedsTotalSupply(newCapUSDC, totalSupplyUSDC);
+        }
+
+        globalHourlyRedemptionCapUSDC = newCapUSDC;
+        emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.

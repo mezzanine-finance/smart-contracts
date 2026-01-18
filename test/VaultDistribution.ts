@@ -37,6 +37,7 @@ describe("Vault Yield Distribution", () => {
 
     let accessManager: any;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
@@ -54,6 +55,7 @@ describe("Vault Yield Distribution", () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
         await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
@@ -67,7 +69,7 @@ describe("Vault Yield Distribution", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                0, // _hourlyLimitUSDC (0 = limit off)
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
                 kind: "uups",

@@ -41,6 +41,7 @@ describe("PolJuniorTranche", () => {
 
     let accessManager: any;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
@@ -59,6 +60,7 @@ describe("PolJuniorTranche", () => {
         users = users.slice(0, 12);
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         // Impersonate once (faster than re-impersonating per mint)
         whale = await imp(USDC_WHALE);
 
@@ -70,7 +72,7 @@ describe("PolJuniorTranche", () => {
         await accessManager.waitForDeployment();
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, 0], {
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],

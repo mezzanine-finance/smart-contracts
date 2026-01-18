@@ -34,6 +34,7 @@ describe("Vault <-> Reservoir", () => {
 
     let accessManager: any;
     let usdc: IERC20;
+    let usdcTotalSupply: bigint;
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
@@ -44,6 +45,7 @@ describe("Vault <-> Reservoir", () => {
         [deployer, alice] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
         whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
 
@@ -58,7 +60,7 @@ describe("Vault <-> Reservoir", () => {
             MZUSDFactory,
             [
                 accessManager.target,
-                0, // _hourlyLimitUSDC
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
                 kind: "uups",
