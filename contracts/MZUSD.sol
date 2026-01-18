@@ -53,6 +53,7 @@ contract MZUSD is
 
     error ZeroAmount();
     error ZeroAddress();
+    error VaultNotSet();
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
@@ -93,7 +94,7 @@ contract MZUSD is
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
     function deposit(uint256 amountUSDC) external nonReentrant restricted {
-        if (address(vault) == address(0)) revert ZeroAddress();
+        if (address(vault) == address(0)) revert VaultNotSet();
         if (amountUSDC == 0) revert ZeroAmount();
 
         address sender = _msgSender();
