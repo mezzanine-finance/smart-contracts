@@ -194,18 +194,18 @@ contract Tranche is
     /// @param shares - amount of tranche shares to unstake
     function requestWithdrawal(uint256 shares) external nonReentrant whenDirectDisabled restricted {
         if (shares == 0) revert ZeroPassedShares();
-        if (balanceOf(_msgSender()) < shares) revert InvalidBalance();
+        if (balanceOf(msg.sender) < shares) revert InvalidBalance();
 
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         uint256 targetEpoch = currentVaultEpoch + unstakeDelayEpochs;
 
         umbrellaSharesByEpoch[targetEpoch] += shares;
-        userSharesByEpoch[_msgSender()][targetEpoch] += shares;
+        userSharesByEpoch[msg.sender][targetEpoch] += shares;
 
-        _transfer(_msgSender(), address(this), shares);
+        _transfer(msg.sender, address(this), shares);
 
-        emit UnstakeRequested(_msgSender(), shares, currentVaultEpoch, targetEpoch);
+        emit UnstakeRequested(msg.sender, shares, currentVaultEpoch, targetEpoch);
     }
 
     /// @notice Cancel a previously requested unstake for a given epoch.
@@ -217,7 +217,7 @@ contract Tranche is
         uint256 epochId,
         uint256 shares
     ) external nonReentrant whenDirectDisabled restricted {
-        uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
+        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
         if (shares > userShares) revert InvalidShares();
@@ -228,21 +228,21 @@ contract Tranche is
         if (currentEpochOnVault > epochId) revert TooLateToCancel();
 
         // Update user and global umbrella accounting
-        userSharesByEpoch[_msgSender()][epochId] = userShares - shares;
+        userSharesByEpoch[msg.sender][epochId] = userShares - shares;
         uint256 umbrellaShares = umbrellaSharesByEpoch[epochId];
         if (shares > umbrellaShares) revert InvalidAmount();
         umbrellaSharesByEpoch[epochId] = umbrellaShares - shares;
 
         // Return shares back to the user from the tranche contract
-        _transfer(address(this), _msgSender(), shares);
+        _transfer(address(this), msg.sender, shares);
 
-        emit UnstakeCancelled(_msgSender(), epochId, shares);
+        emit UnstakeCancelled(msg.sender, epochId, shares);
     }
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
     /// @param epochId The epoch for which to claim assets.
     function claim(uint256 epochId) external nonReentrant whenDirectDisabled restricted {
-        uint256 userShares = userSharesByEpoch[_msgSender()][epochId];
+        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NothingToClaim();
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
@@ -252,11 +252,11 @@ contract Tranche is
         // assets are stored on this contract and only transferred out on claim
         uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
-        userSharesByEpoch[_msgSender()][epochId] = 0;
+        userSharesByEpoch[msg.sender][epochId] = 0;
 
-        IERC20(asset()).safeTransfer(_msgSender(), userAssets);
+        IERC20(asset()).safeTransfer(msg.sender, userAssets);
 
-        emit WithdrawalClaimed(_msgSender(), epochId, userAssets);
+        emit WithdrawalClaimed(msg.sender, epochId, userAssets);
     }
 
     function transfer(

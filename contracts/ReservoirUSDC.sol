@@ -54,8 +54,8 @@ contract ReservoirUSDC is
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
     function deposit(uint256 amount) external nonReentrant restricted {
         if (amount == 0) revert ZeroAmount();
-        usdc.transferFrom(_msgSender(), address(this), amount);
-        emit Deposited(_msgSender(), amount);
+        usdc.transferFrom(msg.sender, address(this), amount);
+        emit Deposited(msg.sender, amount);
     }
 
     /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.

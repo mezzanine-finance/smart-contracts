@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 // solhint-disable-next-line max-line-length
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -24,12 +23,7 @@ interface IVaultEpoch {
 
 /// @title LossManager
 /// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
-contract LossManager is
-    Initializable,
-    AccessManagedUpgradeable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
-{
+contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable {
     uint256 public constant USDC_DECIMALS = 6;
     uint256 public constant MZ_DECIMALS = 18;
     uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
@@ -74,15 +68,13 @@ contract LossManager is
         if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
-        __ReentrancyGuard_init();
-
         mzusd = IMZUSD(_mzusd);
         _setTrancheOrder(order);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(uint256 usdcLoss) external nonReentrant restricted {
+    function applyLoss(uint256 usdcLoss) external restricted {
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
