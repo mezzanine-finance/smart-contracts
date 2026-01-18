@@ -118,11 +118,6 @@
     },
     {
         "inputs": [],
-        "name": "ReentrancyGuardReentrantCall",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },

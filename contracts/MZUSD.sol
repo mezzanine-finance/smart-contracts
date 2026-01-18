@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
@@ -15,13 +14,7 @@ interface IVault {
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
 /// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
 /// @notice Supports global hourly redemption cap in USDC (6 decimals).
-contract MZUSD is
-    Initializable,
-    ERC20Upgradeable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable,
-    AccessManagedUpgradeable
-{
+contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     IERC20 public immutable usdc;
     IVault public vault;
 
@@ -81,7 +74,6 @@ contract MZUSD is
 
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
-        __ReentrancyGuard_init();
 
         _setGlobalHourlyRedemptionCap(_hourlyLimitUSDC);
         windowStartTimestamp = uint64(block.timestamp);
@@ -90,7 +82,7 @@ contract MZUSD is
 
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
-    function deposit(uint256 amountUSDC) external nonReentrant restricted {
+    function deposit(uint256 amountUSDC) external restricted {
         if (address(vault) == address(0)) revert VaultNotSet();
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -111,7 +103,7 @@ contract MZUSD is
     /// @param amountMZ - amount of MZUSD to burn (18 decimals)
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
+    function requestWithdrawal(uint256 amountMZ) external restricted {
         if (amountMZ == 0) revert ZeroAmount();
 
         address sender = _msgSender();
