@@ -2,10 +2,7 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
@@ -53,6 +50,7 @@ contract MZUSD is
 
     error ZeroAmount();
     error ZeroAddress();
+    error VaultNotSet();
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
@@ -84,7 +82,6 @@ contract MZUSD is
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         _setGlobalHourlyRedemptionCap(_hourlyLimitUSDC);
         windowStartTimestamp = uint64(block.timestamp);
@@ -94,7 +91,7 @@ contract MZUSD is
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
     function deposit(uint256 amountUSDC) external nonReentrant restricted {
-        if (address(vault) == address(0)) revert ZeroAddress();
+        if (address(vault) == address(0)) revert VaultNotSet();
         if (amountUSDC == 0) revert ZeroAmount();
 
         address sender = _msgSender();

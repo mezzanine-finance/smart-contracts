@@ -305,6 +305,11 @@
     },
     {
         "inputs": [],
+        "name": "VaultNotSet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "ZeroAddress",
         "type": "error"
     },
