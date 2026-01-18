@@ -65,6 +65,7 @@ contract Vault is
     uint64 public epochDuration; // duration of each epoch in seconds
 
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
+    //todo discuss is insurance needed?
     uint16 public insuranceBps; // portion of yield allocated to insurance (bps of total yield)
     uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
