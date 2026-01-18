@@ -417,9 +417,9 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "newDuration",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "name": "RedemptionWindowDurationUpdated",
@@ -730,9 +730,9 @@
                 "type": "uint256"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint40",
                 "name": "windowStart",
-                "type": "uint256"
+                "type": "uint40"
             }
         ],
         "stateMutability": "view",
@@ -864,14 +864,14 @@
                 "type": "uint256"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint40",
                 "name": "windowStart",
-                "type": "uint256"
+                "type": "uint40"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint40",
                 "name": "windowEnd",
-                "type": "uint256"
+                "type": "uint40"
             },
             {
                 "internalType": "uint256",
@@ -915,9 +915,9 @@
         "name": "redemptionWindowDuration",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "stateMutability": "view",
@@ -983,9 +983,9 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "newDuration",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "name": "setRedemptionWindowDuration",
@@ -1134,9 +1134,9 @@
         "name": "windowStartTimestamp",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "uint40",
                 "name": "",
-                "type": "uint64"
+                "type": "uint40"
             }
         ],
         "stateMutability": "view",

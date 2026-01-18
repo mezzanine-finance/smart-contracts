@@ -49,7 +49,6 @@ contract ReservoirUSDC is
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
@@ -95,6 +94,7 @@ contract ReservoirUSDC is
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

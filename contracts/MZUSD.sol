@@ -16,21 +16,21 @@ interface IVault {
 /// @notice Supports global hourly redemption cap in USDC (6 decimals).
 contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     IERC20 public immutable usdc;
-    IVault public vault;
 
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint256 public constant MAX_WITHDRAW_DUST_MZ = 1e6;
 
+    IVault public vault;
+    /// @notice start timestamp of current redemption window
+    uint40 public windowStartTimestamp;
+    /// @notice duration of redemption window in seconds (e.g. 1 hours)
+    uint32 public redemptionWindowDuration;
     /// @notice global hourly redemption cap in USDC (6 decimals); must be > 0
     uint256 public globalHourlyRedemptionCapUSDC;
-    /// @notice start timestamp of current redemption window
-    uint64 public windowStartTimestamp;
     /// @notice amount of USDC redeemed in current window
     uint256 public windowUsedUSDC;
-    /// @notice duration of redemption window in seconds (e.g. 1 hours)
-    uint256 public redemptionWindowDuration;
 
     /// @notice per-tx deposits for atomic netting
     uint256 transient _txDepositedUSDC;
@@ -39,7 +39,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
     event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
     event SetVault(address vault);
-    event RedemptionWindowDurationUpdated(uint256 newDuration);
+    event RedemptionWindowDurationUpdated(uint32 newDuration);
 
     error ZeroAmount();
     error ZeroAddress();
@@ -76,7 +76,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
         __AccessManaged_init(accessManager);
 
         _setGlobalHourlyRedemptionCap(_hourlyLimitUSDC);
-        windowStartTimestamp = uint64(block.timestamp);
+        windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
     }
 
@@ -176,7 +176,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
 
     /// @notice set the duration of the redemption window
     /// @param newDuration - new duration in seconds
-    function setRedemptionWindowDuration(uint256 newDuration) external restricted {
+    function setRedemptionWindowDuration(uint32 newDuration) external restricted {
         if (newDuration == 0) revert ZeroDuration();
         if (redemptionWindowDuration == newDuration) revert SameValue();
 
@@ -186,7 +186,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
         // start a fresh window from "now" so that the shorter window
         // semantics are applied immediately.
         if (block.timestamp >= uint256(windowStartTimestamp) + newDuration) {
-            windowStartTimestamp = uint64(block.timestamp);
+            windowStartTimestamp = uint40(block.timestamp);
             windowUsedUSDC = 0;
         }
         emit RedemptionWindowDurationUpdated(newDuration);
@@ -200,7 +200,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
     function getRemainingGlobalHourlyCap()
         public
         view
-        returns (uint256 remainingUSDC, uint256 windowStart)
+        returns (uint256 remainingUSDC, uint40 windowStart)
     {
         uint256 cap = globalHourlyRedemptionCapUSDC;
 
@@ -211,7 +211,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
 
         if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
             // New window would start on next withdrawal; expose full cap and current timestamp.
-            return (cap, uint256(block.timestamp));
+            return (cap, uint40(block.timestamp));
         }
 
         uint256 spent = windowUsedUSDC;
@@ -252,8 +252,8 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
             uint256 vaultLiquidityUSDC,
             bool hasSufficientLiquidity,
             uint256 globalCapUSDC,
-            uint256 windowStart,
-            uint256 windowEnd,
+            uint40 windowStart,
+            uint40 windowEnd,
             uint256 windowUsedUSDC_,
             uint256 windowRemainingUSDC,
             bool isGlobalCapZero,
@@ -329,7 +329,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
         }
 
         if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
-            windowStartTimestamp = uint64(block.timestamp);
+            windowStartTimestamp = uint40(block.timestamp);
             windowUsedUSDC = 0;
         }
 
@@ -374,6 +374,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

@@ -59,7 +59,6 @@ contract FeeEscrow is
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
         __Pausable_init();
-        __UUPSUpgradeable_init();
 
         mzusd = IERC20(_mzusd);
         vault = IVault(_vault);
@@ -101,5 +100,6 @@ contract FeeEscrow is
         _unpause();
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     function _authorizeUpgrade(address) internal override restricted {}
 }

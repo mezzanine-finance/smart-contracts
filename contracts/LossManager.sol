@@ -68,8 +68,6 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
-        __UUPSUpgradeable_init();
-
         mzusd = IMZUSD(_mzusd);
         _setTrancheOrder(order);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
@@ -297,6 +295,7 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

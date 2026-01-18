@@ -81,7 +81,6 @@ contract MEZZ is
         __AccessManaged_init(_accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
         vault = _vault;
@@ -153,6 +152,7 @@ contract MEZZ is
     }
 
     /* ─────────────── UUPS ─────────────── */
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     function _authorizeUpgrade(
         address newImpl
     ) internal override restricted {}

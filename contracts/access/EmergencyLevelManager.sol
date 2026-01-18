@@ -74,7 +74,6 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         if (initialLevel > MAX_LEVEL) revert InvalidLevel(initialLevel);
 
         __AccessManaged_init(accessManager_);
-        __UUPSUpgradeable_init();
 
         accessManager = IAccessManagerMinimal(accessManager_);
         mzusd = mzusd_;
@@ -290,6 +289,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }
