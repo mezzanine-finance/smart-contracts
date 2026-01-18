@@ -86,7 +86,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
         if (address(vault) == address(0)) revert VaultNotSet();
         if (amountUSDC == 0) revert ZeroAmount();
 
-        address sender = _msgSender();
+        address sender = msg.sender;
 
         _txDepositedUSDC += amountUSDC;
 
@@ -106,7 +106,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
     function requestWithdrawal(uint256 amountMZ) external restricted {
         if (amountMZ == 0) revert ZeroAmount();
 
-        address sender = _msgSender();
+        address sender = msg.sender;
 
         (uint256 usdcOut, uint256 dustMZ) = calculateWithdrawalAmounts(amountMZ);
         if (dustMZ > MAX_WITHDRAW_DUST_MZ)
@@ -262,7 +262,7 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
     {
         requestedMZ = amountMZ;
 
-        userBalanceMZ = balanceOf(_msgSender());
+        userBalanceMZ = balanceOf(msg.sender);
         hasEnoughMZ = userBalanceMZ >= amountMZ;
 
         (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);

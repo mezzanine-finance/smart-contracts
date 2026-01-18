@@ -60,11 +60,6 @@
         "type": "error"
     },
     {
-        "inputs": [],
-        "name": "DustRecipientZero",
-        "type": "error"
-    },
-    {
         "inputs": [
             {
                 "internalType": "address",
