@@ -123,7 +123,6 @@ contract Vault is
             revert ZeroAddress();
         }
 
-        __UUPSUpgradeable_init();
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
 

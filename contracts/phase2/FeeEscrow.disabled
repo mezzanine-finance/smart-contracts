@@ -59,7 +59,6 @@ contract FeeEscrow is
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
         __Pausable_init();
-        __UUPSUpgradeable_init();
 
         mzusd = IERC20(_mzusd);
         vault = IVault(_vault);

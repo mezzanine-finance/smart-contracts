@@ -75,7 +75,6 @@ contract LossManager is
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         mzusd = IMZUSD(_mzusd);
         _setTrancheOrder(order);

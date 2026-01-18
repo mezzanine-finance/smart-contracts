@@ -74,7 +74,6 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         if (initialLevel > MAX_LEVEL) revert InvalidLevel(initialLevel);
 
         __AccessManaged_init(accessManager_);
-        __UUPSUpgradeable_init();
 
         accessManager = IAccessManagerMinimal(accessManager_);
         mzusd = mzusd_;

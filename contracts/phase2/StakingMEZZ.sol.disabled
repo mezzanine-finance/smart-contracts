@@ -63,7 +63,6 @@ contract StakingMEZZ is
         __AccessManaged_init(accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         mezz  = IERC20(_mezz);
         smezz = ISMEZZ(_smezz);

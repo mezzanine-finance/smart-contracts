@@ -72,7 +72,6 @@ contract SwapperToUSDC is
         __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         usdc   = IERC20(_usdc);
         mzusd  = IMZUSD(_mzusd);

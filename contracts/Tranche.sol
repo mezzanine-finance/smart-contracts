@@ -143,7 +143,6 @@ contract Tranche is
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         vault = vaultAddress;
         trancheId = trancheIdentifier;

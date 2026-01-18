@@ -52,7 +52,6 @@ contract SmallReservoirUSDC is Initializable, AccessManagedUpgradeable, Reentran
     function initialize(address _usdcAddress, address accessManager) external initializer {
          __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdcAddress);
     }

@@ -81,7 +81,6 @@ contract MEZZ is
         __AccessManaged_init(_accessManager);
         __Pausable_init();
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
         vault = _vault;

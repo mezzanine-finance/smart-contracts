@@ -33,7 +33,6 @@ abstract contract BaseStrategy is Initializable, IStrategy, ContextUpgradeable, 
         __Context_init();
         __AccessManaged_init(_accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         usdc = IERC20(_usdc);
         reservoir = _reservoir;

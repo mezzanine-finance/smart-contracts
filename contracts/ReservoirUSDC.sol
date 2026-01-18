@@ -49,7 +49,6 @@ contract ReservoirUSDC is
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
