@@ -335,7 +335,7 @@ describe("Vault Yield Distribution", () => {
         expect(await vault.tranchesLength()).to.equal(3n);
     });
 
-    it("Distributes yield by weight*TVL and sends dust to first enabled tranche", async () => {
+    it("Distributes yield by weight*TVL and sends dust (as yield part) to last tranche", async () => {
         const tvlJ = to18(101n);
         const tvlM = to18(203n);
         const tvlS = to18(307n);
@@ -375,6 +375,7 @@ describe("Vault Yield Distribution", () => {
         const partM = (expectedYield * scoreM) / totalScore;
         const partS = (expectedYield * scoreS) / totalScore;
         const dust = expectedYield - (partJ + partM + partS);
+        const partSWithDust = partS + dust;
 
         await expect(tx)
             .to.emit(junior, "YieldNotified")
@@ -384,7 +385,7 @@ describe("Vault Yield Distribution", () => {
             .withArgs(newEpochId, partM, startTs, endTs);
         await expect(tx)
             .to.emit(senior, "YieldNotified")
-            .withArgs(newEpochId, partS, startTs, endTs);
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
 
         await expect(tx)
             .to.emit(vault, "YieldDistributed")
@@ -392,16 +393,15 @@ describe("Vault Yield Distribution", () => {
 
         expect(await junior.yieldStreamingAmount()).to.equal(partJ);
         expect(await mezzanine.yieldStreamingAmount()).to.equal(partM);
-        expect(await senior.yieldStreamingAmount()).to.equal(partS);
+        expect(await senior.yieldStreamingAmount()).to.equal(partSWithDust);
 
         const bJ1 = await mzusd.balanceOf(junior.target);
         const bM1 = await mzusd.balanceOf(mezzanine.target);
         const bS1 = await mzusd.balanceOf(senior.target);
 
-        // dust is sent to firstEnabledTranche (junior) as a plain transfer (without notifyYield)
         expect(bM1 - bM0).to.equal(partM);
-        expect(bS1 - bS0).to.equal(partS);
-        expect(bJ1 - bJ0).to.equal(partJ + dust);
+        expect(bS1 - bS0).to.equal(partSWithDust);
+        expect(bJ1 - bJ0).to.equal(partJ);
 
         // Vault should have no leftover MZUSD
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
@@ -443,6 +443,7 @@ describe("Vault Yield Distribution", () => {
         const partJ = (expectedYield * scoreJ) / totalScore;
         const partS = (expectedYield * scoreS) / totalScore;
         const dust = expectedYield - (partJ + partS);
+        const partSWithDust = partS + dust;
 
         await expect(tx)
             .to.emit(junior, "YieldNotified")
@@ -450,15 +451,15 @@ describe("Vault Yield Distribution", () => {
         await expect(tx).to.not.emit(mezzanine, "YieldNotified");
         await expect(tx)
             .to.emit(senior, "YieldNotified")
-            .withArgs(newEpochId, partS, startTs, endTs);
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
 
         const bJ1 = await mzusd.balanceOf(junior.target);
         const bM1 = await mzusd.balanceOf(mezzanine.target);
         const bS1 = await mzusd.balanceOf(senior.target);
 
         expect(bM1).to.equal(bM0); // no allocation
-        expect(bS1 - bS0).to.equal(partS);
-        expect(bJ1 - bJ0).to.equal(partJ + dust); // dust again to first enabled tranche (junior)
+        expect(bS1 - bS0).to.equal(partSWithDust);
+        expect(bJ1 - bJ0).to.equal(partJ);
 
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });
@@ -493,7 +494,7 @@ describe("Vault Yield Distribution", () => {
         await expect(tx).to.emit(vault, "YieldDistributed").withArgs(usdcReported, 0n, epochAfter);
     });
 
-    it("Fees paid, insurance receives cut + dust, tranches receive exact parts", async () => {
+    it("Fees paid, insurance receives cut, dust folds into last tranche", async () => {
         // TVLs with awkward numbers
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(101n)));
         await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(203n)));
@@ -556,8 +557,9 @@ describe("Vault Yield Distribution", () => {
         const partS = (amountForTranches * scoreS) / totalScore;
         const allocated = partJ + partM + partS;
         const dust = amountForTranches - allocated;
+        const partSWithDust = partS + dust;
 
-        // notifyYield amounts are the parts (dust is NOT included in notifyYield)
+        // notifyYield amounts include dust in the last tranche
         await expect(tx)
             .to.emit(junior, "YieldNotified")
             .withArgs(newEpochId, partJ, startTs, endTs);
@@ -566,7 +568,7 @@ describe("Vault Yield Distribution", () => {
             .withArgs(newEpochId, partM, startTs, endTs);
         await expect(tx)
             .to.emit(senior, "YieldNotified")
-            .withArgs(newEpochId, partS, startTs, endTs);
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
 
         // Fees should be minted out
         const perfAfter = await mzusd.balanceOf(perfReceiver);
@@ -574,17 +576,17 @@ describe("Vault Yield Distribution", () => {
         expect(perfAfter - perfBefore).to.equal(perfFee);
         expect(protAfter - protBefore).to.equal(protFee);
 
-        // Insurance receives cut + dust
+        // Insurance receives only the cut
         const insAfter = await mzusd.balanceOf(insurance);
-        expect(insAfter - insBefore).to.equal(insCut + dust);
+        expect(insAfter - insBefore).to.equal(insCut);
 
-        // Tranches receive exactly their parts (no dust)
+        // Tranches receive their parts, dust is folded into the last tranche
         const bJ1 = await mzusd.balanceOf(junior.target);
         const bM1 = await mzusd.balanceOf(mezzanine.target);
         const bS1 = await mzusd.balanceOf(senior.target);
         expect(bJ1 - bJ0).to.equal(partJ);
         expect(bM1 - bM0).to.equal(partM);
-        expect(bS1 - bS0).to.equal(partS);
+        expect(bS1 - bS0).to.equal(partSWithDust);
 
         await expect(tx)
             .to.emit(vault, "YieldDistributed")
@@ -624,6 +626,7 @@ describe("Vault Yield Distribution", () => {
         const partM = (expectedYield * scoreM) / totalScore;
         const partS = (expectedYield * scoreS) / totalScore;
         const dust = expectedYield - (partM + partS);
+        const partSWithDust = partS + dust;
 
         const bJ0 = await mzusd.balanceOf(junior.target);
         const bM0 = await mzusd.balanceOf(mezzanine.target);
@@ -649,16 +652,15 @@ describe("Vault Yield Distribution", () => {
             .withArgs(newEpochId, partM, startTs, endTs);
         await expect(tx)
             .to.emit(senior, "YieldNotified")
-            .withArgs(newEpochId, partS, startTs, endTs);
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
 
         const bJ1 = await mzusd.balanceOf(junior.target);
         const bM1 = await mzusd.balanceOf(mezzanine.target);
         const bS1 = await mzusd.balanceOf(senior.target);
 
-        // Dust should go to the first enabled tranche (mezzanine) since insurance is not set
         expect(bJ1).to.equal(bJ0);
-        expect(bS1 - bS0).to.equal(partS);
-        expect(bM1 - bM0).to.equal(partM + dust);
+        expect(bS1 - bS0).to.equal(partSWithDust);
+        expect(bM1 - bM0).to.equal(partM);
 
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });

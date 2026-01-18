@@ -477,18 +477,12 @@ contract Vault is
 
             TrancheInfo storage t = tranches[i];
             uint256 part = (amountForTranches * score) / totalScore;
+            if (i == trancheCount - 1 && amountForTranches - allocated != part) {
+                part = amountForTranches - allocated;
+            }
             mzusdToken.transfer(t.tranche, part);
             ITranche(t.tranche).notifyYield(part);
             allocated += part;
-        }
-
-        // handle any dust due to rounding
-        if (amountForTranches > allocated) {
-            address dustRecipient = insurance_ != address(0) ? insurance_ : firstEnabledTranche;
-            if (dustRecipient == address(0)) {
-                dustRecipient = address(this);
-            }
-            mzusdToken.transfer(dustRecipient, amountForTranches - allocated);
         }
 
         return amountForTranches;
