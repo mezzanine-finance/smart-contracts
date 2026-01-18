@@ -322,12 +322,6 @@ contract MZUSD is Initializable, ERC20Upgradeable, UUPSUpgradeable, AccessManage
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalHourlyRedemptionCapUSDC;
 
-        // Defensive: cap == 0 means "zero allowed" (hard stop).
-        if (cap == 0) {
-            if (usdcAmount > 0) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
-            return;
-        }
-
         if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
             windowStartTimestamp = uint40(block.timestamp);
             windowUsedUSDC = 0;
