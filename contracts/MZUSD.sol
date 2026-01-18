@@ -204,7 +204,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         }
 
         uint256 spent = windowUsedUSDC;
-        remainingUSDC = spent >= cap ? 0 : cap - spent;
+        remainingUSDC = cap - _min(spent, cap);
         return (remainingUSDC, windowStartTimestamp);
     }
 
@@ -283,21 +283,18 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     ///INTERNAL HELPERS
 
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
     /// @notice apply atomic netting of deposits against withdrawals within the same tx
     /// @param usdcOut - initial USDC amount to withdraw
     /// @return adjusted USDC amount to withdraw after netting
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {
         uint256 txDeposited = _txDepositedUSDC;
-        if (txDeposited == 0) {
-            return usdcOut;
-        }
-        if (txDeposited >= usdcOut) {
-            _txDepositedUSDC = txDeposited - usdcOut;
-            return 0;
-        } else {
-            _txDepositedUSDC = 0;
-            return usdcOut - txDeposited;
-        }
+        uint256 coveredUSDC = _min(txDeposited, usdcOut);
+        _txDepositedUSDC = txDeposited - coveredUSDC;
+        return usdcOut - coveredUSDC;
     }
 
     /// @notice check and consume from the global hourly redemption cap
@@ -342,9 +339,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         if (to == address(0)) revert ZeroAddress();
 
         uint256 bal = address(this).balance;
-        if (amount > bal) {
-            amount = bal;
-        }
+        amount = _min(amount, bal);
 
         (bool ok, ) = to.call{value: amount}("");
         if (!ok) revert EthTransferFailed(to, amount);
