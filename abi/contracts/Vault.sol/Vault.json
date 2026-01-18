@@ -837,11 +837,6 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "_mzusd",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
                 "name": "_reservoir",
                 "type": "address"
             },

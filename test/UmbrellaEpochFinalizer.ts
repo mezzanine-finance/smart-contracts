@@ -67,21 +67,6 @@ describe("UmbrellaEpochFinalizer", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(
-            MZUSDFactory,
-            [
-                accessManager.target,
-                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        )) as unknown as MZUSD;
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -93,7 +78,7 @@ describe("UmbrellaEpochFinalizer", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -101,6 +86,21 @@ describe("UmbrellaEpochFinalizer", () => {
                 constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as Vault;
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC, vault.target],
+            }
+        )) as unknown as MZUSD;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -144,14 +144,13 @@ describe("UmbrellaEpochFinalizer", () => {
         );
 
         // Admin-only functions on MZUSD & Vault
-        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
 
-        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [distributeYieldSelector, addTrancheSelector],
+            [setMZUSDSelector, distributeYieldSelector, addTrancheSelector],
             ADMIN_ROLE
         );
 
@@ -214,8 +213,8 @@ describe("UmbrellaEpochFinalizer", () => {
             0 // executionDelay
         );
 
-        // Wire MZUSD to Vault and register tranche in Vault (after roles are configured)
-        await mzusd.setVault(vault.target);
+        // Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
+        await vault.setMZUSD(mzusd.target);
 
         await vault.addTranche({
             tranche: tranche.target,

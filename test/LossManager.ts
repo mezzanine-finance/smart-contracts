@@ -85,15 +85,6 @@ describe("LossManager", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as MZUSD;
-        mzusdAddr = await mzusd.getAddress();
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -105,7 +96,7 @@ describe("LossManager", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -114,6 +105,15 @@ describe("LossManager", () => {
             }
         )) as unknown as Vault;
         vaultAddr = await vault.getAddress();
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC, vault.target],
+        })) as unknown as MZUSD;
+        mzusdAddr = await mzusd.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
 
@@ -227,11 +227,8 @@ describe("LossManager", () => {
             PUBLIC_ROLE
         );
 
-        // admin: MZUSD.setVault
-        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
-
         // admin: vault distribute + tranche management + epoch config (for integration test)
+        const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
@@ -240,7 +237,7 @@ describe("LossManager", () => {
 
         await accessManager.setTargetFunctionRole(
             vaultAddr,
-            [distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
+            [setMZUSDSel, distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
             ADMIN_ROLE
         );
 
@@ -331,7 +328,7 @@ describe("LossManager", () => {
         await accessManager.setTargetFunctionRole(seniorAddr, trancheSelectors, PUBLIC_ROLE);
 
         // wire and register
-        await mzusd.setVault(vaultAddr);
+        await vault.setMZUSD(mzusdAddr);
 
         await vault.addTranche({tranche: juniorAddr, weightBps: 2000, enabled: true});
         await vault.addTranche({tranche: mezzanineAddr, weightBps: 3000, enabled: true});

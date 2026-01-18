@@ -71,15 +71,6 @@ describe("PolJuniorTranche", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as MZUSD;
-        mzusdAddr = await mzusd.getAddress();
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -91,7 +82,7 @@ describe("PolJuniorTranche", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -100,6 +91,15 @@ describe("PolJuniorTranche", () => {
             }
         )) as unknown as Vault;
         vaultAddr = await vault.getAddress();
+
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC, vault.target],
+        })) as unknown as MZUSD;
+        mzusdAddr = await mzusd.getAddress();
 
         // Deploy POL tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
@@ -151,18 +151,15 @@ describe("PolJuniorTranche", () => {
             PUBLIC_ROLE
         );
 
-        // admin: MZUSD.setVault
-        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
-
         // admin: vault distribute + tranche management + epoch config
+        const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vaultAddr,
-            [distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
+            [setMZUSDSel, distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
             ADMIN_ROLE
         );
 
@@ -176,7 +173,7 @@ describe("PolJuniorTranche", () => {
         await accessManager.setTargetFunctionRole(polAddr, [notifySel], VAULT_ROLE);
 
         // wire
-        await mzusd.setVault(vaultAddr);
+        await vault.setMZUSD(mzusdAddr);
 
         snapshot = await takeSnapshot();
     });

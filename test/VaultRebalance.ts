@@ -55,21 +55,6 @@ describe("Vault <-> Reservoir", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(
-            MZUSDFactory,
-            [
-                accessManager.target,
-                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        )) as unknown as MZUSD;
-
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
             kind: "uups",
@@ -81,7 +66,7 @@ describe("Vault <-> Reservoir", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -90,7 +75,26 @@ describe("Vault <-> Reservoir", () => {
             }
         )) as unknown as Vault;
 
+        const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [
+                accessManager.target,
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC, vault.target],
+            }
+        )) as unknown as MZUSD;
+
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
+
+        await vault.setMZUSD(mzusd.target);
 
         const rebalanceSelector = vault.interface.getFunction("rebalance").selector;
         const setBufferSelector = vault.interface.getFunction("setBuffer").selector;

@@ -75,6 +75,22 @@ describe("MZUSD <-> USDC conversion", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        });
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = await upgrades.deployProxy(VaultFactory, [reservoir.target, accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        });
+
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = await upgrades.deployProxy(
             MZUSDFactory,
@@ -86,27 +102,7 @@ describe("MZUSD <-> USDC conversion", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
-            }
-        );
-
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        });
-
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = await upgrades.deployProxy(
-            VaultFactory,
-            [mzusd.target, reservoir.target, accessManager.target],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
+                constructorArgs: [MAINNET_USDC, vault.target],
             }
         );
 
@@ -117,9 +113,11 @@ describe("MZUSD <-> USDC conversion", () => {
         nettingHelper = await NettingHelperFactory.deploy();
         await nettingHelper.waitForDeployment();
 
-        await expect(mzusd.setVault(vault.target))
-            .to.emit(mzusd, "SetVault")
-            .withArgs(vault.target);
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
+
+        await (await vault.setMZUSD(mzusd.target)).wait();
         await expect(mzusd.setGlobalHourlyRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalHourlyRedemptionCapUpdated")
             .withArgs(to6(1_000_000n)); // 1 million USDC per hour
