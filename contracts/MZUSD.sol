@@ -16,7 +16,6 @@ interface IVault {
 /// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
 /// @notice Supports global hourly redemption cap in USDC (6 decimals).
 contract MZUSD is
-    Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
@@ -27,7 +26,6 @@ contract MZUSD is
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
-    uint256 public constant MAX_WITHDRAW_DUST_MZ = 1e6;
 
     IVault public vault;
     /// @notice start timestamp of current redemption window
@@ -56,7 +54,6 @@ contract MZUSD is
     error SameValue();
     error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
-    error NonIntegralWithdrawalAmount(uint256 amountMZ, uint256 usdcOut, uint256 dustMZ);
     error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error EthTransferFailed(address to, uint256 attemptedAmount);
@@ -112,26 +109,22 @@ contract MZUSD is
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
     function requestWithdrawal(uint256 amountMZ) external nonReentrant restricted {
-        if (amountMZ == 0) revert ZeroAmount();
-
         address sender = _msgSender();
 
-        (uint256 usdcOut, uint256 dustMZ) = calculateWithdrawalAmounts(amountMZ);
-        if (dustMZ > MAX_WITHDRAW_DUST_MZ)
-            revert NonIntegralWithdrawalAmount(amountMZ, usdcOut, dustMZ);
-
+        uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
+        uint256 burnAmount = usdcOut * SCALE;
 
         uint256 effectiveForLimit = _applyAtomicNetting(usdcOut);
         if (effectiveForLimit != 0) {
             _checkAndConsumeGlobalCap(effectiveForLimit);
         }
 
-        _burn(sender, amountMZ);
+        _burn(sender, burnAmount);
 
         vault.withdraw(sender, usdcOut);
 
-        emit Withdrawal(sender, amountMZ, usdcOut);
+        emit Withdrawal(sender, burnAmount, usdcOut);
     }
 
     function transfer(address to, uint256 value) public override restricted returns (bool) {
@@ -232,14 +225,6 @@ contract MZUSD is
         return amountUSDC * SCALE;
     }
 
-    /// @notice Pure calculator - converts MZUSD amount to USDC and dust.
-    function calculateWithdrawalAmounts(
-        uint256 amountMZ
-    ) public pure returns (uint256 usdcOut, uint256 dustMZ) {
-        usdcOut = amountMZ / SCALE;
-        dustMZ = amountMZ % SCALE;
-    }
-
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
     }
@@ -256,7 +241,7 @@ contract MZUSD is
             uint256 userBalanceMZ,
             bool hasEnoughMZ,
             uint256 usdcOut,
-            uint256 dustMZ,
+            uint256 unconvertedMZ,
             uint256 vaultLiquidityUSDC,
             bool hasSufficientLiquidity,
             uint256 globalCapUSDC,
@@ -268,12 +253,13 @@ contract MZUSD is
             bool wouldExceedGlobalCap
         )
     {
-        requestedMZ = amountMZ;
+        usdcOut = amountMZ / SCALE;
+        uint256 burnAmount = usdcOut * SCALE;
+        unconvertedMZ = amountMZ - burnAmount;
+        requestedMZ = burnAmount;
 
         userBalanceMZ = balanceOf(_msgSender());
-        hasEnoughMZ = userBalanceMZ >= amountMZ;
-
-        (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);
+        hasEnoughMZ = userBalanceMZ >= burnAmount;
 
         if (address(vault) != address(0)) {
             vaultLiquidityUSDC = usdc.balanceOf(address(vault));

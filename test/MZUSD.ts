@@ -250,10 +250,9 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(aliceMZAfterDeposit).to.equal(expectedMZAmount);
         expect(vaultUSDCAfterDeposit - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
-        await expect(mzusd.connect(alice).requestWithdrawal(0n)).to.be.revertedWithCustomError(
-            mzusd,
-            "ZeroAmount"
-        );
+        await expect(mzusd.connect(alice).requestWithdrawal(0n))
+            .to.be.revertedWithCustomError(mzusd, "TooSmallWithdrawalAmount")
+            .withArgs(0n, 0n);
 
         // Request withdrawal of full MZ balance
         const tx = await mzusd.connect(alice).requestWithdrawal(aliceMZAfterDeposit);
@@ -558,12 +557,14 @@ describe("MZUSD <-> USDC conversion", () => {
         const previewMint = await mzusd.calculateDeposit(to6(123n));
         expect(previewMint).to.equal(to18(123n));
 
-        // calculateWithdrawalAmounts: amountMZ with dust
+        // previewWithdrawalFlat: amountMZ with dust
         const amountMZ = to18(10n) + 123n; // 10 USDC + 123 dust
-        const [usdcOut, dustMZ] = await mzusd.calculateWithdrawalAmounts(amountMZ);
+        const [, , , usdcOut, unconvertedMZ] = await mzusd
+            .connect(alice)
+            .previewWithdrawalFlat(amountMZ);
 
         expect(usdcOut).to.equal(to6(10n)); // 10 USDC
-        expect(dustMZ).to.equal(123n);
+        expect(unconvertedMZ).to.equal(123n);
 
         // decimals check
         const decimals = await mzusd.decimals();
@@ -598,7 +599,7 @@ describe("MZUSD <-> USDC conversion", () => {
             userBalanceMZ,
             hasEnoughMZ,
             usdcOut,
-            dustMZ,
+            unconvertedMZ,
             vaultLiquidityUSDC,
             hasSufficientLiquidity,
             globalCapUSDC,
@@ -614,14 +615,14 @@ describe("MZUSD <-> USDC conversion", () => {
         const vaultUSDCBalance = await usdc.balanceOf(vault.target);
         const redemptionDuration = await mzusd.redemptionWindowDuration();
 
-        // Basic fields
-        expect(requestedMZ).to.equal(previewAmountMZ);
+        // Basic fields (requestedMZ is the burnable amount, dust trimmed)
+        expect(requestedMZ).to.equal(to18(100n));
         expect(userBalanceMZ).to.equal(aliceMZCurrent);
         expect(hasEnoughMZ).to.equal(true);
 
         // Conversion and dust
         expect(usdcOut).to.equal(to6(100n));
-        expect(dustMZ).to.equal(123n);
+        expect(unconvertedMZ).to.equal(123n);
 
         // Vault liquidity and liquidity flag
         expect(vaultLiquidityUSDC).to.equal(vaultUSDCBalance);
@@ -651,7 +652,7 @@ describe("MZUSD <-> USDC conversion", () => {
             ,
             ,
             usdcOut2,
-            dustMZ2,
+            unconvertedMZ2,
             vaultLiquidityUSDC2,
             hasSufficientLiquidity2,
             globalCapUSDC2,
@@ -665,7 +666,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Core conversion stays the same
         expect(usdcOut2).to.equal(usdcOut);
-        expect(dustMZ2).to.equal(dustMZ);
+        expect(unconvertedMZ2).to.equal(unconvertedMZ);
         expect(vaultLiquidityUSDC2).to.equal(vaultLiquidityUSDC);
         expect(hasSufficientLiquidity2).to.equal(true);
 
@@ -900,9 +901,9 @@ describe("MZUSD <-> USDC conversion", () => {
         const depositAmountUSDC = to6(1n); // 1 USDC
         await fundAndDepositForAlice(depositAmountUSDC);
 
-        // Use a withdrawal amount that is below 1 USDC equivalent but within the allowed dust range
-        const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
-        const tooSmallAmountMZ = dustLimit;
+        // Use a withdrawal amount below 1 USDC equivalent (dust only)
+        const scale = to18(1n) / to6(1n);
+        const tooSmallAmountMZ = scale - 1n;
 
         // usdcOut will be 0 for this amount, so TooSmallWithdrawalAmount should trigger
         await expect(mzusd.connect(alice).requestWithdrawal(tooSmallAmountMZ))
@@ -910,25 +911,21 @@ describe("MZUSD <-> USDC conversion", () => {
             .withArgs(tooSmallAmountMZ, 0n);
     });
 
-    it("Should revert with NonIntegralWithdrawalAmount when dust exceeds limit", async () => {
-        const depositAmountUSDC = to6(100n); // 100 USDC
-
-        // Fund Alice and deposit into MZUSD so she has enough balance
+    it("Should ignore dust in withdrawal amount and burn only the integral portion", async () => {
+        const depositAmountUSDC = to6(10n); // 10 USDC
         await fundAndDepositForAlice(depositAmountUSDC);
 
-        const dustLimit = await mzusd.MAX_WITHDRAW_DUST_MZ();
-        const targetUSDC = 10n;
-
-        // amountMZ = 10 USDC + dustLimit + dust little over the limit
-        const dust = dustLimit + 1n;
-        const amountMZ = to18(targetUSDC) + dust;
-
-        // usdcOut = 10 USDC in 6 decimals
-        const expectedUsdcOut = to6(targetUSDC);
+        const amountMZ = to18(10n) + 123n; // 10 USDC + dust
 
         await expect(mzusd.connect(alice).requestWithdrawal(amountMZ))
-            .to.be.revertedWithCustomError(mzusd, "NonIntegralWithdrawalAmount")
-            .withArgs(amountMZ, expectedUsdcOut, dust);
+            .to.emit(mzusd, "Withdrawal")
+            .withArgs(alice.address, to18(10n), to6(10n));
+
+        const aliceMZAfter = await mzusd.balanceOf(alice.address);
+        const aliceUSDCAfter = await usdc.balanceOf(alice.address);
+
+        expect(aliceMZAfter).to.equal(0n);
+        expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
     });
 
     it("Should reject zero cap in setter", async () => {
