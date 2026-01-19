@@ -75,6 +75,14 @@ describe("MZUSD <-> USDC conversion", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [MAINNET_USDC],
+        })) as unknown as ReservoirUSDC;
+
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = await upgrades.deployProxy(VaultFactory, [reservoir.target, accessManager.target], {
             kind: "uups",
@@ -105,9 +113,6 @@ describe("MZUSD <-> USDC conversion", () => {
         nettingHelper = await NettingHelperFactory.deploy();
         await nettingHelper.waitForDeployment();
 
-        await expect(mzusd.setVault(vault.target))
-            .to.emit(mzusd, "SetVault")
-            .withArgs(vault.target);
         await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalRedemptionCapUpdated")
             .withArgs(to6(1_000_000n)); // 1 million USDC per hour
