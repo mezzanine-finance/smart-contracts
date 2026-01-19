@@ -17,7 +17,7 @@ interface IVault {
 
 // @title Tranche with epoch-based umbrella unstake
 // solhint-disable-next-line max-line-length
-// @notice Users request unstake -> shares stay on tranche under umbrella -> after N epochs admin finalizes -> users claim.
+// @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
 contract Tranche is
@@ -186,13 +186,17 @@ contract Tranche is
         assets = super.mint(shares, receiver);
     }
 
-    /// @notice Request an unstake by locking shares under the umbrella for N epochs.
-    /// @dev Shares are transferred from user to tranche contract and kept there until
-    ///      the epoch is finalized by admin. After finalization, user can claim their assets
-    /// @param shares - amount of tranche shares to unstake
-    function requestWithdrawal(uint256 shares) external nonReentrant whenDirectDisabled restricted {
+    /// @notice Request withdrawal in shares.
+    /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
+    /// @param shares - amount of tranche shares to withdraw
+    function requestWithdrawal(uint256 shares) external nonReentrant restricted {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(msg.sender) < shares) revert InvalidBalance();
+
+        if (directWithdrawEnabled) {
+            super.redeem(shares, msg.sender, msg.sender);
+            return;
+        }
 
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
@@ -257,30 +261,7 @@ contract Tranche is
         emit WithdrawalClaimed(msg.sender, epochId, userAssets);
     }
 
-    function transfer(
-        address to,
-        uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
-        return super.transfer(to, value);
-    }
-
-    function approve(
-        address spender,
-        uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
-        return super.approve(spender, value);
-    }
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
-        return super.transferFrom(from, to, value);
-    }
-
-    // CORE ADMIN FUNCTIONS
-
+    // ADMIN
     /// @notice Finalize an epoch after it has passed on the vault.
     /// @dev Burns umbrella shares for the epoch and records finalized data for user claims.
     /// @param epochId The epoch to finalize.
@@ -308,8 +289,6 @@ contract Tranche is
         emit EpochFinalized(epochId, sharesToFinalize, assetsToCredit);
     }
 
-    // ERC4626 exit points (role-controlled via AccessManager)
-    // @dev For direct withdraw mode this is enabled as normal
     function withdraw(
         uint256 assets,
         address receiver,
@@ -318,13 +297,34 @@ contract Tranche is
         return super.withdraw(assets, receiver, owner);
     }
 
-    // @dev For direct withdraw mode this is enabled as normal
     function redeem(
         uint256 shares,
         address receiver,
         address owner
     ) public override nonReentrant whenDirectEnabled restricted returns (uint256 assets) {
         return super.redeem(shares, receiver, owner);
+    }
+
+    function transfer(
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transfer(to, value);
+    }
+
+    function approve(
+        address spender,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.approve(spender, value);
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+        return super.transferFrom(from, to, value);
     }
 
     // Linear yield streaming
