@@ -40,15 +40,13 @@ contract Tranche is
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;
-
-    address public vault;
     uint256 public trancheId;
 
     // unstake delay in epochs for umbrella withdrawals
     uint256 public unstakeDelayEpochs;
 
-    // deposit limits
     bool public depositLimitEnabled;
+    address public vault;
     uint256 public maxDepositCap;
     uint256 public maxDepositTvlBps;
 
@@ -58,10 +56,10 @@ contract Tranche is
     uint256 public yieldStreamingAmount;
 
     /// @notice Timestamp when current yield streaming started.
-    uint256 public yieldStreamStart;
+    uint64 public yieldStreamStart;
 
     /// @notice Timestamp when current yield streaming should finish (all yield accrued).
-    uint256 public yieldStreamEnd;
+    uint64 public yieldStreamEnd;
 
     mapping(uint256 => FinalizedEpoch) public finalizedEpochs;
 
@@ -346,9 +344,12 @@ contract Tranche is
         uint256 duration = IVault(vault).epochDuration();
         if (duration == 0) revert ZeroEpochDuration();
 
+        uint256 startTs = block.timestamp;
+        uint256 endTs = startTs + duration;
+
         yieldStreamingAmount = yieldAmount;
-        yieldStreamStart = block.timestamp;
-        yieldStreamEnd = block.timestamp + duration;
+        yieldStreamStart = uint64(startTs);
+        yieldStreamEnd = uint64(endTs);
 
         uint256 epochId = IVault(vault).currentEpochId();
         emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
