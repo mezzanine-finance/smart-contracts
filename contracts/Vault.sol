@@ -437,16 +437,16 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         address firstEnabledTranche;
 
         // calculate scores for each tranche and total score
-        for (uint256 i = 0; i < trancheCount; i++) {
-            TrancheInfo storage t = tranches[i];
+        for (uint256 i; i < trancheCount; i++) {
+            TrancheInfo memory t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
 
             if (firstEnabledTranche == address(0)) {
                 firstEnabledTranche = t.tranche;
             }
 
-            uint256 tvl = ITranche(t.tranche).totalAssets();
-            uint256 score = uint256(t.weightBps) * tvl;
+            // score = weightBps * TVL
+            uint256 score = uint256(t.weightBps) * ITranche(t.tranche).totalAssets();
             scores[i] = score;
             totalScore += score;
             totalWeightsBps += t.weightBps;
@@ -457,11 +457,11 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
 
         // allocate yield based on scores
         uint256 allocated;
-        for (uint256 i = 0; i < trancheCount; i++) {
+        for (uint256 i; i < trancheCount; ++i) {
             uint256 score = scores[i];
             if (score == 0) continue;
 
-            TrancheInfo storage t = tranches[i];
+            TrancheInfo memory t = tranches[i];
             uint256 part = (amountForTranches * score) / totalScore;
             if (i == trancheCount - 1 && amountForTranches - allocated != part) {
                 part = amountForTranches - allocated;
