@@ -1046,9 +1046,9 @@
                 "type": "uint256"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "bandBps",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "name": "setBuffer",
@@ -1059,9 +1059,9 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "_epochDuration",
-                "type": "uint256"
+                "type": "uint64"
             },
             {
                 "internalType": "bool",
@@ -1077,9 +1077,9 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "_performanceFeeBps",
-                "type": "uint256"
+                "type": "uint16"
             },
             {
                 "internalType": "address",
@@ -1087,9 +1087,9 @@
                 "type": "address"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "_protocolFeeBps",
-                "type": "uint256"
+                "type": "uint16"
             },
             {
                 "internalType": "address",
@@ -1110,9 +1110,9 @@
                 "type": "address"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "bps",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "name": "setInsurance",
@@ -1196,9 +1196,9 @@
                 "type": "uint256"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "weightBps",
-                "type": "uint256"
+                "type": "uint16"
             },
             {
                 "internalType": "bool",

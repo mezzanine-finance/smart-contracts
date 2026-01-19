@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -21,12 +20,7 @@ interface IReservoir {
     function withdraw(uint256 amount, address to) external;
 }
 
-contract Vault is
-    Initializable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable,
-    AccessManagedUpgradeable
-{
+contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @notice Info for each registered tranche
     struct TrancheInfo {
         address tranche;
@@ -139,7 +133,7 @@ contract Vault is
     /// @param to - address to receive withdrawn USDC
     /// @param amount - amount of USDC to withdraw
     /// @dev used for MZUSD redemptions
-    function withdraw(address to, uint256 amount) external nonReentrant restricted {
+    function withdraw(address to, uint256 amount) external restricted {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -153,7 +147,7 @@ contract Vault is
     }
 
     //@dev using for rebalancing USDC between vault and reservoir
-    function rebalance() external nonReentrant restricted {
+    function rebalance() external restricted {
         uint256 idle = usdc.balanceOf(address(this));
         uint256 low = bufferLowUSDC;
         uint256 high = bufferHighUSDC;
@@ -230,9 +224,9 @@ contract Vault is
     /// @notice Update fees configuration
     /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed BPS
     function setFees(
-        uint256 _performanceFeeBps,
+        uint16 _performanceFeeBps,
         address _performanceFeeReceiver,
-        uint256 _protocolFeeBps,
+        uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted {
         if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
@@ -241,9 +235,9 @@ contract Vault is
         if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
             revert ZeroAddressWhileFeeIsOnProtocol();
 
-        performanceFeeBps = uint16(_performanceFeeBps);
+        performanceFeeBps = _performanceFeeBps;
         performanceFeeReceiver = _performanceFeeReceiver;
-        protocolFeeBps = uint16(_protocolFeeBps);
+        protocolFeeBps = _protocolFeeBps;
         protocolFeeReceiver = _protocolFeeReceiver;
 
         emit FeesUpdated(
@@ -270,10 +264,10 @@ contract Vault is
     /// @param idx - index of tranche in tranches array
     /// @param weightBps - new weight in bps
     /// @param enabled - whether tranche is enabled for yield allocation
-    function updateTranche(uint256 idx, uint256 weightBps, bool enabled) external restricted {
+    function updateTranche(uint256 idx, uint16 weightBps, bool enabled) external restricted {
         if (idx >= tranches.length) revert TrancheIndexOOB();
         if (weightBps > BPS) revert TooBigBps();
-        tranches[idx].weightBps = uint16(weightBps);
+        tranches[idx].weightBps = weightBps;
         tranches[idx].enabled = enabled;
         emit TrancheUpdated(idx, weightBps, enabled);
     }
@@ -281,23 +275,23 @@ contract Vault is
     /// @notice Update insurance address and bps
     /// @param _insurance - new insurance address
     /// @param bps - new insurance bps
-    function setInsurance(address _insurance, uint256 bps) external restricted {
+    function setInsurance(address _insurance, uint16 bps) external restricted {
         if (_insurance == address(0)) revert ZeroAddress();
         if (_insurance == insurance) revert SameValue();
         if (bps > BPS) revert TooBigBps();
         insurance = _insurance;
-        insuranceBps = uint16(bps);
+        insuranceBps = bps;
         emit InsuranceUpdated(_insurance, bps);
     }
 
     /// @notice Update idle USDC buffer and hysteresis band
     /// @param target - target idle USDC buffer
     /// @param bandBps - hysteresis band in bps
-    function setBuffer(uint256 target, uint256 bandBps) external restricted {
+    function setBuffer(uint256 target, uint16 bandBps) external restricted {
         if (bandBps > BPS) revert TooBigBps();
         if (target == 0) revert ZeroAmount();
         idleBufferUSDC = target;
-        hysteresisBps = uint16(bandBps);
+        hysteresisBps = bandBps;
         _updateBufferBounds();
         emit BufferUpdated(target, bandBps);
     }
@@ -305,13 +299,13 @@ contract Vault is
     /// @notice Update epoch duration
     /// @param _epochDuration - new epoch duration in seconds
     /// @param resetStart - whether to reset epoch start timestamp to now
-    function setEpochConfig(uint256 _epochDuration, bool resetStart) external restricted {
+    function setEpochConfig(uint64 _epochDuration, bool resetStart) external restricted {
         if (
             _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
         ) {
             revert InvalidEpochDuration();
         }
-        epochDuration = uint64(_epochDuration);
+        epochDuration = _epochDuration;
         if (resetStart) {
             uint64 ts = uint64(block.timestamp);
             epochStart = ts;
@@ -322,7 +316,7 @@ contract Vault is
 
     /// @notice Advances the epoch if enough time has passed.
     /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
-    function advanceEpoch() external nonReentrant restricted returns (uint256 newEpochId) {
+    function advanceEpoch() external restricted returns (uint256 newEpochId) {
         return _advanceEpochAndValidate();
     }
 
@@ -365,9 +359,7 @@ contract Vault is
     /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         uint256 ts = block.timestamp;
-        uint256 duration = epochDuration;
-
-        if (ts < uint256(epochStart) + duration) revert EpochTooSoon();
+        if (ts < uint256(epochStart) + epochDuration) revert EpochTooSoon();
 
         uint256 epochId = currentEpochId + 1;
         currentEpochId = epochId;
