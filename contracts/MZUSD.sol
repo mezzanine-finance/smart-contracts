@@ -82,17 +82,15 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     function deposit(uint256 amountUSDC) external restricted {
         if (amountUSDC == 0) revert ZeroAmount();
 
-        address sender = msg.sender;
-
         _txDepositedUSDC += amountUSDC;
 
         // USDC is a well-behaved ERC20; direct transferFrom is safe here.
-        usdc.transferFrom(sender, address(vault), amountUSDC);
+        usdc.transferFrom(msg.sender, address(vault), amountUSDC);
 
         uint256 mintAmount = amountUSDC * SCALE;
-        _mint(sender, mintAmount);
+        _mint(msg.sender, mintAmount);
 
-        emit Deposit(sender, amountUSDC, mintAmount);
+        emit Deposit(msg.sender, amountUSDC, mintAmount);
     }
 
     /// @notice request withdrawal of MZUSD for USDC
@@ -100,8 +98,6 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
     function requestWithdrawal(uint256 amountMZ) external restricted {
-        address sender = msg.sender;
-
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
         uint256 burnAmount = usdcOut * SCALE;
@@ -111,11 +107,11 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
             _checkAndConsumeGlobalCap(effectiveForLimit);
         }
 
-        _burn(sender, burnAmount);
+        _burn(msg.sender, burnAmount);
 
-        vault.withdraw(sender, usdcOut);
+        vault.withdraw(msg.sender, usdcOut);
 
-        emit Withdrawal(sender, burnAmount, usdcOut);
+        emit Withdrawal(msg.sender, burnAmount, usdcOut);
     }
 
     function transfer(address to, uint256 value) public override restricted returns (bool) {
@@ -137,7 +133,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
 
     /// @notice mint MZUSD to an address
-    /// @dev Used by authorized contracts to mint MZUSD
+    /// @dev Used by VAULT to mint MZUSD
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
     }
