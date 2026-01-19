@@ -5,7 +5,9 @@ This doc explains how to wire tranche pages (senior, mezzanine, junior) to the s
 ## TL;DR for UI behavior
 
 - Each tranche is an ERC-4626 vault over **MZUSD (18 decimals)**.
-- **Direct withdraw/redeem is disabled**. Users must request withdrawal, wait for epoch finalization, then claim.
+- Direct withdraw/redeem depends on `directWithdrawEnabled()`.
+  - If enabled: `requestWithdrawal(shares)` redeems immediately (same result as `redeem` to self).
+  - If disabled: `requestWithdrawal(shares)` enters the umbrella flow (wait + claim).
 - Junior/POL tranche (`isPolJunior == true`) is **not user-depositable**.
 
 ## Contracts you need per tranche page
@@ -72,12 +74,16 @@ Optional for UI lists:
 - `InvalidAmount()` -> input zero or invalid.
 - `Pausable: paused` -> contract paused.
 
-## Withdraw flow (request + claim)
+## Withdraw flow (request + claim or direct)
 
-Direct `withdraw()` / `redeem()` is disabled and will always revert (`DirectWithdrawDisabled`).
+Read `directWithdrawEnabled()` to pick the correct UX. `withdraw()` / `redeem()` revert when direct
+withdraw is disabled.
 
 ### Step 1: Request withdrawal
-Users request in **shares**, not assets.
+Users request in **shares**, not assets. Behavior depends on `directWithdrawEnabled()`:
+
+- **direct = true**: `requestWithdrawal(shares)` redeems immediately to the caller.
+- **direct = false**: `requestWithdrawal(shares)` creates a pending umbrella request.
 
 #### Pre-checks
 1. `isPolJunior()` must be false.
@@ -97,7 +103,7 @@ Users request in **shares**, not assets.
 - `InvalidMode()`
 - `Pausable: paused`
 
-### Step 2: Wait for epoch finalization
+### Step 2: Wait for epoch finalization (umbrella mode only)
 
 The withdrawal request is tied to a target epoch:
 - `targetEpoch = Vault.currentEpochId() + Tranche.unstakeDelayEpochs()`
@@ -106,7 +112,7 @@ An admin finalizes epochs by calling `Tranche.finalizeEpoch(epochId)` after the 
 
 You can show a "pending" state until the target epoch is finalized.
 
-### Step 3: Claim assets
+### Step 3: Claim assets (umbrella mode only)
 
 Once finalized, the user claims actual MZUSD:
 - `Tranche.claim(epochId)`
@@ -184,4 +190,3 @@ Notes:
 - `NotFinalized()` -> epoch not finalized; claim not ready.
 - `NothingToClaim()` -> no pending shares for that epoch.
 - `Pausable: paused` -> contract paused; disable user actions.
-
