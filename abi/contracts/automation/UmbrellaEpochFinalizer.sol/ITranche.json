@@ -53,7 +53,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             }
         ],
@@ -66,7 +66,7 @@
         "outputs": [
             {
                 "internalType": "address",
-                "name": "",
+                "name": "vaultAddress",
                 "type": "address"
             }
         ],

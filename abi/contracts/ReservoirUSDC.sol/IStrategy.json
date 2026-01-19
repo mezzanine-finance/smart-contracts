@@ -11,7 +11,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "withdrawn",
                 "type": "uint256"
             }
         ],
@@ -37,7 +37,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -50,7 +50,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],

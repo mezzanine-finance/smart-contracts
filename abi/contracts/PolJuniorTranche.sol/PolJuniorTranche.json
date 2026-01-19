@@ -568,7 +568,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -688,7 +688,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             }
         ],
@@ -834,7 +834,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],
@@ -991,7 +991,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],
@@ -1098,7 +1098,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1127,7 +1127,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1174,7 +1174,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "shares",
                 "type": "uint256"
             }
         ],

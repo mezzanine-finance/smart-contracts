@@ -14,8 +14,8 @@ interface IAccessManagerMinimal {
         bytes4[] calldata selectors,
         uint64 roleId
     ) external;
-    function ADMIN_ROLE() external view returns (uint64);
-    function PUBLIC_ROLE() external view returns (uint64);
+    function ADMIN_ROLE() external view returns (uint64 roleId);
+    function PUBLIC_ROLE() external view returns (uint64 roleId);
 }
 
 /// @title EmergencyLevelManager
@@ -89,12 +89,12 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         }
     }
 
-    function tranchesLength() external view returns (uint256) {
-        return tranches.length;
+    function tranchesLength() external view returns (uint256 length) {
+        length = tranches.length;
     }
 
-    function totalRulesCount() external view returns (uint256) {
-        return
+    function totalRulesCount() external view returns (uint256 count) {
+        count =
             EmergencyPolicyV1.rulesCountMZUSD() +
             EmergencyPolicyV1.rulesCountReservoir() +
             EmergencyPolicyV1.rulesCountVault() +
@@ -164,9 +164,11 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         uint256 disabledCount;
 
         uint256 rulesLen = rules.length;
+        EmergencyPolicyV1.RuleDef memory rule;
+        uint64 roleId;
         for (uint256 i = 0; i < rulesLen; i++) {
-            EmergencyPolicyV1.RuleDef memory rule = rules[i];
-            uint64 roleId = _resolveRoleId(rule.role, publicRole, adminRole);
+            rule = rules[i];
+            roleId = _resolveRoleId(rule.role, publicRole, adminRole);
             if (!_isAllowed(level, rule.allowedMask)) {
                 roleId = DISABLED_ROLE;
             }
@@ -209,8 +211,8 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         uint256 disabledIdx;
 
         for (uint256 i = 0; i < rulesLen; i++) {
-            EmergencyPolicyV1.RuleDef memory rule = rules[i];
-            uint64 roleId = _resolveRoleId(rule.role, publicRole, adminRole);
+            rule = rules[i];
+            roleId = _resolveRoleId(rule.role, publicRole, adminRole);
             if (!_isAllowed(level, rule.allowedMask)) {
                 roleId = DISABLED_ROLE;
             }
@@ -253,7 +255,7 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         EmergencyPolicyV1.RoleKind kind,
         uint64 publicRole,
         uint64 adminRole
-    ) internal pure returns (uint64) {
+    ) internal pure returns (uint64 roleId) {
         if (kind == EmergencyPolicyV1.RoleKind.Public) return publicRole;
         if (kind == EmergencyPolicyV1.RoleKind.VaultWithdraw) return VAULT_WITHDRAW_ROLE;
         if (kind == EmergencyPolicyV1.RoleKind.Vault) return VAULT_ROLE;
@@ -264,8 +266,8 @@ contract EmergencyLevelManager is Initializable, AccessManagedUpgradeable, UUPSU
         revert InvalidRoleKind();
     }
 
-    function _isAllowed(uint8 level, uint8 mask) internal pure returns (bool) {
-        return (mask & (uint8(1) << level)) != 0;
+    function _isAllowed(uint8 level, uint8 mask) internal pure returns (bool allowed) {
+        allowed = (mask & (uint8(1) << level)) != 0;
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.

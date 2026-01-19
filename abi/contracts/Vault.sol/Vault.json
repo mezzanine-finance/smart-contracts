@@ -704,7 +704,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "idleUSDC",
                 "type": "uint256"
             }
         ],
@@ -1181,7 +1181,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "length",
                 "type": "uint256"
             }
         ],

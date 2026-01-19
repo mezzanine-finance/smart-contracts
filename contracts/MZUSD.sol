@@ -114,11 +114,14 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         emit Withdrawal(msg.sender, burnAmount, usdcOut);
     }
 
-    function transfer(address to, uint256 value) public override restricted returns (bool) {
+    function transfer(address to, uint256 value) public override restricted returns (bool success) {
         return super.transfer(to, value);
     }
 
-    function approve(address spender, uint256 value) public override restricted returns (bool) {
+    function approve(
+        address spender,
+        uint256 value
+    ) public override restricted returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -126,7 +129,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         address from,
         address to,
         uint256 value
-    ) public override restricted returns (bool) {
+    ) public override restricted returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 
@@ -198,8 +201,8 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         return amountUSDC * SCALE;
     }
 
-    function decimals() public pure override returns (uint8) {
-        return MZ_DECIMALS;
+    function decimals() public pure override returns (uint8 decimals_) {
+        decimals_ = MZ_DECIMALS;
     }
 
     /// @notice preview withdrawal details without executing
@@ -268,18 +271,18 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     ///INTERNAL HELPERS
 
-    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
+    function _min(uint256 a, uint256 b) internal pure returns (uint256 minValue) {
+        minValue = a < b ? a : b;
     }
 
     /// @notice apply atomic netting of deposits against withdrawals within the same tx
     /// @param usdcOut - initial USDC amount to withdraw
-    /// @return adjusted USDC amount to withdraw after netting
-    function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {
+    /// @return adjustedUSDC adjusted USDC amount to withdraw after netting
+    function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256 adjustedUSDC) {
         uint256 txDeposited = _txDepositedUSDC;
         uint256 coveredUSDC = _min(txDeposited, usdcOut);
         _txDepositedUSDC = txDeposited - coveredUSDC;
-        return usdcOut - coveredUSDC;
+        adjustedUSDC = usdcOut - coveredUSDC;
     }
 
     /// @notice check and consume from the global redemption cap

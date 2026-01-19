@@ -14,11 +14,11 @@ interface IMZUSD is IERC20 {
 }
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
-    function totalAssets() external view returns (uint256);
+    function totalAssets() external view returns (uint256 assets);
 }
 // aderyn-fp-next-line(reused-contract-name)
 interface IVaultEpoch {
-    function advanceEpoch() external returns (uint256);
+    function advanceEpoch() external returns (uint256 newEpochId);
 }
 
 /// @title LossManager
@@ -124,8 +124,8 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     //GETTERS
 
-    function trancheOrderLength() external view returns (uint256) {
-        return trancheOrder.length;
+    function trancheOrderLength() external view returns (uint256 length) {
+        length = trancheOrder.length;
     }
 
     //INTERNAL HELPERS
@@ -140,15 +140,15 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         emit TrancheOrderUpdated(order);
     }
 
-    function _toMZ(uint256 usdcAmount) internal pure returns (uint256) {
-        return usdcAmount * SCALE;
+    function _toMZ(uint256 usdcAmount) internal pure returns (uint256 mzAmount) {
+        mzAmount = usdcAmount * SCALE;
     }
 
     // @notice burns up to remainingMZ from tranches in order, returns any leftover amount
     function _applyLossAcrossOrder(
         uint256 remainingMZ,
         uint256[] memory cuts
-    ) internal returns (uint256) {
+    ) internal returns (uint256 remainingMZOut) {
         uint256 orderLen = trancheOrder.length;
         uint256 i = 0;
 
@@ -158,7 +158,7 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             i = nextI;
         }
 
-        return remainingMZ;
+        remainingMZOut = remainingMZ;
     }
 
     // @notice applies loss step at index i, returns next index and amount burned
@@ -192,8 +192,8 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     // @notice gets totalAssets (TVL) of a tranche
-    function _tvl(address tranche) internal view returns (uint256) {
-        return ITranche(tranche).totalAssets();
+    function _tvl(address tranche) internal view returns (uint256 tvl) {
+        tvl = ITranche(tranche).totalAssets();
     }
 
     // @notice burns from a single tranche at index i, returns next index and amount burned

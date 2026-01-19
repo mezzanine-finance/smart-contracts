@@ -264,27 +264,27 @@ library EmergencyPolicyV1 {
         );
     }
 
-    function rulesCountMZUSD() internal pure returns (uint256) {
-        return MZUSD_RULES_COUNT;
+    function rulesCountMZUSD() internal pure returns (uint256 count) {
+        count = MZUSD_RULES_COUNT;
     }
 
-    function rulesCountReservoir() internal pure returns (uint256) {
-        return RESERVOIR_RULES_COUNT;
+    function rulesCountReservoir() internal pure returns (uint256 count) {
+        count = RESERVOIR_RULES_COUNT;
     }
 
-    function rulesCountVault() internal pure returns (uint256) {
-        return VAULT_RULES_COUNT;
+    function rulesCountVault() internal pure returns (uint256 count) {
+        count = VAULT_RULES_COUNT;
     }
 
-    function rulesCountTranche() internal pure returns (uint256) {
-        return TRANCHE_RULES_COUNT;
+    function rulesCountTranche() internal pure returns (uint256 count) {
+        count = TRANCHE_RULES_COUNT;
     }
 
-    function rulesCountLossManager() internal pure returns (uint256) {
-        return LOSS_MANAGER_RULES_COUNT;
+    function rulesCountLossManager() internal pure returns (uint256 count) {
+        count = LOSS_MANAGER_RULES_COUNT;
     }
 
-    function rulesCountPolJunior() internal pure returns (uint256) {
-        return POL_JUNIOR_RULES_COUNT;
+    function rulesCountPolJunior() internal pure returns (uint256 count) {
+        count = POL_JUNIOR_RULES_COUNT;
     }
 }

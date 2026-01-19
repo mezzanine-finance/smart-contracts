@@ -63,28 +63,28 @@ contract PolJuniorTranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256 shares) {
         return super.deposit(assets, receiver);
     }
 
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256 assets) {
         return super.mint(shares, receiver);
     }
 
     function transfer(
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.transfer(to, value);
     }
 
     function approve(
         address spender,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -92,7 +92,7 @@ contract PolJuniorTranche is
         address from,
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 
@@ -102,7 +102,7 @@ contract PolJuniorTranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256 shares) {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -110,7 +110,7 @@ contract PolJuniorTranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant restricted returns (uint256) {
+    ) public override nonReentrant restricted returns (uint256 assets) {
         return super.redeem(shares, receiver, owner);
     }
 

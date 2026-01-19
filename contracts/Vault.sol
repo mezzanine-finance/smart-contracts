@@ -12,7 +12,7 @@ interface IMZUSD {
 }
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
-    function totalAssets() external view returns (uint256);
+    function totalAssets() external view returns (uint256 assets);
     function notifyYield(uint256 amount) external;
 }
 interface IReservoir {
@@ -321,12 +321,12 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     //GETTERS
-    function tranchesLength() external view returns (uint256) {
-        return tranches.length;
+    function tranchesLength() external view returns (uint256 length) {
+        length = tranches.length;
     }
 
-    function currentIdleUSDC() external view returns (uint256) {
-        return usdc.balanceOf(address(this));
+    function currentIdleUSDC() external view returns (uint256 idleUSDC) {
+        idleUSDC = usdc.balanceOf(address(this));
     }
 
     function bufferBounds() external view returns (uint256 low, uint256 high) {
@@ -435,10 +435,11 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         uint256[] memory scores = new uint256[](trancheCount);
 
         address firstEnabledTranche;
+        TrancheInfo memory t;
 
         // calculate scores for each tranche and total score
         for (uint256 i; i < trancheCount; i++) {
-            TrancheInfo memory t = tranches[i];
+            t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
 
             if (firstEnabledTranche == address(0)) {
@@ -461,7 +462,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
             uint256 score = scores[i];
             if (score == 0) continue;
 
-            TrancheInfo memory t = tranches[i];
+            t = tranches[i];
             uint256 part = (amountForTranches * score) / totalScore;
             if (i == trancheCount - 1 && amountForTranches - allocated != part) {
                 part = amountForTranches - allocated;

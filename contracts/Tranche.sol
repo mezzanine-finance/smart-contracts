@@ -11,8 +11,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
-    function currentEpochId() external view returns (uint256);
-    function epochDuration() external view returns (uint256);
+    function currentEpochId() external view returns (uint256 epochId);
+    function epochDuration() external view returns (uint256 duration);
 }
 
 // @title Tranche with epoch-based umbrella unstake
@@ -308,14 +308,14 @@ contract Tranche is
     function transfer(
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.transfer(to, value);
     }
 
     function approve(
         address spender,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -323,7 +323,7 @@ contract Tranche is
         address from,
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool) {
+    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 
@@ -376,7 +376,7 @@ contract Tranche is
     // ERC4626 overrides (NAV with linear yield)
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
-    function totalAssets() public view override returns (uint256) {
+    function totalAssets() public view override returns (uint256 totalAssets_) {
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         uint256 unaccrued = _unaccruedYield();
 
@@ -385,12 +385,12 @@ contract Tranche is
             return 0;
         }
 
-        return balance - unaccrued;
+        totalAssets_ = balance - unaccrued;
     }
 
     /// @notice Convenience view - price per share using virtual NAV
-    function pricePerShare() external view returns (uint256) {
-        return convertToAssets(10 ** decimals());
+    function pricePerShare() external view returns (uint256 pricePerShare_) {
+        pricePerShare_ = convertToAssets(10 ** decimals());
     }
 
     /// @notice Get user's pending shares and claimable assets for a given epoch.
@@ -454,7 +454,7 @@ contract Tranche is
     // INTERNAL HELPERS
     /// @notice Returns how much of current yield is still not accrued into NAV.
     /// @dev This is what we subtract from raw balance in totalAssets().
-    function _unaccruedYield() internal view returns (uint256) {
+    function _unaccruedYield() internal view returns (uint256 unaccrued) {
         uint256 amount = yieldStreamingAmount;
         if (amount == 0) return 0;
 
@@ -477,7 +477,7 @@ contract Tranche is
 
         uint256 accrued = (amount * elapsed) / duration;
         if (accrued >= amount) return 0;
-        return amount - accrued;
+        unaccrued = amount - accrued;
     }
 
     function _checkDepositLimit(uint256 amount) internal view {

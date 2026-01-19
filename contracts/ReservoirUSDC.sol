@@ -9,10 +9,10 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
 interface IStrategy {
-    function invest(uint256 amount) external returns (bool);
-    function divest(uint256 amount) external returns (uint256);
+    function invest(uint256 amount) external returns (bool success);
+    function divest(uint256 amount) external returns (uint256 withdrawn);
     function harvest() external;
-    function totalAssets() external view returns (uint256);
+    function totalAssets() external view returns (uint256 assets);
 }
 
 contract ReservoirUSDC is
@@ -69,8 +69,8 @@ contract ReservoirUSDC is
     }
 
     /// @notice helper to see how much USDC is on balance
-    function totalAssets() external view returns (uint256) {
-        return usdc.balanceOf(address(this));
+    function totalAssets() external view returns (uint256 assets) {
+        assets = usdc.balanceOf(address(this));
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.

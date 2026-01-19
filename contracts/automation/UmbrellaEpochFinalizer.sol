@@ -5,13 +5,13 @@ import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/autom
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
-    function currentEpochId() external view returns (uint256);
+    function currentEpochId() external view returns (uint256 epochId);
 }
 
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
-    function vault() external view returns (address);
-    function umbrellaSharesByEpoch(uint256) external view returns (uint256);
+    function vault() external view returns (address vaultAddress);
+    function umbrellaSharesByEpoch(uint256) external view returns (uint256 shares);
     function finalizedEpochs(
         uint256
     ) external view returns (uint256 totalShares, uint256 totalAssets, bool isFinalized);

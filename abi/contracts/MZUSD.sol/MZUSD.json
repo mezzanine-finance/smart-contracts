@@ -547,7 +547,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -629,7 +629,7 @@
         "outputs": [
             {
                 "internalType": "uint8",
-                "name": "",
+                "name": "decimals_",
                 "type": "uint8"
             }
         ],
@@ -965,7 +965,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -994,7 +994,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],

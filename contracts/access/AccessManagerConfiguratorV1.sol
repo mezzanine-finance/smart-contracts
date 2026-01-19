@@ -5,7 +5,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IAccessManagerMinimal {
-    function ADMIN_ROLE() external view returns (uint64);
+    function ADMIN_ROLE() external view returns (uint64 roleId);
     function grantRole(uint64 roleId, address account, uint32 executionDelay) external;
     function revokeRole(uint64 roleId, address account) external;
     function setTargetFunctionRole(

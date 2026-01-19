@@ -808,7 +808,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1402,7 +1402,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "pricePerShare_",
                 "type": "uint256"
             }
         ],
@@ -1550,7 +1550,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "totalAssets_",
                 "type": "uint256"
             }
         ],
@@ -1600,7 +1600,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1629,7 +1629,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],

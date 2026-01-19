@@ -5,7 +5,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "assets",
                 "type": "uint256"
             }
         ],

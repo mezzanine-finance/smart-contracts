@@ -579,7 +579,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "count",
                 "type": "uint256"
             }
         ],
@@ -611,7 +611,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "length",
                 "type": "uint256"
             }
         ],

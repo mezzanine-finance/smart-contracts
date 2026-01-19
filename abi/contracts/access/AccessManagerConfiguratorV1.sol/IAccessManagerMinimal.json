@@ -5,7 +5,7 @@
         "outputs": [
             {
                 "internalType": "uint64",
-                "name": "",
+                "name": "roleId",
                 "type": "uint64"
             }
         ],
