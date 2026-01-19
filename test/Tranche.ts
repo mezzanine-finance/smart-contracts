@@ -293,6 +293,62 @@ describe("Tranche", () => {
         const previewAssets = await tranche.convertToAssets(aliceShares);
         expect(previewAssets).to.equal(expectedMZ);
     });
+
+    it("Direct mode: requestWithdrawal redeems immediately", async () => {
+        const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+        const directTranche = (await upgrades.deployProxy(
+            TrancheFactory,
+            [
+                mzusd.target, // assetToken (MZUSD as IERC20)
+                vault.target, // vaultAddress
+                2, // trancheIdentifier
+                0, // initialUnstakeDelayEpochs
+                "Direct Tranche", // name
+                "dMZUSD", // symbol
+                accessManager.target, // accessManager
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [true], // direct withdraw enabled
+            }
+        )) as unknown as Tranche;
+
+        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
+        const depositSelector = directTranche.interface.getFunction("deposit").selector;
+        const requestWithdrawalSelector =
+            directTranche.interface.getFunction("requestWithdrawal").selector;
+
+        await accessManager.setTargetFunctionRole(
+            directTranche.target,
+            [depositSelector, requestWithdrawalSelector],
+            PUBLIC_ROLE
+        );
+
+        const mintedMZ = await mintMZUSDFor(alice, to6(100n));
+        await mzusd.connect(alice).approve(directTranche.target, mintedMZ);
+        await directTranche.connect(alice).deposit(mintedMZ, alice.address);
+
+        const shares = await directTranche.balanceOf(alice.address);
+        expect(shares).to.equal(mintedMZ);
+        expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
+
+        const tx = await directTranche.connect(alice).requestWithdrawal(shares);
+
+        await expect(tx)
+            .to.emit(directTranche, "Withdraw")
+            .withArgs(alice.address, alice.address, alice.address, mintedMZ, shares);
+        await expect(tx).to.not.emit(directTranche, "UnstakeRequested");
+
+        expect(await directTranche.balanceOf(alice.address)).to.equal(0n);
+        expect(await mzusd.balanceOf(alice.address)).to.equal(mintedMZ);
+        expect(await mzusd.balanceOf(directTranche.target)).to.equal(0n);
+
+        const epochId = await vault.currentEpochId();
+        expect(await directTranche.umbrellaSharesByEpoch(epochId)).to.equal(0n);
+        expect(await directTranche.userSharesByEpoch(alice.address, epochId)).to.equal(0n);
+    });
     it("Streams yield linearly and affects deposits & pricePerShare correctly", async () => {
         const DAY = 24 * 60 * 60;
 
