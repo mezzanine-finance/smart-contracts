@@ -70,7 +70,6 @@ Legend:
 | `isConsumingScheduledOp()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `mint(address, uint256)` | nonpayable | yes | external | external restricted | protocol-flow | L0 |
 | `name()` | view | no | inherited |  | read | L0,L1,L2,L3 |
-| `previewWithdrawalFlat(uint256)` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `proxiableUUID()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `redemptionWindowDuration()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `requestWithdrawal(uint256)` | nonpayable | yes | external | external nonReentrant restricted | user-egress | L0,L1 |
@@ -181,7 +180,6 @@ Legend:
 | `UPGRADE_INTERFACE_VERSION()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `addTranche(tuple)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `authority()` | view | no | inherited |  | read | L0,L1,L2,L3 |
-| `bufferBounds()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `bufferHighUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `bufferLowUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `currentEpochId()` | view | no | inherited |  | read | L0,L1,L2,L3 |
@@ -189,8 +187,6 @@ Legend:
 | `distributeYield(uint256)` | nonpayable | yes | external | external whenNotPaused nonReentrant restricted | protocol-flow | L0 |
 | `epochDuration()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `epochStart()` | view | no | inherited |  | read | L0,L1,L2,L3 |
-| `getFeesConfig()` | view | yes | external |  | read | L0,L1,L2,L3 |
-| `getTrancheInfo(uint256)` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `hysteresisBps()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `idleBufferUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `initialize(address, address, address)` | nonpayable | yes | external | external initializer | init | L0 |

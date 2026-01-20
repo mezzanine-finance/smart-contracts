@@ -328,31 +328,6 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         idleUSDC = usdc.balanceOf(address(this));
     }
 
-    function bufferBounds() external view returns (uint256 low, uint256 high) {
-        return (bufferLowUSDC, bufferHighUSDC);
-    }
-
-    /// @notice Get tranche info by index
-    /// @param idx - index of tranche in tranches array
-    /// @return tranche - tranche address
-    /// @return weightBps - tranche weight in bps
-    /// @return enabled - whether tranche is enabled for yield allocation
-    function getTrancheInfo(
-        uint256 idx
-    ) external view returns (address tranche, uint256 weightBps, bool enabled) {
-        TrancheInfo memory t = tranches[idx];
-        return (t.tranche, t.weightBps, t.enabled);
-    }
-
-    /// @notice Get current fees configuration
-    function getFeesConfig()
-        external
-        view
-        returns (uint256 _perfBps, address _perfReceiver, uint256 _protBps, address _protReceiver)
-    {
-        return (performanceFeeBps, performanceFeeReceiver, protocolFeeBps, protocolFeeReceiver);
-    }
-
     //INTERNAL HELPERS
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement

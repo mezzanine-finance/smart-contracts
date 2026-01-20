@@ -627,24 +627,6 @@
     },
     {
         "inputs": [],
-        "name": "bufferBounds",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "low",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "high",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
         "name": "bufferHighUSDC",
         "outputs": [
             {
@@ -729,63 +711,6 @@
                 "internalType": "uint64",
                 "name": "",
                 "type": "uint64"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "getFeesConfig",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "_perfBps",
-                "type": "uint256"
-            },
-            {
-                "internalType": "address",
-                "name": "_perfReceiver",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "_protBps",
-                "type": "uint256"
-            },
-            {
-                "internalType": "address",
-                "name": "_protReceiver",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "idx",
-                "type": "uint256"
-            }
-        ],
-        "name": "getTrancheInfo",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "tranche",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "weightBps",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
             }
         ],
         "stateMutability": "view",

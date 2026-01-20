@@ -21,7 +21,7 @@ Labeling can be derived from on-chain metadata:
 - Optionally use `Tranche.trancheId()` and `isPolJunior()` as extra identifiers.
 
 If you still need to validate against Vault config, you can query:
-- `Vault.getTrancheInfo(idx)` -> `(tranche, weightBps, enabled)`
+- `Vault.tranches(idx)` -> `(tranche, weightBps, enabled)`
 - Events: `TrancheRegistered`, `TrancheUpdated`
 
 ## Units and scaling
@@ -134,7 +134,7 @@ If `LossManager.applyLoss` is used, MZUSD is burned from tranches. TVL and share
 
 Vault:
 - `tranchesLength()`
-- `getTrancheInfo(idx)`
+- `tranches(idx)`
 - `currentEpochId()`
 - `epochDuration()`
 

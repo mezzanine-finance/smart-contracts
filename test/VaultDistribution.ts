@@ -222,24 +222,27 @@ describe("Vault Yield Distribution", () => {
         // tranchesLength
         expect(await vault.tranchesLength()).to.equal(3n);
 
-        // getTrancheInfo
-        const [t0, w0, e0] = await vault.getTrancheInfo(0);
+        // tranches
+        const [t0, w0, e0] = await vault.tranches(0);
         expect(t0).to.equal(junior.target);
         expect(w0).to.equal(2000n);
         expect(e0).to.equal(true);
 
-        const [t1, w1, e1] = await vault.getTrancheInfo(1);
+        const [t1, w1, e1] = await vault.tranches(1);
         expect(t1).to.equal(mezzanine.target);
         expect(w1).to.equal(3000n);
         expect(e1).to.equal(true);
 
-        const [t2, w2, e2] = await vault.getTrancheInfo(2);
+        const [t2, w2, e2] = await vault.tranches(2);
         expect(t2).to.equal(senior.target);
         expect(w2).to.equal(5000n);
         expect(e2).to.equal(true);
 
-        // getFeesConfig defaults
-        const [perfBps0, perfReceiver0, protBps0, protReceiver0] = await vault.getFeesConfig();
+        // Fee fields default
+        const perfBps0 = await vault.performanceFeeBps();
+        const perfReceiver0 = await vault.performanceFeeReceiver();
+        const protBps0 = await vault.protocolFeeBps();
+        const protReceiver0 = await vault.protocolFeeReceiver();
         expect(perfBps0).to.equal(0n);
         expect(perfReceiver0).to.equal(ethers.ZeroAddress);
         expect(protBps0).to.equal(0n);
@@ -249,7 +252,10 @@ describe("Vault Yield Distribution", () => {
         await (
             await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)
         ).wait();
-        const [perfBps1, perfReceiver1, protBps1, protReceiver1] = await vault.getFeesConfig();
+        const perfBps1 = await vault.performanceFeeBps();
+        const perfReceiver1 = await vault.performanceFeeReceiver();
+        const protBps1 = await vault.protocolFeeBps();
+        const protReceiver1 = await vault.protocolFeeReceiver();
         expect(perfBps1).to.equal(1111n);
         expect(perfReceiver1).to.equal(bob.address);
         expect(protBps1).to.equal(2222n);
@@ -257,7 +263,7 @@ describe("Vault Yield Distribution", () => {
 
         // Tranche info updates should be visible through getter
         await (await vault.connect(deployer).updateTranche(1, 1234, false)).wait();
-        const [t1b, w1b, e1b] = await vault.getTrancheInfo(1);
+        const [t1b, w1b, e1b] = await vault.tranches(1);
         expect(t1b).to.equal(mezzanine.target);
         expect(w1b).to.equal(1234n);
         expect(e1b).to.equal(false);
