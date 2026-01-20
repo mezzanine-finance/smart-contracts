@@ -20,6 +20,8 @@ interface IVault {
 // @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
+// @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
+// aderyn-fp-next-line(contract-locks-ether)
 contract Tranche is
     Initializable,
     ERC4626Upgradeable,
@@ -108,7 +110,6 @@ contract Tranche is
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
-    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
     constructor(bool _directWithdrawEnabled) {
@@ -505,27 +506,6 @@ contract Tranche is
         }
         unstakeDelayEpochs = epochsDelay;
         emit UnstakeDelayUpdated(epochsDelay);
-    }
-
-    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
-    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
-    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
-    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
-    ///      via the proxy and no ETH should remain here, but having an explicit
-    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
-    ///      or mistaken transfers. This function is not part of the normal protocol
-    ///      flow and is restricted to the admin role.
-    // aderyn-ignore-next-line(state-change-without-event)
-    function rescueETH(address to, uint256 amount) external restricted {
-        if (to == address(0)) revert ZeroAddress();
-
-        uint256 bal = address(this).balance;
-        if (amount > bal) {
-            amount = bal;
-        }
-
-        (bool ok, ) = to.call{value: amount}("");
-        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.

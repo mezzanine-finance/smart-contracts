@@ -38,15 +38,15 @@ library EmergencyPolicyV1 {
     uint8 internal constant MASK_L0_L1_L2 = MASK_L0 | MASK_L1 | MASK_L2;
     uint8 internal constant MASK_L0_L2 = MASK_L0 | MASK_L2;
 
-    uint256 internal constant MZUSD_RULES_COUNT = 12;
-    uint256 internal constant RESERVOIR_RULES_COUNT = 5;
-    uint256 internal constant VAULT_RULES_COUNT = 15;
-    uint256 internal constant TRANCHE_RULES_COUNT = 17;
-    uint256 internal constant LOSS_MANAGER_RULES_COUNT = 8;
-    uint256 internal constant POL_JUNIOR_RULES_COUNT = 12;
+    uint256 internal constant MZUSD_RULES_COUNT = 11;
+    uint256 internal constant RESERVOIR_RULES_COUNT = 4;
+    uint256 internal constant VAULT_RULES_COUNT = 14;
+    uint256 internal constant TRANCHE_RULES_COUNT = 16;
+    uint256 internal constant LOSS_MANAGER_RULES_COUNT = 7;
+    uint256 internal constant POL_JUNIOR_RULES_COUNT = 11;
 
     /// @notice MZUSD rules: ingress only in L0, egress in L0/L1, no user ops in L2.
-    /// @dev L2 keeps only emergency/admin actions (rescue/upgrade/authority) and loss burns.
+    /// @dev L2 keeps only emergency/admin actions (upgrade/authority) and loss burns.
     function rulesMZUSD() internal pure returns (RuleDef[] memory rules) {
         rules = new RuleDef[](MZUSD_RULES_COUNT);
         uint256 idx;
@@ -70,7 +70,6 @@ library EmergencyPolicyV1 {
             RoleKind.ProtocolAdmin,
             MASK_L0_L1
         );
-        rules[idx++] = RuleDef(MZUSD.rescueETH.selector, RoleKind.ProtocolAdmin, MASK_L0_L1_L2);
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,
             RoleKind.AccessAdmin,
@@ -90,11 +89,6 @@ library EmergencyPolicyV1 {
 
         rules[idx++] = RuleDef(ReservoirUSDC.deposit.selector, RoleKind.Vault, MASK_L0);
         rules[idx++] = RuleDef(ReservoirUSDC.withdraw.selector, RoleKind.Vault, MASK_L0_L1);
-        rules[idx++] = RuleDef(
-            ReservoirUSDC.rescueETH.selector,
-            RoleKind.ProtocolAdmin,
-            MASK_L0_L1_L2
-        );
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,
             RoleKind.AccessAdmin,
@@ -127,7 +121,6 @@ library EmergencyPolicyV1 {
         rules[idx++] = RuleDef(Vault.setBuffer.selector, RoleKind.ProtocolAdmin, MASK_L0);
         rules[idx++] = RuleDef(Vault.setEpochConfig.selector, RoleKind.ProtocolAdmin, MASK_L0);
 
-        rules[idx++] = RuleDef(Vault.rescueETH.selector, RoleKind.ProtocolAdmin, MASK_L0_L1_L2);
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,
             RoleKind.AccessAdmin,
@@ -165,7 +158,6 @@ library EmergencyPolicyV1 {
             MASK_L0
         );
         rules[idx++] = RuleDef(Tranche.setDepositLimits.selector, RoleKind.ProtocolAdmin, MASK_L0);
-        rules[idx++] = RuleDef(Tranche.rescueETH.selector, RoleKind.ProtocolAdmin, MASK_L0_L1_L2);
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,
             RoleKind.AccessAdmin,
@@ -201,11 +193,6 @@ library EmergencyPolicyV1 {
         rules[idx++] = RuleDef(LossManager.setVault.selector, RoleKind.ProtocolAdmin, MASK_L0);
         rules[idx++] = RuleDef(
             LossManager.setMaxLossPerTxUSDC.selector,
-            RoleKind.ProtocolAdmin,
-            MASK_L0_L1_L2
-        );
-        rules[idx++] = RuleDef(
-            LossManager.rescueETH.selector,
             RoleKind.ProtocolAdmin,
             MASK_L0_L1_L2
         );
@@ -246,11 +233,6 @@ library EmergencyPolicyV1 {
             PolJuniorTranche.setPolPayout.selector,
             RoleKind.ProtocolAdmin,
             MASK_L0
-        );
-        rules[idx++] = RuleDef(
-            PolJuniorTranche.rescueETH.selector,
-            RoleKind.ProtocolAdmin,
-            MASK_L0_L1_L2
         );
         rules[idx++] = RuleDef(
             AccessManagedUpgradeable.setAuthority.selector,

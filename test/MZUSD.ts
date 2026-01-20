@@ -927,10 +927,4 @@ describe("MZUSD <-> USDC conversion", () => {
             "ZeroCap"
         );
     });
-
-    it("Should revert rescueETH for zero receiver", async () => {
-        await expect(
-            mzusd.connect(deployer).rescueETH("0x0000000000000000000000000000000000000000", 1n)
-        ).to.be.revertedWithCustomError(mzusd, "ZeroAddress");
-    });
 });

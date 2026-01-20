@@ -23,6 +23,8 @@ interface IVaultEpoch {
 
 /// @title LossManager
 /// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
+// @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
+// aderyn-fp-next-line(contract-locks-ether)
 contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable {
     uint256 public constant USDC_DECIMALS = 6;
     uint256 public constant MZ_DECIMALS = 18;
@@ -49,7 +51,6 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
     event VaultUpdated(address indexed vault);
-    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor() {
         _disableInitializers();
@@ -272,27 +273,6 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         for (uint256 j = 0; j < orderLen; j++) {
             orderCopy[j] = trancheOrder[j];
         }
-    }
-
-    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
-    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
-    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
-    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
-    ///      via the proxy and no ETH should remain here, but having an explicit
-    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
-    ///      or mistaken transfers. This function is not part of the normal protocol
-    ///      flow and is restricted to the admin role.
-    // aderyn-ignore-next-line(state-change-without-event)
-    function rescueETH(address to, uint256 amount) external restricted {
-        if (to == address(0)) revert ZeroAddress();
-
-        uint256 bal = address(this).balance;
-        if (amount > bal) {
-            amount = bal;
-        }
-
-        (bool ok, ) = to.call{value: amount}("");
-        if (!ok) revert EthTransferFailed(to, amount);
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
