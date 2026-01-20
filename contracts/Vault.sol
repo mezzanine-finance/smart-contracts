@@ -29,11 +29,11 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
-    uint256 public constant BPS = 10_000;
+    uint16 public constant BPS = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
-    uint256 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
-    uint256 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
-    uint256 public constant MAX_TRANCHES = 50;
+    uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
+    uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
+    uint16 public constant MAX_TRANCHES = 50;
 
     TrancheInfo[] public tranches;
     // check if address is registered tranche
