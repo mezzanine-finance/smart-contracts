@@ -48,15 +48,15 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     address public protocolFeeReceiver; // receiver of protocols fees
 
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
-    uint256 public currentEpochId; // current epoch ID for yield distribution
 
     // precomputed buffer bounds
     uint256 public bufferLowUSDC; // lower bound for idle USDC before pulling from reservoir
     uint256 public bufferHighUSDC; // upper bound for idle USDC before sending to reservoir
 
-    // epochs
+    // epochs + config
     uint64 public epochStart; // start timestamp of current epoch
     uint64 public epochDuration; // duration of each epoch in seconds
+    uint64 public currentEpochId; // current epoch ID for yield distribution
 
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
     //todo discuss is insurance needed?
@@ -361,7 +361,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         uint256 ts = block.timestamp;
         if (ts < uint256(epochStart) + epochDuration) revert EpochTooSoon();
 
-        uint256 epochId = currentEpochId + 1;
+        uint64 epochId = currentEpochId + 1;
         currentEpochId = epochId;
         epochStart = uint64(ts);
 

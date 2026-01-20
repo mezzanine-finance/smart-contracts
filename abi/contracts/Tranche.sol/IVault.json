@@ -4,9 +4,9 @@
         "name": "currentEpochId",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "epochId",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -17,9 +17,9 @@
         "name": "epochDuration",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "duration",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",

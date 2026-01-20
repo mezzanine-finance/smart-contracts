@@ -5,7 +5,7 @@ import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/autom
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
-    function currentEpochId() external view returns (uint256 epochId);
+    function currentEpochId() external view returns (uint64 epochId);
 }
 
 // aderyn-fp-next-line(reused-contract-name)

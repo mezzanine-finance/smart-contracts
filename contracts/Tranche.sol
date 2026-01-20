@@ -11,8 +11,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
-    function currentEpochId() external view returns (uint256 epochId);
-    function epochDuration() external view returns (uint256 duration);
+    function currentEpochId() external view returns (uint64 epochId);
+    function epochDuration() external view returns (uint64 duration);
 }
 
 // @title Tranche with epoch-based umbrella unstake
