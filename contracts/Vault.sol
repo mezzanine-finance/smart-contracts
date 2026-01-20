@@ -156,7 +156,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         uint256 pulled;
         if (idle > high) {
             uint256 toSend = idle - idleBufferUSDC;
-            _approveIfNeeded(usdc, address(reservoir), toSend);
+            usdc.approve(address(reservoir), toSend);
             reservoir.deposit(toSend);
             sent = toSend;
         } else if (idle < low) {
@@ -485,17 +485,6 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
 
         bufferLowUSDC = low;
         bufferHighUSDC = high;
-    }
-
-    /// @notice Approve token if current allowance is insufficient
-    /// @param token - the ERC20 token to approve
-    /// @param spender - the address which will spend the tokens
-    /// @param amount - the amount of tokens to approve
-    function _approveIfNeeded(IERC20 token, address spender, uint256 amount) internal {
-        uint256 currentAllowance = token.allowance(address(this), spender);
-        if (currentAllowance < amount) {
-            token.approve(spender, amount);
-        }
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
