@@ -155,14 +155,12 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         uint256 sent;
         uint256 pulled;
         if (idle > high) {
-            uint256 toSend = idle - idleBufferUSDC;
-            usdc.approve(address(reservoir), toSend);
-            reservoir.deposit(toSend);
-            sent = toSend;
+            sent = idle - idleBufferUSDC;
+            usdc.approve(address(reservoir), sent);
+            reservoir.deposit(sent);
         } else if (idle < low) {
-            uint256 toPull = idleBufferUSDC - idle;
-            reservoir.withdraw(toPull, address(this));
-            pulled = toPull;
+            pulled = idleBufferUSDC - idle;
+            reservoir.withdraw(pulled, address(this));
         }
         emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
     }
