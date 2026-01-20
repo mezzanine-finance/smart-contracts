@@ -385,6 +385,22 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "requested",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxAllowed",
+                "type": "uint256"
+            }
+        ],
+        "name": "UnstakeDelayTooLarge",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "YieldStreamIsActive",
         "type": "error"
@@ -744,6 +760,19 @@
     {
         "inputs": [],
         "name": "BASIS_POINTS",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_UNSTAKE_DELAY_EPOCHS",
         "outputs": [
             {
                 "internalType": "uint256",

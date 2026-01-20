@@ -1454,6 +1454,12 @@ describe("Tranche", () => {
             tranche.connect(vaultSigner).notifyYield(yieldAmt)
         ).to.be.revertedWithCustomError(tranche, "YieldStreamIsActive");
     });
+    it("Reverts when unstake delay exceeds max", async () => {
+        const maxDelay = await tranche.MAX_UNSTAKE_DELAY_EPOCHS();
+        await expect(
+            tranche.connect(deployer).setUnstakeDelayEpochs(maxDelay + 1n)
+        ).to.be.revertedWithCustomError(tranche, "UnstakeDelayTooLarge");
+    });
     it("Should revert NothingToFinalize when epoch passed but umbrella is empty", async () => {
         const DAY = 24 * 60 * 60;
 

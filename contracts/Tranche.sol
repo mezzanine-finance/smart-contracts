@@ -37,6 +37,7 @@ contract Tranche is
 
     // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BASIS_POINTS = 10_000;
+    uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;
@@ -106,6 +107,7 @@ contract Tranche is
     error TooLateToCancel();
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
+    error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error EthTransferFailed(address to, uint256 attemptedAmount);
 
     /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
@@ -144,7 +146,7 @@ contract Tranche is
 
         vault = vaultAddress;
         trancheId = trancheIdentifier;
-        unstakeDelayEpochs = initialUnstakeDelayEpochs;
+        _setUnstakeDelayEpochs(initialUnstakeDelayEpochs);
     }
 
     modifier whenDirectEnabled() {
@@ -359,8 +361,7 @@ contract Tranche is
 
     /// @notice Update unstake delay in epochs
     function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
-        unstakeDelayEpochs = epochsDelay;
-        emit UnstakeDelayUpdated(epochsDelay);
+        _setUnstakeDelayEpochs(epochsDelay);
     }
 
     /// @notice Update deposit limits
@@ -496,6 +497,14 @@ contract Tranche is
         if (amount > finalLimit) {
             revert DepositLimitExceeded(amount, finalLimit);
         }
+    }
+
+    function _setUnstakeDelayEpochs(uint256 epochsDelay) internal {
+        if (epochsDelay > MAX_UNSTAKE_DELAY_EPOCHS) {
+            revert UnstakeDelayTooLarge(epochsDelay, MAX_UNSTAKE_DELAY_EPOCHS);
+        }
+        unstakeDelayEpochs = epochsDelay;
+        emit UnstakeDelayUpdated(epochsDelay);
     }
 
     /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
