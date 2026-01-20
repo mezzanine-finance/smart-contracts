@@ -170,7 +170,7 @@ contract Tranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant restricted returns (uint256 shares) {
+    ) public override nonReentrant returns (uint256 shares) {
         _checkDepositLimit(assets);
         shares = super.deposit(assets, receiver);
     }
@@ -183,7 +183,7 @@ contract Tranche is
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant restricted returns (uint256 assets) {
+    ) public override nonReentrant returns (uint256 assets) {
         uint256 assetsRequired = convertToAssets(shares);
         _checkDepositLimit(assetsRequired);
         assets = super.mint(shares, receiver);
@@ -192,7 +192,7 @@ contract Tranche is
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
     /// @param shares - amount of tranche shares to withdraw
-    function requestWithdrawal(uint256 shares) external nonReentrant restricted {
+    function requestWithdrawal(uint256 shares) external nonReentrant {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(msg.sender) < shares) revert InvalidBalance();
 
@@ -221,7 +221,7 @@ contract Tranche is
     function cancelUnstake(
         uint256 epochId,
         uint256 shares
-    ) external nonReentrant whenDirectDisabled restricted {
+    ) external nonReentrant whenDirectDisabled {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -246,7 +246,7 @@ contract Tranche is
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
     /// @param epochId The epoch for which to claim assets.
-    function claim(uint256 epochId) external nonReentrant whenDirectDisabled restricted {
+    function claim(uint256 epochId) external nonReentrant whenDirectDisabled {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -264,11 +264,11 @@ contract Tranche is
         emit WithdrawalClaimed(msg.sender, epochId, userAssets);
     }
 
-    // ADMIN
+    // EPOCH FINALIZATION
     /// @notice Finalize an epoch after it has passed on the vault.
     /// @dev Burns umbrella shares for the epoch and records finalized data for user claims.
     /// @param epochId The epoch to finalize.
-    function finalizeEpoch(uint256 epochId) external nonReentrant restricted whenDirectDisabled {
+    function finalizeEpoch(uint256 epochId) external nonReentrant whenDirectDisabled {
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
@@ -296,7 +296,7 @@ contract Tranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant whenDirectEnabled restricted returns (uint256 shares) {
+    ) public override nonReentrant whenDirectEnabled returns (uint256 shares) {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -304,21 +304,21 @@ contract Tranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant whenDirectEnabled restricted returns (uint256 assets) {
+    ) public override nonReentrant whenDirectEnabled returns (uint256 assets) {
         return super.redeem(shares, receiver, owner);
     }
 
     function transfer(
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
+    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
         return super.transfer(to, value);
     }
 
     function approve(
         address spender,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
+    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -326,7 +326,7 @@ contract Tranche is
         address from,
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) restricted returns (bool success) {
+    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 

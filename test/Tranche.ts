@@ -114,26 +114,7 @@ describe("Tranche", () => {
         )) as unknown as Tranche;
 
         // ROLES & AccessManager wiring
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-
-        // 1) Public user actions on MZUSD (deposit / requestWithdrawal + token ops)
-        const depositSelector = mzusd.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
-        const approveSelector = mzusd.interface.getFunction("approve").selector;
-        const transferSelector = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
-
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [depositSelector, requestWithdrawalSelector],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [approveSelector, transferSelector, transferFromSelector],
-            PUBLIC_ROLE
-        );
 
         // 2) Admin-only functions on MZUSD & Vault
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
@@ -145,39 +126,6 @@ describe("Tranche", () => {
             vault.target,
             [setMZUSDSelector, distributeYieldSelector, advanceEpochSelector, addTrancheSelector],
             ADMIN_ROLE
-        );
-
-        // 3) Public user actions on Tranche (ERC4626 + token ops)
-        const trancheDepositSelector = tranche.interface.getFunction("deposit").selector;
-        const trancheMintSelector = tranche.interface.getFunction("mint").selector;
-        const trancheRequestWithdrawalSelector =
-            tranche.interface.getFunction("requestWithdrawal").selector;
-        const trancheCancelUnstakeSelector =
-            tranche.interface.getFunction("cancelUnstake").selector;
-        const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
-        const trancheWithdrawSelector = tranche.interface.getFunction("withdraw").selector;
-        const trancheRedeemSelector = tranche.interface.getFunction("redeem").selector;
-        const trancheFinalizeSelector = tranche.interface.getFunction("finalizeEpoch").selector;
-        const trancheApproveSelector = tranche.interface.getFunction("approve").selector;
-        const trancheTransferSelector = tranche.interface.getFunction("transfer").selector;
-        const trancheTransferFromSelector = tranche.interface.getFunction("transferFrom").selector;
-
-        await accessManager.setTargetFunctionRole(
-            tranche.target,
-            [
-                trancheDepositSelector,
-                trancheMintSelector,
-                trancheRequestWithdrawalSelector,
-                trancheCancelUnstakeSelector,
-                trancheClaimSelector,
-                trancheWithdrawSelector,
-                trancheRedeemSelector,
-                trancheFinalizeSelector,
-                trancheApproveSelector,
-                trancheTransferSelector,
-                trancheTransferFromSelector,
-            ],
-            PUBLIC_ROLE
         );
 
         // 4) Vault role allowed to mint MZUSD and push yield to tranches
@@ -314,17 +262,6 @@ describe("Tranche", () => {
                 constructorArgs: [true], // direct withdraw enabled
             }
         )) as unknown as Tranche;
-
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
-        const depositSelector = directTranche.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector =
-            directTranche.interface.getFunction("requestWithdrawal").selector;
-
-        await accessManager.setTargetFunctionRole(
-            directTranche.target,
-            [depositSelector, requestWithdrawalSelector],
-            PUBLIC_ROLE
-        );
 
         const mintedMZ = await mintMZUSDFor(alice, to6(100n));
         await mzusd.connect(alice).approve(directTranche.target, mintedMZ);

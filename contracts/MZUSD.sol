@@ -80,7 +80,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
-    function deposit(uint256 amountUSDC) external restricted {
+    function deposit(uint256 amountUSDC) external {
         if (amountUSDC == 0) revert ZeroAmount();
 
         _txDepositedUSDC += amountUSDC;
@@ -98,7 +98,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @param amountMZ - amount of MZUSD to burn (18 decimals)
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external restricted {
+    function requestWithdrawal(uint256 amountMZ) external {
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
         uint256 burnAmount = usdcOut * SCALE;
@@ -115,14 +115,11 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         emit Withdrawal(msg.sender, burnAmount, usdcOut);
     }
 
-    function transfer(address to, uint256 value) public override restricted returns (bool success) {
+    function transfer(address to, uint256 value) public override returns (bool success) {
         return super.transfer(to, value);
     }
 
-    function approve(
-        address spender,
-        uint256 value
-    ) public override restricted returns (bool success) {
+    function approve(address spender, uint256 value) public override returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -130,7 +127,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         address from,
         address to,
         uint256 value
-    ) public override restricted returns (bool success) {
+    ) public override returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 

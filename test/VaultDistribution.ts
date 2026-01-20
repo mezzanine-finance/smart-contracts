@@ -136,43 +136,7 @@ describe("Vault Yield Distribution", () => {
         )) as unknown as Tranche;
 
         // Roles
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-
-        // public: MZUSD deposit/requestWithdrawal + token ops
-        const depSel = mzusd.interface.getFunction("deposit").selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
-        const approveSel = mzusd.interface.getFunction("approve").selector;
-        const transferSel = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSel = mzusd.interface.getFunction("transferFrom").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [depSel, reqSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [approveSel, transferSel, transferFromSel],
-            PUBLIC_ROLE
-        );
-
-        // public: Tranche user-facing functions
-        const tDepSel = junior.interface.getFunction("deposit").selector;
-        const tReqSel = junior.interface.getFunction("requestWithdrawal").selector;
-        const tCancelSel = junior.interface.getFunction("cancelUnstake").selector;
-        const tClaimSel = junior.interface.getFunction("claim").selector;
-
-        await accessManager.setTargetFunctionRole(
-            junior.target,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            mezzanine.target,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            senior.target,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
-        );
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
         const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
@@ -199,13 +163,8 @@ describe("Vault Yield Distribution", () => {
         );
 
         // admin: Tranche config/finalize functions (for tests/helpers)
-        const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
         const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
         const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
-
-        await accessManager.setTargetFunctionRole(junior.target, [tFinalizeSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanine.target, [tFinalizeSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(senior.target, [tFinalizeSel], PUBLIC_ROLE);
         await accessManager.setTargetFunctionRole(
             junior.target,
             [tSetUnstakeDelaySel, tSetDepositLimitsSel],
@@ -232,32 +191,6 @@ describe("Vault Yield Distribution", () => {
         await accessManager.setTargetFunctionRole(junior.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(mezzanine.target, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(senior.target, [notifySel], VAULT_ROLE);
-
-        const trancheDepositSel = junior.interface.getFunction("deposit").selector;
-        const trancheMintSel = junior.interface.getFunction("mint").selector;
-        const trancheRequestSel = junior.interface.getFunction("requestWithdrawal").selector;
-        const trancheCancelSel = junior.interface.getFunction("cancelUnstake").selector;
-        const trancheClaimSel = junior.interface.getFunction("claim").selector;
-        const trancheWithdrawSel = junior.interface.getFunction("withdraw").selector;
-        const trancheRedeemSel = junior.interface.getFunction("redeem").selector;
-        const trancheApproveSel = junior.interface.getFunction("approve").selector;
-        const trancheTransferSel = junior.interface.getFunction("transfer").selector;
-        const trancheTransferFromSel = junior.interface.getFunction("transferFrom").selector;
-        const trancheSelectors = [
-            trancheDepositSel,
-            trancheMintSel,
-            trancheRequestSel,
-            trancheCancelSel,
-            trancheClaimSel,
-            trancheWithdrawSel,
-            trancheRedeemSel,
-            trancheApproveSel,
-            trancheTransferSel,
-            trancheTransferFromSel,
-        ];
-        await accessManager.setTargetFunctionRole(junior.target, trancheSelectors, PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanine.target, trancheSelectors, PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(senior.target, trancheSelectors, PUBLIC_ROLE);
 
         // wire and register
         await vault.setMZUSD(mzusd.target);

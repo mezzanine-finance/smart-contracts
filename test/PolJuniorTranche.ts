@@ -111,19 +111,7 @@ describe("PolJuniorTranche", () => {
         polAddr = await pol.getAddress();
 
         // Roles setup
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-
-        // POL tranche: deposit should be callable by everyone (PUBLIC_ROLE)
-        const polDepositSel = pol.interface.getFunction("deposit").selector;
-        const polApproveSel = pol.interface.getFunction("approve").selector;
-        const polTransferSel = pol.interface.getFunction("transfer").selector;
-        const polTransferFromSel = pol.interface.getFunction("transferFrom").selector;
-        await accessManager.setTargetFunctionRole(
-            polAddr,
-            [polDepositSel, polApproveSel, polTransferSel, polTransferFromSel],
-            PUBLIC_ROLE
-        );
 
         // POL tranche: withdraw/redeem should be ADMIN only
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
@@ -137,19 +125,6 @@ describe("PolJuniorTranche", () => {
         // POL tranche: admin-only management endpoints
         const polSetPayoutSel = pol.interface.getFunction("setPolPayout").selector;
         await accessManager.setTargetFunctionRole(polAddr, [polSetPayoutSel], ADMIN_ROLE);
-
-        // public: MZUSD deposit/requestWithdrawal
-        const depSel = mzusd.interface.getFunction("deposit").selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [depSel, reqSel], PUBLIC_ROLE);
-        const approveSel = mzusd.interface.getFunction("approve").selector;
-        const transferSel = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSel = mzusd.interface.getFunction("transferFrom").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusdAddr,
-            [approveSel, transferSel, transferFromSel],
-            PUBLIC_ROLE
-        );
 
         // admin: vault distribute + tranche management + epoch config
         const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;

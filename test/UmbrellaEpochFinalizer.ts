@@ -51,7 +51,6 @@ describe("UmbrellaEpochFinalizer", () => {
     let whale: any;
 
     let ADMIN_ROLE: bigint;
-    let PUBLIC_ROLE: bigint;
 
     before(async () => {
         [deployer, alice, bob] = await ethers.getSigners();
@@ -123,25 +122,6 @@ describe("UmbrellaEpochFinalizer", () => {
         )) as unknown as Tranche;
 
         ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-        PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
-
-        // MZUSD public user actions + token ops
-        const depositSelector = mzusd.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
-        const approveSelector = mzusd.interface.getFunction("approve").selector;
-        const transferSelector = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
-
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [depositSelector, requestWithdrawalSelector],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [approveSelector, transferSelector, transferFromSelector],
-            PUBLIC_ROLE
-        );
 
         // Admin-only functions on MZUSD & Vault
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
@@ -154,46 +134,9 @@ describe("UmbrellaEpochFinalizer", () => {
             ADMIN_ROLE
         );
 
-        // Public user actions on Tranche (ERC4626 + token ops)
-        const trancheDepositSelector = tranche.interface.getFunction("deposit").selector;
-        const trancheMintSelector = tranche.interface.getFunction("mint").selector;
-        const trancheRequestWithdrawalSelector =
-            tranche.interface.getFunction("requestWithdrawal").selector;
-        const trancheCancelUnstakeSelector =
-            tranche.interface.getFunction("cancelUnstake").selector;
-        const trancheClaimSelector = tranche.interface.getFunction("claim").selector;
-        const trancheWithdrawSelector = tranche.interface.getFunction("withdraw").selector;
-        const trancheRedeemSelector = tranche.interface.getFunction("redeem").selector;
-        const trancheApproveSelector = tranche.interface.getFunction("approve").selector;
-        const trancheTransferSelector = tranche.interface.getFunction("transfer").selector;
-        const trancheTransferFromSelector = tranche.interface.getFunction("transferFrom").selector;
-
-        await accessManager.setTargetFunctionRole(
-            tranche.target,
-            [
-                trancheDepositSelector,
-                trancheMintSelector,
-                trancheRequestWithdrawalSelector,
-                trancheCancelUnstakeSelector,
-                trancheClaimSelector,
-                trancheWithdrawSelector,
-                trancheRedeemSelector,
-                trancheApproveSelector,
-                trancheTransferSelector,
-                trancheTransferFromSelector,
-            ],
-            PUBLIC_ROLE
-        );
-
         // Admin-only tranche functions used in tests
-        const trancheFinalizeSelector = tranche.interface.getFunction("finalizeEpoch").selector;
         const trancheDelaySelector =
             tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
-        await accessManager.setTargetFunctionRole(
-            tranche.target,
-            [trancheFinalizeSelector],
-            PUBLIC_ROLE
-        );
         await accessManager.setTargetFunctionRole(
             tranche.target,
             [trancheDelaySelector],

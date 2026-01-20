@@ -14,7 +14,6 @@ import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typech
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const VAULT_WITHDRAW_ROLE = 1n; //change later
-const MZUSD_USER_ROLE = 2n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -133,40 +132,6 @@ describe("MZUSD <-> USDC conversion", () => {
             mzusd.target,
             0 // executionDelay
         );
-
-        // AccessManager wiring for MZUSD user-facing restricted functions
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
-        const depositSelector = mzusd.interface.getFunction("deposit").selector;
-        const requestWithdrawalSelector = mzusd.interface.getFunction("requestWithdrawal").selector;
-        const approveSelector = mzusd.interface.getFunction("approve").selector;
-        const transferSelector = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSelector = mzusd.interface.getFunction("transferFrom").selector;
-
-        // Assign USER role for deposit / requestWithdrawal
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [depositSelector, requestWithdrawalSelector],
-            MZUSD_USER_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [approveSelector, transferSelector, transferFromSelector],
-            PUBLIC_ROLE
-        );
-
-        // Grant MZUSD_USER_ROLE to all actors that call deposit/requestWithdrawal in tests
-        const userRoleGrantees = [
-            deployer.address,
-            alice.address,
-            bob.address,
-            charlie.address,
-            dave.address,
-            nettingHelper.target,
-        ];
-
-        for (const grantee of userRoleGrantees) {
-            await accessManager.grantRole(MZUSD_USER_ROLE, grantee, 0);
-        }
 
         snapshot = await takeSnapshot();
     });

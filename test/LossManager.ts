@@ -178,53 +178,15 @@ describe("LossManager", () => {
         lossManagerAddr = await lossManager.getAddress();
 
         // Roles setup
-        const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE();
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        const polDepositSel = pol.interface.getFunction("deposit").selector;
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
         const polRedeemSel = pol.interface.getFunction("redeem").selector;
 
-        await accessManager.setTargetFunctionRole(polAddr, [polDepositSel], PUBLIC_ROLE);
         await accessManager.setTargetFunctionRole(
             polAddr,
             [polWithdrawSel, polRedeemSel],
             ADMIN_ROLE
-        );
-
-        // public: MZUSD deposit/requestWithdrawal
-        const depSel = mzusd.interface.getFunction("deposit").selector;
-        const reqSel = mzusd.interface.getFunction("requestWithdrawal").selector;
-        const approveSel = mzusd.interface.getFunction("approve").selector;
-        const transferSel = mzusd.interface.getFunction("transfer").selector;
-        const transferFromSel = mzusd.interface.getFunction("transferFrom").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [depSel, reqSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(
-            mzusdAddr,
-            [approveSel, transferSel, transferFromSel],
-            PUBLIC_ROLE
-        );
-
-        // public: Tranche user-facing functions
-        const tDepSel = junior.interface.getFunction("deposit").selector;
-        const tReqSel = junior.interface.getFunction("requestWithdrawal").selector;
-        const tCancelSel = junior.interface.getFunction("cancelUnstake").selector;
-        const tClaimSel = junior.interface.getFunction("claim").selector;
-
-        await accessManager.setTargetFunctionRole(
-            juniorAddr,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            mezzanineAddr,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
-        );
-        await accessManager.setTargetFunctionRole(
-            seniorAddr,
-            [tDepSel, tReqSel, tCancelSel, tClaimSel],
-            PUBLIC_ROLE
         );
 
         // admin: vault distribute + tranche management + epoch config (for integration test)
@@ -245,13 +207,8 @@ describe("LossManager", () => {
         await accessManager.setTargetFunctionRole(vaultAddr, [advanceEpochSel], LOSS_MANAGER_ROLE);
 
         // admin: Tranche config/finalize functions (for tests/helpers)
-        const tFinalizeSel = junior.interface.getFunction("finalizeEpoch").selector;
         const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
         const tSetDepositLimitsSel = junior.interface.getFunction("setDepositLimits").selector;
-
-        await accessManager.setTargetFunctionRole(juniorAddr, [tFinalizeSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanineAddr, [tFinalizeSel], PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(seniorAddr, [tFinalizeSel], PUBLIC_ROLE);
         await accessManager.setTargetFunctionRole(
             juniorAddr,
             [tSetUnstakeDelaySel, tSetDepositLimitsSel],
@@ -300,32 +257,6 @@ describe("LossManager", () => {
         await accessManager.setTargetFunctionRole(mezzanineAddr, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(seniorAddr, [notifySel], VAULT_ROLE);
         await accessManager.setTargetFunctionRole(polAddr, [notifySel], VAULT_ROLE);
-
-        const trancheDepositSel = junior.interface.getFunction("deposit").selector;
-        const trancheMintSel = junior.interface.getFunction("mint").selector;
-        const trancheRequestSel = junior.interface.getFunction("requestWithdrawal").selector;
-        const trancheCancelSel = junior.interface.getFunction("cancelUnstake").selector;
-        const trancheClaimSel = junior.interface.getFunction("claim").selector;
-        const trancheWithdrawSel = junior.interface.getFunction("withdraw").selector;
-        const trancheRedeemSel = junior.interface.getFunction("redeem").selector;
-        const trancheApproveSel = junior.interface.getFunction("approve").selector;
-        const trancheTransferSel = junior.interface.getFunction("transfer").selector;
-        const trancheTransferFromSel = junior.interface.getFunction("transferFrom").selector;
-        const trancheSelectors = [
-            trancheDepositSel,
-            trancheMintSel,
-            trancheRequestSel,
-            trancheCancelSel,
-            trancheClaimSel,
-            trancheWithdrawSel,
-            trancheRedeemSel,
-            trancheApproveSel,
-            trancheTransferSel,
-            trancheTransferFromSel,
-        ];
-        await accessManager.setTargetFunctionRole(juniorAddr, trancheSelectors, PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanineAddr, trancheSelectors, PUBLIC_ROLE);
-        await accessManager.setTargetFunctionRole(seniorAddr, trancheSelectors, PUBLIC_ROLE);
 
         // wire and register
         await vault.setMZUSD(mzusdAddr);
