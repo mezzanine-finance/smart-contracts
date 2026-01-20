@@ -2,8 +2,6 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
@@ -15,12 +13,7 @@ interface IStrategy {
     function totalAssets() external view returns (uint256 assets);
 }
 
-contract ReservoirUSDC is
-    Initializable,
-    AccessManagedUpgradeable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
-{
+contract ReservoirUSDC is AccessManagedUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     IERC20 public immutable usdc;
 
     IStrategy[] internal _strategies; // version 2: list of strategies

@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
-interface IMZUSD {
+interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
 }
 // aderyn-fp-next-line(reused-contract-name)
@@ -417,7 +417,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         // handle insurance cut
         address insurance_ = insurance;
         uint16 insuranceBps_ = insuranceBps;
-        IERC20 mzusdToken = IERC20(address(mzusd));
+        IMZUSD mzusdToken = mzusd;
 
         if (insurance_ != address(0) && insuranceBps_ > 0) {
             uint256 cut = (amountForTranches * insuranceBps_) / BPS;
