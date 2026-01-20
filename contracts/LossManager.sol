@@ -40,7 +40,11 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     ///      then they form a pair and share losses proportionally by TVL (totalAssets).
     mapping(address => uint256) public trancheGroup;
 
-    event TrancheGroupUpdated(address indexed tranche, uint256 indexed groupId);
+    event TrancheGroupUpdated(
+        address indexed trancheA,
+        address indexed trancheB,
+        uint256 indexed groupId
+    );
     event LossApplied(uint256 usdcLoss, uint256 lossMZ, address[] tranches, uint256[] cutsMZ);
     event TrancheOrderUpdated(address[] newOrder);
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
@@ -48,8 +52,12 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     error ZeroAddress();
     error ZeroAmount();
     error ZeroLength();
+    error DuplicateTranche(address tranche);
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
+    error GroupIdAlreadyAssigned(uint256 groupId);
+    error GroupNotContiguous(uint256 groupId);
+    error LengthMismatch(uint256 orderLen, uint256 groupLen);
     event VaultUpdated(address indexed vault);
 
     constructor() {
@@ -59,18 +67,20 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     /// @param accessManager controls access to restricted functions
     /// @param _mzusd protocol stablecoin contract
     /// @param order tranche burn order
+    /// @param groupIds group ids aligned with order
     /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
     function initialize(
         address accessManager,
         address _mzusd,
         address[] memory order,
+        uint256[] memory groupIds,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
         if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         mzusd = IMZUSD(_mzusd);
-        _setTrancheOrder(order);
+        _setTrancheOrderAndGroups(order, groupIds);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
@@ -98,16 +108,12 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     //SETTERS
 
-    // @notice sets tranche burn order
-    function setTrancheOrder(address[] memory order) external restricted {
-        _setTrancheOrder(order);
-    }
-
-    // @notice sets tranche group id for paired loss sharing
-    function setTrancheGroup(address tranche, uint256 groupId) external restricted {
-        if (tranche == address(0)) revert ZeroAddress();
-        trancheGroup[tranche] = groupId;
-        emit TrancheGroupUpdated(tranche, groupId);
+    // @notice sets tranche burn order and group pairing in one call
+    function setTrancheOrderAndGroups(
+        address[] memory order,
+        uint256[] memory groupIds
+    ) external restricted {
+        _setTrancheOrderAndGroups(order, groupIds);
     }
 
     // @notice sets max loss per tx in USDC 6d (0 = no limit)
@@ -131,18 +137,78 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     //INTERNAL HELPERS
 
-    function _setTrancheOrder(address[] memory order) internal {
-        if (order.length == 0) revert ZeroLength();
-        // aderyn-ignore-next-line(require-revert-in-loop)
-        for (uint256 i = 0; i < order.length; i++) {
-            if (order[i] == address(0)) revert ZeroAddress();
+    function _setTrancheOrderAndGroups(address[] memory order, uint256[] memory groupIds) internal {
+        _validateTrancheConfig(order, groupIds);
+
+        uint256 oldLen = trancheOrder.length;
+        for (uint256 i = 0; i < oldLen; i++) {
+            trancheGroup[trancheOrder[i]] = 0;
         }
+
         trancheOrder = order;
+
+        uint256 orderLen = order.length;
+        for (uint256 i = 0; i < orderLen; i++) {
+            trancheGroup[order[i]] = groupIds[i];
+        }
+
         emit TrancheOrderUpdated(order);
+        _emitGroupUpdates(order, groupIds);
+    }
+
+    function _emitGroupUpdates(address[] memory order, uint256[] memory groupIds) internal {
+        uint256 orderLen = order.length;
+        for (uint256 i = 0; i < orderLen; ) {
+            uint256 gid = groupIds[i];
+            if (gid == 0) {
+                i++;
+                continue;
+            }
+            emit TrancheGroupUpdated(order[i], order[i + 1], gid);
+            i += 2;
+        }
     }
 
     function _toMZ(uint256 usdcAmount) internal pure returns (uint256 mzAmount) {
         mzAmount = usdcAmount * SCALE;
+    }
+
+    function _validateTrancheConfig(
+        address[] memory order,
+        uint256[] memory groupIds
+    ) internal pure {
+        uint256 orderLen = order.length;
+        if (orderLen == 0) revert ZeroLength();
+        if (groupIds.length != orderLen) {
+            revert LengthMismatch(orderLen, groupIds.length);
+        }
+
+        for (uint256 i = 0; i < orderLen; i++) {
+            address tranche = order[i];
+            if (tranche == address(0)) revert ZeroAddress();
+            for (uint256 j = 0; j < i; j++) {
+                if (order[j] == tranche) revert DuplicateTranche(tranche);
+            }
+        }
+
+        uint256[] memory seenGroupIds = new uint256[](orderLen);
+        uint256 seenCount;
+        for (uint256 i = 0; i < orderLen; ) {
+            uint256 gid = groupIds[i];
+            if (gid == 0) {
+                i++;
+                continue;
+            }
+
+            if (i + 1 >= orderLen) revert GroupNotContiguous(gid);
+            if (groupIds[i + 1] != gid) revert GroupNotContiguous(gid);
+
+            for (uint256 j = 0; j < seenCount; j++) {
+                if (seenGroupIds[j] == gid) revert GroupIdAlreadyAssigned(gid);
+            }
+            seenGroupIds[seenCount++] = gid;
+            i += 2;
+        }
     }
 
     // @notice burns up to remainingMZ from tranches in order, returns any leftover amount
@@ -168,28 +234,25 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         uint256 remainingMZ,
         uint256[] memory cuts
     ) internal returns (uint256 nextI, uint256 burned) {
-        // Pair-mode is enabled only if trancheOrder[i] and trancheOrder[i+1] share the same non-zero group id
-        (bool isPair, address t0, address t1, ) = _pairAt(i);
+        // Pair-mode is enabled only if trancheOrder[i] and trancheOrder[i+1] share the same non-zero group id.
+        address t0 = trancheOrder[i];
+        (bool isPair, address t1) = _pairAt(i, t0);
         if (!isPair) {
-            return _burnSequential(i, remainingMZ, cuts);
+            return _burnSequential(i, t0, remainingMZ, cuts);
         }
         return _burnPair(i, remainingMZ, cuts, t0, t1);
     }
 
     // @notice checks if trancheOrder[i] and trancheOrder[i+1] form a pair, returns info
-    function _pairAt(
-        uint256 i
-    ) internal view returns (bool isPair, address t0, address t1, uint256 gid) {
+    function _pairAt(uint256 i, address t0) internal view returns (bool isPair, address t1) {
         uint256 orderLen = trancheOrder.length;
-        t0 = trancheOrder[i];
-        gid = trancheGroup[t0];
-        if (gid == 0) return (false, t0, address(0), 0);
-        if (i + 1 >= orderLen) return (false, t0, address(0), 0);
+        uint256 gid = trancheGroup[t0];
+        if (gid == 0 || i + 1 >= orderLen) return (false, address(0));
 
         t1 = trancheOrder[i + 1];
-        if (trancheGroup[t1] != gid) return (false, t0, t1, 0);
+        if (trancheGroup[t1] != gid) return (false, address(0));
 
-        return (true, t0, t1, gid);
+        return (true, t1);
     }
 
     // @notice gets totalAssets (TVL) of a tranche
@@ -200,16 +263,15 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     // @notice burns from a single tranche at index i, returns next index and amount burned
     function _burnSequential(
         uint256 i,
+        address t0,
         uint256 remainingMZ,
         uint256[] memory cuts
     ) internal returns (uint256 nextI, uint256 burned) {
-        address t0 = trancheOrder[i];
         uint256 tvl0 = _tvl(t0);
         if (tvl0 == 0) return (i + 1, 0);
 
         uint256 toBurn0 = tvl0 < remainingMZ ? tvl0 : remainingMZ;
-        mzusd.burn(t0, toBurn0);
-        cuts[i] = toBurn0;
+        _burnAndRecord(t0, toBurn0, cuts, i);
         return (i + 1, toBurn0);
     }
 
@@ -227,44 +289,48 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if (pairTVL == 0) return (i + 2, 0);
 
         uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
+        (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, tvl1, pairTVL);
 
+        _burnAndRecord(t0, burn0, cuts, i);
+        _burnAndRecord(t1, burn1, cuts, i + 1);
+
+        return (i + 2, lossForPair);
+    }
+
+    function _burnAndRecord(
+        address tranche,
+        uint256 amount,
+        uint256[] memory cuts,
+        uint256 idx
+    ) internal {
+        if (amount == 0) return;
+        mzusd.burn(tranche, amount);
+        cuts[idx] = amount;
+    }
+
+    function _splitPair(
+        uint256 lossForPair,
+        uint256 tvl0,
+        uint256 tvl1,
+        uint256 pairTVL
+    ) internal pure returns (uint256 burn0, uint256 burn1) {
         // Proportional split (floor)
-        uint256 burn0 = tvl0 == 0 ? 0 : (lossForPair * tvl0) / pairTVL;
-        if (burn0 > tvl0) burn0 = tvl0;
+        burn0 = (lossForPair * tvl0) / pairTVL;
+        burn1 = (lossForPair * tvl1) / pairTVL;
 
-        uint256 burn1 = tvl1 == 0 ? 0 : (lossForPair * tvl1) / pairTVL;
-        if (burn1 > tvl1) burn1 = tvl1;
-
-        // Allocate rounding remainder - prefer first tranche then second
+        // Allocate rounding remainder - prefer first tranche then second.
         uint256 rem = lossForPair - (burn0 + burn1);
         if (rem != 0) {
             uint256 cap0 = tvl0 - burn0;
-            if (cap0 != 0) {
-                uint256 add0 = cap0 < rem ? cap0 : rem;
-                burn0 += add0;
-                rem -= add0;
-            }
+            uint256 add0 = cap0 < rem ? cap0 : rem;
+            burn0 += add0;
+            rem -= add0;
         }
-        // Allocate any remaining remainder to second tranche
         if (rem != 0) {
             uint256 cap1 = tvl1 - burn1;
-            if (cap1 != 0) {
-                uint256 add1 = cap1 < rem ? cap1 : rem;
-                burn1 += add1;
-                rem -= add1;
-            }
+            uint256 add1 = cap1 < rem ? cap1 : rem;
+            burn1 += add1;
         }
-
-        if (burn0 != 0) {
-            mzusd.burn(t0, burn0);
-            cuts[i] = burn0;
-        }
-        if (burn1 != 0) {
-            mzusd.burn(t1, burn1);
-            cuts[i + 1] = burn1;
-        }
-
-        return (i + 2, lossForPair);
     }
 
     // @notice creates a copy of the current tranche order for event emission
@@ -275,7 +341,9 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         }
     }
 
-    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function,
+    // AccessManager should be configured to restrict call to upgradeToAndCall function,
+    // as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

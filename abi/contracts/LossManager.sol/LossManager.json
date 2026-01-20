@@ -57,6 +57,17 @@
         "inputs": [
             {
                 "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            }
+        ],
+        "name": "DuplicateTranche",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
                 "name": "implementation",
                 "type": "address"
             }
@@ -78,6 +89,28 @@
         "inputs": [
             {
                 "internalType": "uint256",
+                "name": "groupId",
+                "type": "uint256"
+            }
+        ],
+        "name": "GroupIdAlreadyAssigned",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "groupId",
+                "type": "uint256"
+            }
+        ],
+        "name": "GroupNotContiguous",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
                 "name": "remainingMZ",
                 "type": "uint256"
             }
@@ -88,6 +121,22 @@
     {
         "inputs": [],
         "name": "InvalidInitialization",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderLen",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "groupLen",
+                "type": "uint256"
+            }
+        ],
+        "name": "LengthMismatch",
         "type": "error"
     },
     {
@@ -207,7 +256,13 @@
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "tranche",
+                "name": "trancheA",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trancheB",
                 "type": "address"
             },
             {
@@ -355,6 +410,11 @@
                 "type": "address[]"
             },
             {
+                "internalType": "uint256[]",
+                "name": "groupIds",
+                "type": "uint256[]"
+            },
+            {
                 "internalType": "uint256",
                 "name": "_maxLossPerTxUSDC",
                 "type": "uint256"
@@ -446,30 +506,17 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "tranche",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "groupId",
-                "type": "uint256"
-            }
-        ],
-        "name": "setTrancheGroup",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "address[]",
                 "name": "order",
                 "type": "address[]"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "groupIds",
+                "type": "uint256[]"
             }
         ],
-        "name": "setTrancheOrder",
+        "name": "setTrancheOrderAndGroups",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

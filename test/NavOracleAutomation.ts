@@ -133,6 +133,7 @@ describe("NavOracleAutomation", () => {
                 accessManager.target,
                 mzusd.target,
                 [tranche.target],
+                [0],
                 0, // maxLossPerTxUSDC
             ],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}

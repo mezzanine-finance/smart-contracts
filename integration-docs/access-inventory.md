@@ -42,7 +42,7 @@ Legend:
 | `proxiableUUID()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `setAuthority(address)` | nonpayable | no | inherited |  | access-control | L0,L2,L3 |
 | `setMaxLossPerTxUSDC(uint256)` | nonpayable | yes | external | external restricted | admin-config | L0,L1,L2 |
-| `setTrancheOrder(address[])` | nonpayable | yes | external | external restricted | admin-config | L0 |
+| `setTrancheOrderAndGroups(address[],uint256[])` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `trancheOrder(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `trancheOrderLength()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `unpause()` | nonpayable | yes | external | external restricted | pause | L0,L1,L2 |

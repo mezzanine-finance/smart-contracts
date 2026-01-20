@@ -13,7 +13,7 @@ All protocol flows are enabled; admin configuration is allowed.
 Allowed (state-changing):
 | Contract | Methods |
 | --- | --- |
-| `LossManager` | `applyLoss(uint256)` (loss-mgmt); `setTrancheOrder(address[])` (admin-config); `setMaxLossPerTxUSDC(uint256)` (admin-config); `upgradeToAndCall(address,bytes)` (upgrade, timelocked) |
+| `LossManager` | `applyLoss(uint256)` (loss-mgmt); `setTrancheOrderAndGroups(address[],uint256[])` (admin-config); `setMaxLossPerTxUSDC(uint256)` (admin-config); `upgradeToAndCall(address,bytes)` (upgrade, timelocked) |
 | `MZUSD` | `deposit(uint256)` (user-ingress); `requestWithdrawal(uint256)` (user-egress); `approve(address,uint256)` (token-ops); `transfer(address,uint256)` (token-ops); `transferFrom(address,address,uint256)` (token-ops); `mint(address,uint256)` (protocol-flow); `burn(address,uint256)` (loss-mgmt); `setGlobalRedemptionCap(uint256)` (admin-config); `setRedemptionWindowDuration(uint256)` (admin-config); `setVault(address)` (admin-config); `rescueETH(address,uint256)` (emergency); `upgradeToAndCall(address,bytes)` (upgrade, timelocked) |
 | `ReservoirUSDC` | `deposit(uint256)` (protocol-flow); `withdraw(uint256,address)` (protocol-flow); `upgradeToAndCall(address,bytes)` (upgrade, timelocked) |
 | `Tranche` | `deposit(uint256,address)` (user-ingress); `mint(uint256,address)` (user-ingress); `requestWithdrawal(uint256)` (user-egress); `cancelUnstake(uint256,uint256)` (user-egress); `claim(uint256)` (user-egress); `withdraw(uint256,address,address)` (user-egress); `redeem(uint256,address,address)` (user-egress); `approve(address,uint256)` (token-ops); `transfer(address,uint256)` (token-ops); `transferFrom(address,address,uint256)` (token-ops); `finalizeEpoch(uint256)` (public-finalization); `notifyYield(uint256)` (protocol-flow); `setUnstakeDelayEpochs(uint256)` (admin-config); `setDepositLimits(bool,uint256,uint256)` (admin-config); `upgradeToAndCall(address,bytes)` (upgrade, timelocked) |
@@ -43,7 +43,7 @@ Allowed (state-changing):
 Blocked (state-changing):
 | Contract | Methods |
 | --- | --- |
-| `LossManager` | `setTrancheOrder(address[])` (admin-config); `setAuthority(address)` (access-control) |
+| `LossManager` | `setTrancheOrderAndGroups(address[],uint256[])` (admin-config); `setAuthority(address)` (access-control) |
 | `MZUSD` | `deposit(uint256)` (user-ingress); `mint(address,uint256)` (protocol-flow); `setVault(address)` (admin-config); `setAuthority(address)` (access-control) |
 | `ReservoirUSDC` | `deposit(uint256)` (protocol-flow); `setAuthority(address)` (access-control) |
 | `Tranche` | `deposit(uint256,address)` (user-ingress); `mint(uint256,address)` (user-ingress); `notifyYield(uint256)` (protocol-flow); `setUnstakeDelayEpochs(uint256)` (admin-config); `setDepositLimits(bool,uint256,uint256)` (admin-config); `setAuthority(address)` (access-control) |
@@ -55,7 +55,7 @@ All user operations and capital movement are blocked. Only upgrades and minimal 
 Allowed (state-changing):
 | Contract | Methods |
 | --- | --- |
-| `LossManager` | `applyLoss(uint256)` (loss-mgmt); `setTrancheOrder(address[])` (admin-config); `setMaxLossPerTxUSDC(uint256)` (admin-config); `setAuthority(address)` (access-control); `upgradeToAndCall(address,bytes)` (upgrade) |
+| `LossManager` | `applyLoss(uint256)` (loss-mgmt); `setTrancheOrderAndGroups(address[],uint256[])` (admin-config); `setMaxLossPerTxUSDC(uint256)` (admin-config); `setAuthority(address)` (access-control); `upgradeToAndCall(address,bytes)` (upgrade) |
 | `MZUSD` | `burn(address,uint256)` (loss-mgmt); `rescueETH(address,uint256)` (emergency); `setAuthority(address)` (access-control); `upgradeToAndCall(address,bytes)` (upgrade) |
 | `ReservoirUSDC` | `setAuthority(address)` (access-control); `upgradeToAndCall(address,bytes)` (upgrade) |
 | `Tranche` | `setAuthority(address)` (access-control); `upgradeToAndCall(address,bytes)` (upgrade) |

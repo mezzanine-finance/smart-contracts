@@ -171,6 +171,7 @@ describe("LossManager", () => {
                 accessManager.target,
                 mzusdAddr,
                 [juniorAddr, mezzanineAddr, seniorAddr],
+                [0, 0, 0],
                 0, // maxLossPerTxUSDC (0 = no limit)
             ],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
@@ -227,14 +228,13 @@ describe("LossManager", () => {
 
         // LossManager admin functions
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
-        const setOrderSel = lossManager.interface.getFunction("setTrancheOrder").selector;
-        const setGroupSel = lossManager.interface.getFunction("setTrancheGroup").selector;
+        const setOrderSel = lossManager.interface.getFunction("setTrancheOrderAndGroups").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
         const setVaultLmSel = lossManager.interface.getFunction("setVault").selector;
 
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setGroupSel, setMaxSel, setVaultLmSel],
+            [applyLossSel, setOrderSel, setMaxSel, setVaultLmSel],
             ADMIN_ROLE
         );
 
@@ -357,7 +357,9 @@ describe("LossManager", () => {
         for (let i = 0; i < 24; i++) {
             const order: string[] = perms[i % perms.length];
 
-            const tx1 = await lossManager.connect(deployer).setTrancheOrder(order);
+            const tx1 = await lossManager
+                .connect(deployer)
+                .setTrancheOrderAndGroups(order, new Array(order.length).fill(0));
             await tx1.wait();
 
             await time.increase(DAY);
@@ -400,7 +402,7 @@ describe("LossManager", () => {
         await (
             await lossManager
                 .connect(deployer)
-                .setTrancheOrder([juniorAddr, mezzanineAddr, seniorAddr])
+                .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
         ).wait();
 
         const j0 = await mzusd.balanceOf(juniorAddr);
@@ -419,7 +421,7 @@ describe("LossManager", () => {
         await (
             await lossManager
                 .connect(deployer)
-                .setTrancheOrder([seniorAddr, mezzanineAddr, juniorAddr])
+                .setTrancheOrderAndGroups([seniorAddr, mezzanineAddr, juniorAddr], [0, 0, 0])
         ).wait();
 
         const j1 = await mzusd.balanceOf(juniorAddr);
@@ -501,13 +503,17 @@ describe("LossManager", () => {
         ).to.be.revertedWithCustomError(lossManager, "InsufficientCover");
     });
 
-    it("Reverts in setTrancheOrder + applyLoss zero", async () => {
+    it("Reverts in setTrancheOrderAndGroups + applyLoss zero", async () => {
         await expect(
-            lossManager.connect(deployer).setTrancheOrder([])
+            lossManager.connect(deployer).setTrancheOrderAndGroups([], [])
         ).to.be.revertedWithCustomError(lossManager, "ZeroLength");
 
         await expect(
-            lossManager.connect(deployer).setTrancheOrder([ethers.ZeroAddress])
+            lossManager.connect(deployer).setTrancheOrderAndGroups([juniorAddr], [])
+        ).to.be.revertedWithCustomError(lossManager, "LengthMismatch");
+
+        await expect(
+            lossManager.connect(deployer).setTrancheOrderAndGroups([ethers.ZeroAddress], [0])
         ).to.be.revertedWithCustomError(lossManager, "ZeroAddress");
 
         await expect(lossManager.connect(deployer).applyLoss(0)).to.be.revertedWithCustomError(
@@ -535,12 +541,11 @@ describe("LossManager", () => {
         await (
             await lossManager
                 .connect(deployer)
-                .setTrancheOrder([juniorAddr, polAddr, mezzanineAddr, seniorAddr])
+                .setTrancheOrderAndGroups(
+                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                    [1, 1, 0, 0]
+                )
         ).wait();
-
-        // group: pair junior+pol
-        await (await lossManager.connect(deployer).setTrancheGroup(juniorAddr, 1)).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(polAddr, 1)).wait();
 
         const j0 = await mzusd.balanceOf(juniorAddr);
         const p0 = await mzusd.balanceOf(polAddr);
@@ -562,10 +567,11 @@ describe("LossManager", () => {
         await (
             await lossManager
                 .connect(deployer)
-                .setTrancheOrder([juniorAddr, polAddr, mezzanineAddr, seniorAddr])
+                .setTrancheOrderAndGroups(
+                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                    [1, 1, 0, 0]
+                )
         ).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(juniorAddr, 1)).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(polAddr, 1)).wait();
 
         const mStart = await mzusd.balanceOf(mezzanineAddr);
         const sStart = await mzusd.balanceOf(seniorAddr);
@@ -603,10 +609,11 @@ describe("LossManager", () => {
         await (
             await lossManager
                 .connect(deployer)
-                .setTrancheOrder([mezzanineAddr, juniorAddr, polAddr, seniorAddr])
+                .setTrancheOrderAndGroups(
+                    [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
+                    [0, 7, 7, 0]
+                )
         ).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(juniorAddr, 7)).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(polAddr, 7)).wait();
 
         for (let k = 1; k <= 20; k++) {
             const lossUSDC = 5n + BigInt(k); // 6..25
@@ -634,30 +641,19 @@ describe("LossManager", () => {
         }
     });
 
-    it("Group Id set but NOT contiguous -> falls back to sequential", async () => {
+    it("Group Id set but NOT contiguous -> reverts in setTrancheOrderAndGroups", async () => {
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
         await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
         await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
 
         // Not contiguous: junior, mezz, pol, senior
-        await (
-            await lossManager
+        await expect(
+            lossManager
                 .connect(deployer)
-                .setTrancheOrder([juniorAddr, mezzanineAddr, polAddr, seniorAddr])
-        ).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(juniorAddr, 1)).wait();
-        await (await lossManager.connect(deployer).setTrancheGroup(polAddr, 1)).wait();
-
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const m0 = await mzusd.balanceOf(mezzanineAddr);
-        const p0 = await mzusd.balanceOf(polAddr);
-
-        await time.increase(DAY);
-        await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
-
-        // Sequential burns only from junior (it has enough)
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(40n));
-        expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(p0);
+                .setTrancheOrderAndGroups(
+                    [juniorAddr, mezzanineAddr, polAddr, seniorAddr],
+                    [1, 0, 1, 0]
+                )
+        ).to.be.revertedWithCustomError(lossManager, "GroupNotContiguous");
     });
 });
