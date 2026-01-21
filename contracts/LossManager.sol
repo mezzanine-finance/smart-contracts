@@ -324,6 +324,11 @@ contract LossManager is
         if (pairTVL == 0) return (i + 2, 0);
 
         uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
+        if (lossForPair == pairTVL) {
+            _burnAndRecord(t0, tvl0, cuts, i);
+            _burnAndRecord(t1, tvl1, cuts, i + 1);
+            return (i + 2, lossForPair);
+        }
         (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, tvl1, pairTVL);
 
         _burnAndRecord(t0, burn0, cuts, i);

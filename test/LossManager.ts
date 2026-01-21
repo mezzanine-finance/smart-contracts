@@ -683,6 +683,37 @@ describe("LossManager", () => {
         expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(30n));
     });
 
+    it("Pair-mode burns full TVL when loss equals pair TVL", async () => {
+        const jDeposit = await mintMZUSDFor(alice, to6(100n));
+        await depositMZIntoTranche(alice, junior, jDeposit);
+
+        const pDeposit = await mintMZUSDFor(alice, to6(300n));
+        await depositMZIntoTranche(alice, pol, pDeposit);
+
+        await (
+            await lossManager
+                .connect(deployer)
+                .setTrancheOrderAndGroups(
+                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                    [2, 2, 0, 0]
+                )
+        ).wait();
+
+        const jTvl = await junior.totalAssets();
+        const pTvl = await pol.totalAssets();
+
+        const j0 = await mzusd.balanceOf(juniorAddr);
+        const p0 = await mzusd.balanceOf(polAddr);
+
+        await time.increase(DAY);
+        await (await lossManager.connect(deployer).applyLoss(to6(400n))).wait();
+
+        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - jTvl);
+        expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - pTvl);
+        expect(await mzusd.balanceOf(juniorAddr)).to.equal(0n);
+        expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
+    });
+
     it("Pair-mode burns only from the tranche with TVL", async () => {
         await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(50n)));
 
