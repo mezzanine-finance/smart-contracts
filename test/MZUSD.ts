@@ -21,7 +21,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
-const VAULT_WITHDRAW_ROLE = 1n; //change later
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -147,26 +146,22 @@ describe("MZUSD <-> USDC conversion", () => {
         nettingHelper = await NettingHelperFactory.deploy();
         await nettingHelper.waitForDeployment();
 
+        const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [setLossManagerSelector],
+            ADMIN_ROLE
+        );
+        await mzusd.setLossManager(deployer.address);
+
         await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalRedemptionCapUpdated")
             .withArgs(to6(1_000_000n)); // 1 million USDC per hour
 
-        // AccessManager wiring for Vault.withdraw -> MZUSD
-        const withdrawSelector = vault.interface.getFunction("withdraw").selector;
-
-        // now vault.withdraw requires VAULT_WITHDRAW_ROLE
-        await accessManager.setTargetFunctionRole(
-            vault.target,
-            [withdrawSelector],
-            VAULT_WITHDRAW_ROLE
-        );
-
-        // grant VAULT_WITHDRAW_ROLE to MZUSD in AccessManager
-        await accessManager.grantRole(
-            VAULT_WITHDRAW_ROLE,
-            mzusd.target,
-            0 // executionDelay
-        );
+        // Wire Vault -> MZUSD (one-time setter)
+        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
+        await vault.setMZUSD(mzusd.target);
 
         snapshot = await takeSnapshot();
     });
@@ -222,14 +217,9 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     it("Pauses all guarded MZUSD functions", async () => {
-        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-        const mintSelector = mzusd.interface.getFunction("mint").selector;
-        const burnSelector = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [mintSelector, burnSelector],
-            ADMIN_ROLE
-        );
+        await setBalance(vault.target, to18(1));
+        await impersonateAccount(vault.target);
+        const vaultSigner = await ethers.getSigner(vault.target);
 
         await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
         await expect(mzusd.deposit(to6(1n)))
@@ -256,10 +246,10 @@ describe("MZUSD <-> USDC conversion", () => {
         await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
 
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-        await expect(mzusd.mint(deployer.address, 1n))
+        await expect(mzusd.connect(vaultSigner).mint(deployer.address, 1n))
             .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
-        await expect(mzusd.burn(deployer.address, 1n))
+        await expect(mzusd.connect(deployer).burn(deployer.address, 1n))
             .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
         await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);

@@ -33,6 +33,7 @@ contract MZUSD is
     uint32 public constant MAX_REDEMPTION_WINDOW_DURATION = 30 days;
 
     IVault public immutable vault;
+    address public lossManager;
     /// @notice start timestamp of current redemption window
     uint40 public windowStartTimestamp;
     /// @notice duration of redemption window in seconds (e.g. 1 hours)
@@ -52,12 +53,16 @@ contract MZUSD is
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
+    event LossManagerUpdated(address indexed lossManager);
 
     error ZeroAmount();
     error ZeroAddress();
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
+    error LossManagerAlreadySet();
+    error NotVault();
+    error NotLossManager();
     error InvalidRedemptionWindowDuration();
     error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
@@ -74,6 +79,16 @@ contract MZUSD is
         usdc = IERC20(_usdc);
         vault = IVault(_vault);
         _disableInitializers();
+    }
+
+    modifier onlyVault() {
+        if (msg.sender != address(vault)) revert NotVault();
+        _;
+    }
+
+    modifier onlyLossManager() {
+        if (msg.sender != lossManager) revert NotLossManager();
+        _;
     }
 
     /// @param accessManager - address of AccessManager contract for role management
@@ -164,7 +179,7 @@ contract MZUSD is
     function mint(
         address to,
         uint256 amount
-    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
         _mint(to, amount);
     }
 
@@ -173,7 +188,7 @@ contract MZUSD is
     function burn(
         address from,
         uint256 amount
-    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
         _burn(from, amount);
     }
 
@@ -209,6 +224,14 @@ contract MZUSD is
 
         nextRedemptionWindowDuration = newDuration;
         emit RedemptionWindowDurationQueued(newDuration);
+    }
+
+    /// @notice Set LossManager address (one-time).
+    function setLossManager(address _lossManager) external restricted {
+        if (_lossManager == address(0)) revert ZeroAddress();
+        if (lossManager != address(0)) revert LossManagerAlreadySet();
+        lossManager = _lossManager;
+        emit LossManagerUpdated(_lossManager);
     }
 
     //GETTERS

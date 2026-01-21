@@ -228,9 +228,6 @@ describe("Vault Yield Distribution", () => {
             ADMIN_ROLE
         );
 
-        // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [mintSel], VAULT_ROLE);
         await accessManager.grantRole(VAULT_ROLE, vault.target, 0);
 
         // vault role: tranche.notifyYield (each tranche)
@@ -321,13 +318,12 @@ describe("Vault Yield Distribution", () => {
 
     it("Pauses all guarded Vault functions", async () => {
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-        const withdrawSel = vault.interface.getFunction("withdraw").selector;
         const rebalanceSel = vault.interface.getFunction("rebalance").selector;
         const setReservoirSel = vault.interface.getFunction("setReservoir").selector;
         const setBufferSel = vault.interface.getFunction("setBuffer").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [withdrawSel, rebalanceSel, setReservoirSel, setBufferSel],
+            [rebalanceSel, setReservoirSel, setBufferSel],
             ADMIN_ROLE
         );
 
@@ -338,7 +334,8 @@ describe("Vault Yield Distribution", () => {
         await expect(vault.connect(deployer).rebalance())
             .to.be.revertedWithCustomError(vault, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
-        await expect(vault.connect(deployer).withdraw(deployer.address, 1n))
+        const minted = await mintMZUSDFor(deployer, to6(1n));
+        await expect(mzusd.connect(deployer).requestWithdrawal(minted))
             .to.be.revertedWithCustomError(vault, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
         await expect(vault.connect(deployer).advanceEpoch())

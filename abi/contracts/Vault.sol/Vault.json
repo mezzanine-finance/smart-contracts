@@ -108,12 +108,22 @@
     },
     {
         "inputs": [],
+        "name": "MZUSDAlreadySet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NoTranchesAdded",
         "type": "error"
     },
     {
         "inputs": [],
         "name": "NotInitializing",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotMZUSD",
         "type": "error"
     },
     {

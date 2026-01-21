@@ -167,10 +167,7 @@ describe("UmbrellaEpochFinalizer", () => {
             ADMIN_ROLE
         );
 
-        // Vault role allowed to mint MZUSD and push yield to tranches
-        const mintSelector = mzusd.interface.getFunction("mint").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
-
+        // Vault role allowed to push yield to tranches
         const notifySelector = tranche.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
 

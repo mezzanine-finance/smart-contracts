@@ -74,6 +74,7 @@ contract LossManager is
     /// @param accessManager controls access to restricted functions
     /// @param pauseManager pause manager address for category-based pauses
     /// @param _mzusd protocol stablecoin contract
+    /// @param _vault vault contract used to advance epochs
     /// @param order tranche burn order
     /// @param groupIds group ids aligned with order
     /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
@@ -81,15 +82,20 @@ contract LossManager is
         address accessManager,
         address pauseManager,
         address _mzusd,
+        address _vault,
         address[] memory order,
         uint256[] memory groupIds,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
-        if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
+        if (accessManager == address(0) || _mzusd == address(0) || _vault == address(0)) {
+            revert ZeroAddress();
+        }
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager);
         mzusd = IMZUSD(_mzusd);
+        vault = _vault;
+        emit VaultUpdated(_vault);
         _setTrancheOrderAndGroups(order, groupIds);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
@@ -132,13 +138,6 @@ contract LossManager is
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
-    }
-
-    /// @notice Sets the Vault address used to advance epochs on loss application (mandatory for applyLoss).
-    function setVault(address _vault) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_vault == address(0)) revert ZeroAddress();
-        vault = _vault;
-        emit VaultUpdated(_vault);
     }
 
     //GETTERS

@@ -45,6 +45,7 @@ async function main() {
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
     const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
+    const lossManagerRecord = getLatestDeployment(deployments, netName, "LossManager");
     const accessManagerAddress = accessManagerRecord?.address;
     const pauseManagerAddress = pauseManagerRecord?.address;
     const vaultAddress = vaultRecord?.address;
@@ -66,6 +67,7 @@ async function main() {
     console.log("AccessManager:", accessManagerAddress);
     console.log("PauseManager:", pauseManagerAddress);
     console.log("Vault:", vaultAddress);
+    console.log("LossManager:", lossManagerRecord?.address ?? "not deployed");
     console.log("Redemption cap (USDC):", redemptionCapHuman);
 
     upgrades.silenceWarnings();
@@ -100,9 +102,26 @@ async function main() {
     // Verify implementation (proxy verification is optional)
     // Wire Vault -> MZUSD
     const vault = await ethers.getContractAt("Vault", vaultAddress, deployer);
-    const txSetMZUSD = await vault.setMZUSD(proxyAddress);
-    await txSetMZUSD.wait();
-    console.log("Vault.mzusd =", proxyAddress);
+    const currentMZUSD = await vault.mzusd();
+    if (currentMZUSD === ethers.ZeroAddress) {
+        const txSetMZUSD = await vault.setMZUSD(proxyAddress);
+        await txSetMZUSD.wait();
+        console.log("Vault.mzusd =", proxyAddress);
+    } else {
+        console.log("Vault.mzusd already set:", currentMZUSD);
+    }
+
+    const lossManagerAddress = lossManagerRecord?.address;
+    if (lossManagerAddress) {
+        const currentLossManager = await mzusd.lossManager();
+        if (currentLossManager === ethers.ZeroAddress) {
+            const txSetLossManager = await mzusd.setLossManager(lossManagerAddress);
+            await txSetLossManager.wait();
+            console.log("MZUSD.lossManager =", lossManagerAddress);
+        } else {
+            console.log("MZUSD.lossManager already set:", currentLossManager);
+        }
+    }
 
     await verifyContract(implAddress, [usdcAddress, vaultAddress]);
 

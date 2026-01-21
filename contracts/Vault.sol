@@ -96,6 +96,13 @@ contract Vault is
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
+    error MZUSDAlreadySet();
+    error NotMZUSD();
+
+    modifier onlyMZUSD() {
+        if (msg.sender != address(mzusd)) revert NotMZUSD();
+        _;
+    }
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -147,10 +154,11 @@ contract Vault is
     /// @param to - address to receive withdrawn USDC
     /// @param amount - amount of USDC to withdraw
     /// @dev used for MZUSD redemptions
+    /// @dev callable only by the configured MZUSD contract
     function withdraw(
         address to,
         uint256 amount
-    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyMZUSD whenNotPaused(PauseCategory.PROTOCOL) {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -230,10 +238,10 @@ contract Vault is
         emit ReservoirUpdated(_reservoir);
     }
 
-    /// @notice Update MZUSD address
+    /// @notice Set MZUSD address (one-time).
     function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
-        if (address(mzusd) == _mzusd) revert SameValue();
+        if (address(mzusd) != address(0)) revert MZUSDAlreadySet();
         mzusd = IMZUSD(_mzusd);
         emit MZUSDChanged(_mzusd);
     }

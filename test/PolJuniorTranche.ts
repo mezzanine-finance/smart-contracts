@@ -177,9 +177,6 @@ describe("PolJuniorTranche", () => {
             ADMIN_ROLE
         );
 
-        // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [mintSel], VAULT_ROLE);
         await accessManager.grantRole(VAULT_ROLE, vaultAddr, 0);
 
         // vault role: pol.notifyYield

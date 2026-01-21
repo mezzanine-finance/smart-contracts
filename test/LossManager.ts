@@ -230,6 +230,7 @@ describe("LossManager", () => {
                 accessManager.target,
                 pauseManager.target,
                 mzusdAddr,
+                vaultAddr,
                 [juniorAddr, mezzanineAddr, seniorAddr],
                 [0, 0, 0],
                 0, // maxLossPerTxUSDC (0 = no limit)
@@ -240,6 +241,9 @@ describe("LossManager", () => {
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setLossManagerSel = mzusd.interface.getFunction("setLossManager").selector;
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setLossManagerSel], ADMIN_ROLE);
+        await mzusd.setLossManager(lossManagerAddr);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
@@ -291,25 +295,16 @@ describe("LossManager", () => {
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
         const setOrderSel = lossManager.interface.getFunction("setTrancheOrderAndGroups").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
-        const setVaultLmSel = lossManager.interface.getFunction("setVault").selector;
-
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setMaxSel, setVaultLmSel],
+            [applyLossSel, setOrderSel, setMaxSel],
             ADMIN_ROLE
         );
 
-        // wire LossManager -> Vault (mandatory for applyLoss)
-        await (await lossManager.connect(deployer).setVault(vaultAddr)).wait();
-
-        // vault role: MZUSD.mint
-        const mintSel = mzusd.interface.getFunction("mint").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [mintSel], VAULT_ROLE);
+        // vault role: tranche.notifyYield
         await accessManager.grantRole(VAULT_ROLE, vaultAddr, 0);
 
-        // loss manager role: MZUSD.burn
-        const burnSel = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(mzusdAddr, [burnSel], LOSS_MANAGER_ROLE);
+        // loss manager role: Vault.advanceEpoch
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         // vault role: tranche.notifyYield
@@ -379,9 +374,6 @@ describe("LossManager", () => {
             .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
             .withArgs(PauseCategory.ADMIN);
         await expect(lossManager.connect(deployer).setMaxLossPerTxUSDC(1n))
-            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
-            .withArgs(PauseCategory.ADMIN);
-        await expect(lossManager.connect(deployer).setVault(vaultAddr))
             .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
             .withArgs(PauseCategory.ADMIN);
     });

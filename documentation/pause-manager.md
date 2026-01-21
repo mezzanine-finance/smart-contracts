@@ -64,7 +64,7 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `PROTOCOL`: `distributeYield`, `rebalance`, `withdraw`, `advanceEpoch`
 
 ### LossManager
-- `ADMIN`: `setTrancheOrderAndGroups`, `setMaxLossPerTxUSDC`, `setVault`
+- `ADMIN`: `setTrancheOrderAndGroups`, `setMaxLossPerTxUSDC`
 - `PROTOCOL`: `applyLoss`
 
 ### ReservoirUSDC

@@ -156,6 +156,7 @@ describe("NavOracleAutomation", () => {
                 accessManager.target,
                 pauseManager.target,
                 mzusd.target,
+                vault.target,
                 [tranche.target],
                 [0],
                 0, // maxLossPerTxUSDC
@@ -177,6 +178,13 @@ describe("NavOracleAutomation", () => {
         await navAutomation.waitForDeployment();
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [setLossManagerSelector],
+            ADMIN_ROLE
+        );
+        await mzusd.setLossManager(lossManager.target);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault
@@ -195,10 +203,7 @@ describe("NavOracleAutomation", () => {
             LOSS_MANAGER_ROLE
         );
 
-        // Vault role allowed to mint MZUSD and push yield to tranches
-        const mintSelector = mzusd.interface.getFunction("mint").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [mintSelector], VAULT_ROLE);
-
+        // Vault role allowed to push yield to tranches
         const notifySelector = tranche.interface.getFunction("notifyYield").selector;
         await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
 
@@ -209,8 +214,6 @@ describe("NavOracleAutomation", () => {
         );
 
         // LossManager permissions
-        const burnSelector = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(mzusd.target, [burnSelector], LOSS_MANAGER_ROLE);
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManager.target, 0);
 
         const applyLossSelector = lossManager.interface.getFunction("applyLoss").selector;
@@ -244,7 +247,6 @@ describe("NavOracleAutomation", () => {
             weightBps: 10_000,
             enabled: true,
         });
-        await lossManager.setVault(vault.target);
 
         snapshot = await takeSnapshot();
     });
