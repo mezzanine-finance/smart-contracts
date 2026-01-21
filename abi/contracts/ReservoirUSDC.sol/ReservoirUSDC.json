@@ -13,6 +13,17 @@
     {
         "inputs": [
             {
+                "internalType": "uint64",
+                "name": "currentVersion",
+                "type": "uint64"
+            }
+        ],
+        "name": "AccessConfigVersionTooLow",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "authority",
                 "type": "address"
@@ -103,6 +114,11 @@
     },
     {
         "inputs": [],
+        "name": "NotVault",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "PauseManagerZeroAddress",
         "type": "error"
     },
@@ -120,6 +136,11 @@
             }
         ],
         "name": "UUPSUnsupportedProxiableUUID",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "VaultAlreadySet",
         "type": "error"
     },
     {
@@ -209,6 +230,19 @@
             {
                 "indexed": true,
                 "internalType": "address",
+                "name": "vault",
+                "type": "address"
+            }
+        ],
+        "name": "VaultUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
                 "name": "to",
                 "type": "address"
             },
@@ -237,6 +271,19 @@
     },
     {
         "inputs": [],
+        "name": "accessConfigVersion",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "authority",
         "outputs": [
             {
@@ -246,6 +293,24 @@
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "configurator",
+                "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "version",
+                "type": "uint64"
+            }
+        ],
+        "name": "configureAccess",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -332,6 +397,19 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_vault",
+                "type": "address"
+            }
+        ],
+        "name": "setVault",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "totalAssets",
         "outputs": [
@@ -368,6 +446,19 @@
         "outputs": [
             {
                 "internalType": "contract IERC20",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "vault",
+        "outputs": [
+            {
+                "internalType": "address",
                 "name": "",
                 "type": "address"
             }

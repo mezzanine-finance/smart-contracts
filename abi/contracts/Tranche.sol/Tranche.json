@@ -13,6 +13,17 @@
     {
         "inputs": [
             {
+                "internalType": "uint64",
+                "name": "currentVersion",
+                "type": "uint64"
+            }
+        ],
+        "name": "AccessConfigVersionTooLow",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "authority",
                 "type": "address"
@@ -810,6 +821,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "accessConfigVersion",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -929,6 +953,24 @@
             }
         ],
         "name": "claim",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "configurator",
+                "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "version",
+                "type": "uint64"
+            }
+        ],
+        "name": "configureAccess",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
