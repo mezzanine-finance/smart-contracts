@@ -289,19 +289,6 @@ describe("Vault Yield Distribution", () => {
         await expect(
             upgrades.deployProxy(
                 VaultFactory,
-                [reservoir.target, accessManager.target, 0, bob.address, 0, bob.address],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [MAINNET_USDC],
-                }
-            )
-        ).to.be.revertedWithCustomError(VaultFactory, "SameFeeReceivers");
-
-        await expect(
-            upgrades.deployProxy(
-                VaultFactory,
                 [reservoir.target, accessManager.target, 10_000, bob.address, 1, carol.address],
                 {
                     kind: "uups",
@@ -318,9 +305,7 @@ describe("Vault Yield Distribution", () => {
         await expect(
             vault.connect(deployer).setFees(0, bob.address, 0, ethers.ZeroAddress)
         ).to.be.revertedWithCustomError(vault, "ZeroAddress");
-        await expect(
-            vault.connect(deployer).setFees(0, bob.address, 0, bob.address)
-        ).to.be.revertedWithCustomError(vault, "SameFeeReceivers");
+        await vault.connect(deployer).setFees(0, bob.address, 0, bob.address);
     });
 
     it("Distributes yield by weight*TVL and sends dust (as yield part) to last tranche", async () => {
@@ -480,6 +465,30 @@ describe("Vault Yield Distribution", () => {
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
         await expect(tx).to.emit(vault, "YieldDistributed").withArgs(usdcReported, 0n, epochAfter);
+    });
+
+    it("Fees can be paid to the same receiver for both fee types", async () => {
+        await time.increase(DAY);
+
+        const receiver = bob.address;
+        const perfBps = 4000;
+        const protBps = 6000; // total 100%
+        await (await vault.connect(deployer).setFees(perfBps, receiver, protBps, receiver)).wait();
+
+        const usdcReported = 55n;
+        const expectedGross = usdcReported * 1_000_000_000_000n; // * 1e12 -> 18d MZUSD
+
+        const feeBalBefore = await mzusd.balanceOf(receiver);
+
+        const tx = await vault.connect(deployer).distributeYield(usdcReported);
+        await expect(tx).to.not.emit(junior, "YieldNotified");
+        await expect(tx).to.not.emit(mezzanine, "YieldNotified");
+        await expect(tx).to.not.emit(senior, "YieldNotified");
+
+        const feeBalAfter = await mzusd.balanceOf(receiver);
+        expect(feeBalAfter - feeBalBefore).to.equal(expectedGross);
+
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });
 
     it("Fees paid, dust folds into last tranche", async () => {
