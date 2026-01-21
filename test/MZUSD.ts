@@ -550,25 +550,40 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(remainingAfter).to.equal(usdcTotalSupply - depositAmountUSDC);
     });
 
-    it("Should validate redemption window duration updates and reject zero", async () => {
+    it("Should validate redemption window duration updates and queue changes", async () => {
         // Zero duration is not allowed
         await expect(mzusd.setRedemptionWindowDuration(0)).to.be.revertedWithCustomError(
             mzusd,
             "ZeroDuration"
         );
 
-        // Update to 2 hours and check storage + event
+        // Reject values outside bounds
+        const tooShort = 30 * 60; // 30 minutes
+        await expect(mzusd.setRedemptionWindowDuration(tooShort)).to.be.revertedWithCustomError(
+            mzusd,
+            "InvalidRedemptionWindowDuration"
+        );
+
+        const tooLong = 31 * 24 * 60 * 60; // 31 days
+        await expect(mzusd.setRedemptionWindowDuration(tooLong)).to.be.revertedWithCustomError(
+            mzusd,
+            "InvalidRedemptionWindowDuration"
+        );
+
+        // Queue update to 2 hours and check storage + event
         const newDuration = 2 * 60 * 60; // 2 hours
 
         await expect(mzusd.setRedemptionWindowDuration(newDuration))
-            .to.emit(mzusd, "RedemptionWindowDurationUpdated")
+            .to.emit(mzusd, "RedemptionWindowDurationQueued")
             .withArgs(newDuration);
 
         const storedDuration = await mzusd.redemptionWindowDuration();
-        expect(storedDuration).to.equal(newDuration);
+        const queuedDuration = await mzusd.nextRedemptionWindowDuration();
+        expect(storedDuration).to.equal(60 * 60);
+        expect(queuedDuration).to.equal(newDuration);
     });
 
-    it("Should reset window usage when shortening redemption duration past current window", async () => {
+    it("Should apply queued redemption duration on next window", async () => {
         // Set a finite cap to observe remaining/used values
         const capUSDC = to6(200n);
         await mzusd.setGlobalRedemptionCap(capUSDC);
@@ -590,38 +605,43 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(usedBefore).to.equal(to6(80n));
         expect(durationBefore).to.equal(60 * 60); // initial 1h window
 
-        // Increase window duration to 2h - this should NOT reset window
+        // Queue window duration to 2h - this should NOT reset window
         const longerDuration = 2 * 60 * 60;
-        await mzusd.setRedemptionWindowDuration(longerDuration);
+        await expect(mzusd.setRedemptionWindowDuration(longerDuration))
+            .to.emit(mzusd, "RedemptionWindowDurationQueued")
+            .withArgs(longerDuration);
 
         const windowStartLong = await mzusd.windowStartTimestamp();
         const usedLong = await mzusd.windowUsedUSDC();
         const storedDurationLong = await mzusd.redemptionWindowDuration();
+        const queuedDuration = await mzusd.nextRedemptionWindowDuration();
 
-        expect(storedDurationLong).to.equal(longerDuration);
+        expect(storedDurationLong).to.equal(durationBefore);
         expect(windowStartLong).to.equal(windowStartBefore);
         expect(usedLong).to.equal(usedBefore);
+        expect(queuedDuration).to.equal(longerDuration);
 
-        // Move time forward so that the current window is older than the shorter duration
-        await time.increase(2000); // > 10 minutes (600s) which we will set next
+        // Move time forward so the current window expires
+        await time.increase(3601);
 
-        // Shorten duration to 10 minutes; since the window is already older than that,
-        // the setter should reset window start and usage.
-        const shorterDuration = 10 * 60; // 10 minutes
-        await mzusd.setRedemptionWindowDuration(shorterDuration);
+        // Next withdrawal should roll the window and apply the queued duration
+        const secondWithdrawMZ = to18(10n);
+        await expect(mzusd.connect(alice).requestWithdrawal(secondWithdrawMZ))
+            .to.emit(mzusd, "RedemptionWindowDurationUpdated")
+            .withArgs(longerDuration);
 
-        const storedDurationShort = await mzusd.redemptionWindowDuration();
+        const storedDurationAfter = await mzusd.redemptionWindowDuration();
         const windowStartAfter = await mzusd.windowStartTimestamp();
         const usedAfter = await mzusd.windowUsedUSDC();
         const [remainingAfter] = await mzusd.getRemainingGlobalRedemptionCap();
 
-        expect(storedDurationShort).to.equal(shorterDuration);
+        expect(storedDurationAfter).to.equal(longerDuration);
 
         const latestTs = await time.latest();
         expect(windowStartAfter).to.equal(BigInt(latestTs));
 
-        expect(usedAfter).to.equal(0n);
-        expect(remainingAfter).to.equal(capUSDC);
+        expect(usedAfter).to.equal(to6(10n));
+        expect(remainingAfter).to.equal(capUSDC - to6(10n));
     });
 
     it("Should revert with TooSmallWithdrawalAmount for tiny MZUSD withdrawals", async () => {

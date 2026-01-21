@@ -22,6 +22,8 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
+    uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
+    uint32 public constant MAX_REDEMPTION_WINDOW_DURATION = 30 days;
 
     IVault public immutable vault;
     /// @notice start timestamp of current redemption window
@@ -35,10 +37,13 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     /// @notice per-tx deposits for atomic netting
     uint256 transient _txDepositedUSDC;
+    /// @notice next redemption window duration to apply when the window rolls
+    uint32 public nextRedemptionWindowDuration;
 
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
     event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
+    event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
 
     error ZeroAmount();
@@ -46,6 +51,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
+    error InvalidRedemptionWindowDuration();
     error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
@@ -76,6 +82,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         _setGlobalRedemptionCap(_initialCapUSDC);
         windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
+        nextRedemptionWindowDuration = redemptionWindowDuration;
     }
 
     /// @notice deposit USDC and mint MZUSD 1:1
@@ -158,18 +165,21 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @param newDuration - new duration in seconds
     function setRedemptionWindowDuration(uint32 newDuration) external restricted {
         if (newDuration == 0) revert ZeroDuration();
-        if (redemptionWindowDuration == newDuration) revert SameValue();
-
-        redemptionWindowDuration = newDuration;
-
-        // If the current window is already longer than the new duration,
-        // start a fresh window from "now" so that the shorter window
-        // semantics are applied immediately.
-        if (block.timestamp >= uint256(windowStartTimestamp) + newDuration) {
-            windowStartTimestamp = uint40(block.timestamp);
-            windowUsedUSDC = 0;
+        if (
+            newDuration < MIN_REDEMPTION_WINDOW_DURATION ||
+            newDuration > MAX_REDEMPTION_WINDOW_DURATION
+        ) {
+            revert InvalidRedemptionWindowDuration();
         }
-        emit RedemptionWindowDurationUpdated(newDuration);
+
+        uint32 pending = nextRedemptionWindowDuration;
+        if (pending == 0) {
+            pending = redemptionWindowDuration;
+        }
+        if (pending == newDuration) revert SameValue();
+
+        nextRedemptionWindowDuration = newDuration;
+        emit RedemptionWindowDurationQueued(newDuration);
     }
 
     //GETTERS
@@ -211,6 +221,12 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         usedUSDC = capUSDC - remainingUSDC;
 
         uint32 duration = redemptionWindowDuration;
+        if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
+            uint32 pending = nextRedemptionWindowDuration;
+            if (pending != 0) {
+                duration = pending;
+            }
+        }
         if (duration == 0) {
             windowEnd = windowStart;
         } else {
@@ -241,10 +257,17 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @notice check and consume from the global redemption cap
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalRedemptionCapUSDC;
+        uint32 duration = redemptionWindowDuration;
 
-        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
+        if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
             windowStartTimestamp = uint40(block.timestamp);
             windowUsedUSDC = 0;
+
+            uint32 pending = nextRedemptionWindowDuration;
+            if (pending != 0 && pending != duration) {
+                redemptionWindowDuration = pending;
+                emit RedemptionWindowDurationUpdated(pending);
+            }
         }
 
         uint256 newTotal = windowUsedUSDC + usdcAmount;
