@@ -173,20 +173,7 @@ contract Vault is
 
     //@dev using for rebalancing USDC between vault and reservoir
     function rebalance() external restricted whenNotPaused(PauseCategory.PROTOCOL) {
-        uint256 idle = usdc.balanceOf(address(this));
-        (uint256 low, uint256 high) = _bufferBounds();
-
-        uint256 sent;
-        uint256 pulled;
-        if (idle > high) {
-            sent = idle - idleBufferUSDC;
-            usdc.approve(address(reservoir), sent);
-            reservoir.deposit(sent);
-        } else if (idle < low) {
-            pulled = idleBufferUSDC - idle;
-            reservoir.withdraw(pulled, address(this));
-        }
-        emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
+        _rebalance();
     }
 
     /// @dev distribute yield reported in USDC to tranches
@@ -213,7 +200,6 @@ contract Vault is
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(mintedGross);
-
         emit FeesPaid(perfFee, protFee, newEpochId);
 
         if (allocatableMZUSD == 0) {
@@ -311,6 +297,7 @@ contract Vault is
         idleBufferUSDC = target;
         hysteresisBps = bandBps;
         emit BufferUpdated(target, bandBps);
+        _rebalance();
     }
 
     /// @notice Update epoch duration
@@ -537,6 +524,23 @@ contract Vault is
 
         low = (buffer * (BPS - bandBps)) / BPS;
         high = (buffer * (BPS + bandBps)) / BPS;
+    }
+
+    function _rebalance() internal {
+        uint256 idle = usdc.balanceOf(address(this));
+        (uint256 low, uint256 high) = _bufferBounds();
+
+        uint256 sent;
+        uint256 pulled;
+        if (idle > high) {
+            sent = idle - idleBufferUSDC;
+            usdc.approve(address(reservoir), sent);
+            reservoir.deposit(sent);
+        } else if (idle < low) {
+            pulled = idleBufferUSDC - idle;
+            reservoir.withdraw(pulled, address(this));
+        }
+        emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.

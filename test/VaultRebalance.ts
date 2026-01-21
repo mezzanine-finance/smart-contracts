@@ -154,9 +154,6 @@ describe("Vault <-> Reservoir", () => {
     }
 
     it("Sends excess idle USDC to Reservoir when idle > high bound", async () => {
-        // Buffer target: 1000 USDC, band: 10% -> low=900, high=1100
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-
         // Fund Vault with 1500 USDC -> should send 500 to Reservoir
         await whaleTransfer(vault.target as string, to6(1500n));
 
@@ -166,7 +163,8 @@ describe("Vault <-> Reservoir", () => {
         expect(vaultBefore).to.equal(to6(1500n));
         expect(resBefore).to.equal(0n);
 
-        await expect(vault.connect(deployer).rebalance())
+        // Buffer target: 1000 USDC, band: 10% -> low=900, high=1100
+        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
             .to.emit(vault, "Rebalanced")
             .withArgs(to6(500n), 0n, to6(1000n));
 
@@ -178,8 +176,6 @@ describe("Vault <-> Reservoir", () => {
     });
 
     it("Pulls USDC from Reservoir when idle < low bound", async () => {
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-
         // Fund Reservoir so it can pay out
         await whaleTransfer(reservoir.target as string, to6(600n));
 
@@ -192,7 +188,7 @@ describe("Vault <-> Reservoir", () => {
         expect(vaultBefore).to.equal(to6(500n));
         expect(resBefore).to.equal(to6(600n));
 
-        await expect(vault.connect(deployer).rebalance())
+        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
             .to.emit(vault, "Rebalanced")
             .withArgs(0n, to6(500n), to6(1000n));
 
@@ -204,15 +200,13 @@ describe("Vault <-> Reservoir", () => {
     });
 
     it("Does nothing when idle is within [low, high] band", async () => {
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-
         // 1050 is within [900,1100] => no move
         await whaleTransfer(vault.target as string, to6(1050n));
 
         const vaultBefore = await usdc.balanceOf(vault.target);
         const resBefore = await usdc.balanceOf(reservoir.target);
 
-        await expect(vault.connect(deployer).rebalance())
+        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
             .to.emit(vault, "Rebalanced")
             .withArgs(0n, 0n, to6(1050n));
 
@@ -221,6 +215,38 @@ describe("Vault <-> Reservoir", () => {
 
         expect(vaultAfter).to.equal(vaultBefore);
         expect(resAfter).to.equal(resBefore);
+    });
+
+    it("setBuffer uses the new target/band for rebalance decisions", async () => {
+        await whaleTransfer(vault.target as string, to6(1000n));
+        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+        // With the old config, 1200 would be above high=1100.
+        await whaleTransfer(vault.target as string, to6(200n));
+
+        const resBefore = await usdc.balanceOf(reservoir.target);
+
+        // New target makes 1200 fall inside [1170, 1430], so no move.
+        await expect(vault.connect(deployer).setBuffer(to6(1300n), 1000))
+            .to.emit(vault, "Rebalanced")
+            .withArgs(0n, 0n, to6(1200n));
+
+        const resAfter = await usdc.balanceOf(reservoir.target);
+        const vaultAfter = await usdc.balanceOf(vault.target);
+
+        expect(resAfter).to.equal(resBefore);
+        expect(vaultAfter).to.equal(to6(1200n));
+    });
+
+    it("rebalance moves funds explicitly after setBuffer", async () => {
+        await whaleTransfer(vault.target as string, to6(1000n));
+        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+        await whaleTransfer(vault.target as string, to6(500n));
+
+        await expect(vault.connect(deployer).rebalance())
+            .to.emit(vault, "Rebalanced")
+            .withArgs(to6(500n), 0n, to6(1000n));
     });
 
     it("Pauses protocol operations via PauseManager", async () => {
@@ -239,9 +265,6 @@ describe("Vault <-> Reservoir", () => {
     });
 
     it("Reverts for non-authorized caller (restricted)", async () => {
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-        await whaleTransfer(vault.target as string, to6(1500n));
-
         await expect(vault.connect(alice).rebalance()).to.be.reverted;
     });
 });
