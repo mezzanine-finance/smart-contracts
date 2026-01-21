@@ -42,24 +42,34 @@ async function main() {
 
     const usdcAddress = info.usdc;
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const accessManagerAddress = accessManagerRecord?.address;
+    const pauseManagerAddress = pauseManagerRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
     }
+    if (!pauseManagerAddress) {
+        throw new Error("PauseManager not deployed for this network. Deploy it first.");
+    }
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
+    console.log("PauseManager:", pauseManagerAddress);
 
     upgrades.silenceWarnings();
 
     const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-    const reservoir = await upgrades.deployProxy(ReservoirFactory, [accessManagerAddress], {
-        kind: "uups",
-        initializer: "initialize",
-        unsafeAllow: ["constructor", "state-variable-immutable"],
-        constructorArgs: [usdcAddress],
-    });
+    const reservoir = await upgrades.deployProxy(
+        ReservoirFactory,
+        [accessManagerAddress, pauseManagerAddress],
+        {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [usdcAddress],
+        }
+    );
 
     const tx = reservoir.deploymentTransaction();
     await reservoir.waitForDeployment();

@@ -7,6 +7,8 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
 
 /// @title POL Junior Tranche
 /// @notice Protocol-owned-liquidity tranche: deposits mint shares, withdrawals are instant (ERC4626),
@@ -18,7 +20,8 @@ contract PolJuniorTranche is
     ERC4626Upgradeable,
     AccessManagedUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    PauseManagedUpgradeable
 {
     using SafeERC20 for IERC20;
 
@@ -40,12 +43,14 @@ contract PolJuniorTranche is
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
+    /// @param pauseManager - pause manager address for category-based pauses
     /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
         string memory name_,
         string memory symbol_,
         address accessManager,
+        address pauseManager,
         address polPayoutAddress
     ) external initializer {
         if (accessManager == address(0) || address(assetToken) == address(0)) revert ZeroAddress();
@@ -54,6 +59,7 @@ contract PolJuniorTranche is
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
+        __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
         polPayout = polPayoutAddress;
@@ -64,28 +70,38 @@ contract PolJuniorTranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant returns (uint256 shares) {
+    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 shares) {
         return super.deposit(assets, receiver);
     }
 
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant returns (uint256 assets) {
+    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
         return super.mint(shares, receiver);
     }
 
     function transfer(
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.transfer(to, value);
     }
 
     function approve(
         address spender,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.approve(spender, value);
     }
 
@@ -93,7 +109,12 @@ contract PolJuniorTranche is
         address from,
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.transferFrom(from, to, value);
     }
 
@@ -103,7 +124,14 @@ contract PolJuniorTranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant restricted returns (uint256 shares) {
+    )
+        public
+        override
+        nonReentrant
+        restricted
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 shares)
+    {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -111,13 +139,22 @@ contract PolJuniorTranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant restricted returns (uint256 assets) {
+    )
+        public
+        override
+        nonReentrant
+        restricted
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 assets)
+    {
         return super.redeem(shares, receiver, owner);
     }
 
     /// @notice Vault calls this after transferring yieldAmount of MZUSD to this contract.
     /// @dev Forwards yield immediately to polPayout and optionally calls a hook on polPayout.
-    function notifyYield(uint256 yieldAmount) external restricted {
+    function notifyYield(
+        uint256 yieldAmount
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
         address payout = polPayout;
         if (payout == address(0)) revert ZeroAddress();
@@ -127,7 +164,7 @@ contract PolJuniorTranche is
     }
 
     /// @notice Update polPayout address
-    function setPolPayout(address payout) external restricted {
+    function setPolPayout(address payout) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (payout == address(0)) revert ZeroAddress();
         polPayout = payout;
         emit PolPayoutUpdated(payout);

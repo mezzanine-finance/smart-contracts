@@ -8,7 +8,15 @@ import {
     time,
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
-import {MZUSD, Vault, ReservoirUSDC, IERC20, MZUSDNettingHelper} from "../typechain-types";
+import {
+    MZUSD,
+    Vault,
+    ReservoirUSDC,
+    IERC20,
+    MZUSDNettingHelper,
+    PauseManager,
+} from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -35,6 +43,7 @@ describe("MZUSD <-> USDC conversion", () => {
     let dave: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let vault: Vault;
     let mzusd: MZUSD;
     let usdc: IERC20;
@@ -74,27 +83,45 @@ describe("MZUSD <-> USDC conversion", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = await upgrades.deployProxy(VaultFactory, [reservoir.target, accessManager.target], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        });
+        vault = await upgrades.deployProxy(
+            VaultFactory,
+            [reservoir.target, accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        );
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = await upgrades.deployProxy(
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _limitUSDC (max allowed; configured below in tests)
             ],
             {
@@ -177,6 +204,67 @@ describe("MZUSD <-> USDC conversion", () => {
 
         // Alice received MZUSD 1:1 to USDC in 18 decimals.
         expect(aliceMZAfter - aliceMZBefore).to.equal(expectedMZAmount);
+    });
+
+    it("Pauses deposits via PauseManager", async () => {
+        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+        await expect(mzusd.deposit(to6(1n)))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+    });
+
+    it("Pauses all guarded MZUSD functions", async () => {
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const mintSelector = mzusd.interface.getFunction("mint").selector;
+        const burnSelector = mzusd.interface.getFunction("burn").selector;
+        await accessManager.setTargetFunctionRole(
+            mzusd.target,
+            [mintSelector, burnSelector],
+            ADMIN_ROLE
+        );
+
+        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+        await expect(mzusd.deposit(to6(1n)))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+        await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
+
+        await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+        await expect(mzusd.requestWithdrawal(1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
+
+        await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
+        await expect(mzusd.transfer(bob.address, 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(mzusd.approve(bob.address, 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(mzusd.transferFrom(alice.address, bob.address, 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(mzusd.mint(deployer.address, 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(mzusd.burn(deployer.address, 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
+
+        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+        const cap = await mzusd.globalRedemptionCapUSDC();
+        await expect(mzusd.setGlobalRedemptionCap(cap + 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        const duration = await mzusd.redemptionWindowDuration();
+        await expect(mzusd.setRedemptionWindowDuration(duration + 1n))
+            .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
     });
 
     it("Should burn MZUSD and withdraw USDC back to the user", async () => {

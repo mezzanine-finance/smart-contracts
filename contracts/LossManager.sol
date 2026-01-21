@@ -6,6 +6,8 @@ import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {PauseManagedUpgradeable} from "./pause/PauseManagedUpgradeable.sol";
+import {PauseCategory} from "./pause/PauseCategory.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD is IERC20 {
@@ -25,7 +27,12 @@ interface IVaultEpoch {
 /// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable {
+contract LossManager is
+    Initializable,
+    AccessManagedUpgradeable,
+    UUPSUpgradeable,
+    PauseManagedUpgradeable
+{
     uint256 public constant USDC_DECIMALS = 6;
     uint256 public constant MZ_DECIMALS = 18;
     uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
@@ -65,12 +72,14 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     /// @param accessManager controls access to restricted functions
+    /// @param pauseManager pause manager address for category-based pauses
     /// @param _mzusd protocol stablecoin contract
     /// @param order tranche burn order
     /// @param groupIds group ids aligned with order
     /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
     function initialize(
         address accessManager,
+        address pauseManager,
         address _mzusd,
         address[] memory order,
         uint256[] memory groupIds,
@@ -79,13 +88,14 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if (accessManager == address(0) || _mzusd == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
+        __PauseManaged_init(pauseManager);
         mzusd = IMZUSD(_mzusd);
         _setTrancheOrderAndGroups(order, groupIds);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(uint256 usdcLoss) external restricted {
+    function applyLoss(uint256 usdcLoss) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
@@ -112,18 +122,20 @@ contract LossManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     function setTrancheOrderAndGroups(
         address[] memory order,
         uint256[] memory groupIds
-    ) external restricted {
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         _setTrancheOrderAndGroups(order, groupIds);
     }
 
     // @notice sets max loss per tx in USDC 6d (0 = no limit)
-    function setMaxLossPerTxUSDC(uint256 maxLossValue) external restricted {
+    function setMaxLossPerTxUSDC(
+        uint256 maxLossValue
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
     }
 
     /// @notice Sets the Vault address used to advance epochs on loss application (mandatory for applyLoss).
-    function setVault(address _vault) external restricted {
+    function setVault(address _vault) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_vault == address(0)) revert ZeroAddress();
         vault = _vault;
         emit VaultUpdated(_vault);

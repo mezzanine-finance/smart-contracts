@@ -44,15 +44,20 @@ async function main() {
     const deployments = loadDeployments();
 
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const mzusdRecord = getLatestDeployment(deployments, netName, "MZUSD");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
 
     const accessManagerAddress = accessManagerRecord?.address;
+    const pauseManagerAddress = pauseManagerRecord?.address;
     const mzusdAddress = mzusdRecord?.address;
     const vaultAddress = vaultRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
+    }
+    if (!pauseManagerAddress) {
+        throw new Error("PauseManager not deployed for this network. Deploy it first.");
     }
     if (!mzusdAddress) {
         throw new Error("MZUSD not deployed for this network. Deploy it first.");
@@ -63,6 +68,7 @@ async function main() {
 
     const trancheInfo = info.tranche;
     console.log("AccessManager:", accessManagerAddress);
+    console.log("PauseManager:", pauseManagerAddress);
     console.log("MZUSD:", mzusdAddress);
     console.log("Vault:", vaultAddress);
     console.log("Tranche:", trancheInfo.name, trancheInfo.symbol, "#", trancheInfo.id);
@@ -80,8 +86,7 @@ async function main() {
             trancheInfo.name,
             trancheInfo.symbol,
             accessManagerAddress,
-            trancheInfo.polJuniorMode,
-            trancheInfo.polPayout,
+            pauseManagerAddress,
         ],
         {
             kind: "uups",

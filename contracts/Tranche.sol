@@ -8,6 +8,8 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
@@ -27,7 +29,8 @@ contract Tranche is
     ERC4626Upgradeable,
     AccessManagedUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    PauseManagedUpgradeable
 {
     using SafeERC20 for IERC20;
 
@@ -125,6 +128,7 @@ contract Tranche is
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
+    /// @param pauseManager - pause manager address for category-based pauses
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -132,7 +136,8 @@ contract Tranche is
         uint256 initialUnstakeDelayEpochs,
         string memory name_,
         string memory symbol_,
-        address accessManager
+        address accessManager,
+        address pauseManager
     ) external initializer {
         if (
             vaultAddress == address(0) ||
@@ -143,6 +148,7 @@ contract Tranche is
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
+        __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
         vault = vaultAddress;
@@ -170,7 +176,7 @@ contract Tranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant returns (uint256 shares) {
+    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 shares) {
         _checkDepositLimit(assets);
         shares = super.deposit(assets, receiver);
     }
@@ -183,7 +189,7 @@ contract Tranche is
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant returns (uint256 assets) {
+    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
         uint256 assetsRequired = convertToAssets(shares);
         _checkDepositLimit(assetsRequired);
         assets = super.mint(shares, receiver);
@@ -192,7 +198,9 @@ contract Tranche is
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
     /// @param shares - amount of tranche shares to withdraw
-    function requestWithdrawal(uint256 shares) external nonReentrant {
+    function requestWithdrawal(
+        uint256 shares
+    ) external nonReentrant whenNotPaused(PauseCategory.WITHDRAWALS) {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(msg.sender) < shares) revert InvalidBalance();
 
@@ -221,7 +229,7 @@ contract Tranche is
     function cancelUnstake(
         uint256 epochId,
         uint256 shares
-    ) external nonReentrant whenDirectDisabled {
+    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -246,7 +254,9 @@ contract Tranche is
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
     /// @param epochId The epoch for which to claim assets.
-    function claim(uint256 epochId) external nonReentrant whenDirectDisabled {
+    function claim(
+        uint256 epochId
+    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -268,7 +278,9 @@ contract Tranche is
     /// @notice Finalize an epoch after it has passed on the vault.
     /// @dev Burns umbrella shares for the epoch and records finalized data for user claims.
     /// @param epochId The epoch to finalize.
-    function finalizeEpoch(uint256 epochId) external nonReentrant whenDirectDisabled {
+    function finalizeEpoch(
+        uint256 epochId
+    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.PROTOCOL) {
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
@@ -296,7 +308,14 @@ contract Tranche is
         uint256 assets,
         address receiver,
         address owner
-    ) public override nonReentrant whenDirectEnabled returns (uint256 shares) {
+    )
+        public
+        override
+        nonReentrant
+        whenDirectEnabled
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 shares)
+    {
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -304,21 +323,38 @@ contract Tranche is
         uint256 shares,
         address receiver,
         address owner
-    ) public override nonReentrant whenDirectEnabled returns (uint256 assets) {
+    )
+        public
+        override
+        nonReentrant
+        whenDirectEnabled
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 assets)
+    {
         return super.redeem(shares, receiver, owner);
     }
 
     function transfer(
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.transfer(to, value);
     }
 
     function approve(
         address spender,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.approve(spender, value);
     }
 
@@ -326,7 +362,12 @@ contract Tranche is
         address from,
         address to,
         uint256 value
-    ) public override(ERC20Upgradeable, IERC20) returns (bool success) {
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
         return super.transferFrom(from, to, value);
     }
 
@@ -335,7 +376,9 @@ contract Tranche is
     /// @dev Assumes yieldAmount tokens are already transferred to this contract (from Vault).
     ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
     /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
-    function notifyYield(uint256 yieldAmount) external restricted {
+    function notifyYield(
+        uint256 yieldAmount
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
 
         // Do not allow overriding active stream
@@ -361,12 +404,18 @@ contract Tranche is
     // SETTERS
 
     /// @notice Update unstake delay in epochs
-    function setUnstakeDelayEpochs(uint256 epochsDelay) external restricted {
+    function setUnstakeDelayEpochs(
+        uint256 epochsDelay
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
     /// @notice Update deposit limits
-    function setDepositLimits(bool enabled, uint256 cap, uint256 tvlBps) external restricted {
+    function setDepositLimits(
+        bool enabled,
+        uint256 cap,
+        uint256 tvlBps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
         depositLimitEnabled = enabled;
         maxDepositCap = cap;

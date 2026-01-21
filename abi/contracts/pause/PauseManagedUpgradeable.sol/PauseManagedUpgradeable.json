@@ -22,7 +22,7 @@
     },
     {
         "inputs": [],
-        "name": "ZeroAddress",
+        "name": "PauseManagerZeroAddress",
         "type": "error"
     },
     {

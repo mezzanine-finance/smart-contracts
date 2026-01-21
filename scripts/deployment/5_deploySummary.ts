@@ -17,6 +17,7 @@ function main() {
     const deployments = loadDeployments();
 
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const mzusdRecord = getLatestDeployment(deployments, netName, "MZUSD");
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
@@ -47,6 +48,7 @@ function main() {
         `- Explorer: ${explorer || "unknown"}`,
         `\nSmart contract addresses:`,
         formatAddress("AccessManager", accessManagerRecord?.address),
+        formatAddress("PauseManager (proxy)", pauseManagerRecord?.address),
         formatAddress("MZUSD (proxy)", mzusdRecord?.address),
         formatAddress("ReservoirUSDC (proxy)", reservoirRecord?.address),
         formatAddress("Vault (proxy)", vaultRecord?.address),
@@ -54,6 +56,7 @@ function main() {
         formatAddress("EmergencyLevelManager (proxy)", emergencyRecord?.address),
         formatAddress("AccessManagerConfiguratorV1", configuratorRecord?.address),
         "---",
+        formatAddress("PauseManager implementation", pauseManagerRecord?.implementation),
         formatAddress("MZUSD implementation", mzusdRecord?.implementation),
         formatAddress("ReservoirUSDC implementation", reservoirRecord?.implementation),
         formatAddress("Vault implementation", vaultRecord?.implementation),

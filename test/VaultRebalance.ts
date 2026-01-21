@@ -8,7 +8,8 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20} from "../typechain-types";
+import {Vault, ReservoirUSDC, MZUSD, IERC20, PauseManager} from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -33,6 +34,7 @@ describe("Vault <-> Reservoir", () => {
     let alice: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
 
@@ -55,18 +57,28 @@ describe("Vault <-> Reservoir", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target, pauseManager.target],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -80,6 +92,7 @@ describe("Vault <-> Reservoir", () => {
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
@@ -91,6 +104,7 @@ describe("Vault <-> Reservoir", () => {
         )) as unknown as MZUSD;
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
 
@@ -199,6 +213,21 @@ describe("Vault <-> Reservoir", () => {
 
         expect(vaultAfter).to.equal(vaultBefore);
         expect(resAfter).to.equal(resBefore);
+    });
+
+    it("Pauses protocol operations via PauseManager", async () => {
+        await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(vault.connect(deployer).rebalance())
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(reservoir.connect(deployer).deposit(1n))
+            .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(reservoir.connect(deployer).withdraw(1n, deployer.address))
+            .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
     });
 
     it("Reverts for non-authorized caller (restricted)", async () => {

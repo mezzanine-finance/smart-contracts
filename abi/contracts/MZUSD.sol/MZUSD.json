@@ -83,6 +83,17 @@
     {
         "inputs": [
             {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "implementation",
                 "type": "address"
@@ -231,6 +242,11 @@
     },
     {
         "inputs": [],
+        "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "SameValue",
         "type": "error"
     },
@@ -373,6 +389,19 @@
             }
         ],
         "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
+            }
+        ],
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -672,6 +701,11 @@
                 "type": "address"
             },
             {
+                "internalType": "address",
+                "name": "pauseManager",
+                "type": "address"
+            },
+            {
                 "internalType": "uint256",
                 "name": "_initialCapUSDC",
                 "type": "uint256"
@@ -721,6 +755,19 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
             }
         ],
         "stateMutability": "view",

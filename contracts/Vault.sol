@@ -5,6 +5,8 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD is IERC20 {
@@ -22,7 +24,12 @@ interface IReservoir {
 
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
+contract Vault is
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable,
+    AccessManagedUpgradeable,
+    PauseManagedUpgradeable
+{
     /// @notice Info for each registered tranche
     struct TrancheInfo {
         address tranche;
@@ -109,12 +116,18 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @notice Initializer
     /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
-    function initialize(address _reservoir, address accessManager) external initializer {
+    /// @param pauseManager - pause manager address for category-based pauses
+    function initialize(
+        address _reservoir,
+        address accessManager,
+        address pauseManager
+    ) external initializer {
         if (_reservoir == address(0) || accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __AccessManaged_init(accessManager);
+        __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
         reservoir = IReservoir(_reservoir);
@@ -134,7 +147,10 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @param to - address to receive withdrawn USDC
     /// @param amount - amount of USDC to withdraw
     /// @dev used for MZUSD redemptions
-    function withdraw(address to, uint256 amount) external restricted {
+    function withdraw(
+        address to,
+        uint256 amount
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -148,7 +164,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     //@dev using for rebalancing USDC between vault and reservoir
-    function rebalance() external restricted {
+    function rebalance() external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         uint256 idle = usdc.balanceOf(address(this));
         uint256 low = bufferLowUSDC;
         uint256 high = bufferHighUSDC;
@@ -173,7 +189,9 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @dev fees are minted in MZUSD and sent to fee receivers
     /// @dev yield is allocated to tranches based on their weights and TVL
     /// @dev portion of yield can be allocated to insurance if configured
-    function distributeYield(uint256 usdcReported) external nonReentrant restricted {
+    function distributeYield(
+        uint256 usdcReported
+    ) external nonReentrant restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (tranches.length == 0) revert NoTranchesAdded();
 
         // Always advance epoch on distribution call, even if yield is 0.
@@ -205,7 +223,9 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
 
     //SETTERS
     /// @notice Update reservoir address
-    function setReservoir(address _reservoir) external restricted {
+    function setReservoir(
+        address _reservoir
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_reservoir == address(0)) revert ZeroAddress();
         if (address(reservoir) == _reservoir) revert SameValue();
         reservoir = IReservoir(_reservoir);
@@ -213,7 +233,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     /// @notice Update MZUSD address
-    function setMZUSD(address _mzusd) external restricted {
+    function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
         if (address(mzusd) == _mzusd) revert SameValue();
         mzusd = IMZUSD(_mzusd);
@@ -227,7 +247,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
-    ) external restricted {
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
         if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
             revert ZeroAddressWhileFeeIsOnPerformance();
@@ -248,7 +268,9 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     /// @notice Register a new tranche
-    function addTranche(TrancheInfo calldata info) external restricted {
+    function addTranche(
+        TrancheInfo calldata info
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (info.tranche == address(0)) revert ZeroAddress();
         if (isTranche[info.tranche]) revert TrancheExists();
         if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
@@ -263,7 +285,11 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @param idx - index of tranche in tranches array
     /// @param weightBps - new weight in bps
     /// @param enabled - whether tranche is enabled for yield allocation
-    function updateTranche(uint256 idx, uint16 weightBps, bool enabled) external restricted {
+    function updateTranche(
+        uint256 idx,
+        uint16 weightBps,
+        bool enabled
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (idx >= tranches.length) revert TrancheIndexOOB();
         if (weightBps > BPS) revert TooBigBps();
         tranches[idx].weightBps = weightBps;
@@ -274,7 +300,10 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @notice Update insurance address and bps
     /// @param _insurance - new insurance address
     /// @param bps - new insurance bps
-    function setInsurance(address _insurance, uint16 bps) external restricted {
+    function setInsurance(
+        address _insurance,
+        uint16 bps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_insurance == address(0)) revert ZeroAddress();
         if (_insurance == insurance) revert SameValue();
         if (bps > BPS) revert TooBigBps();
@@ -286,7 +315,10 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @notice Update idle USDC buffer and hysteresis band
     /// @param target - target idle USDC buffer
     /// @param bandBps - hysteresis band in bps
-    function setBuffer(uint256 target, uint16 bandBps) external restricted {
+    function setBuffer(
+        uint256 target,
+        uint16 bandBps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (bandBps > BPS) revert TooBigBps();
         if (target == 0) revert ZeroAmount();
         idleBufferUSDC = target;
@@ -298,7 +330,10 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @notice Update epoch duration
     /// @param _epochDuration - new epoch duration in seconds
     /// @param resetStart - whether to reset epoch start timestamp to now
-    function setEpochConfig(uint64 _epochDuration, bool resetStart) external restricted {
+    function setEpochConfig(
+        uint64 _epochDuration,
+        bool resetStart
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (
             _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
         ) {
@@ -315,7 +350,12 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
 
     /// @notice Advances the epoch if enough time has passed.
     /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
-    function advanceEpoch() external restricted returns (uint256 newEpochId) {
+    function advanceEpoch()
+        external
+        restricted
+        whenNotPaused(PauseCategory.PROTOCOL)
+        returns (uint256 newEpochId)
+    {
         return _advanceEpochAndValidate();
     }
 

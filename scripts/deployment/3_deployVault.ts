@@ -43,13 +43,18 @@ async function main() {
     const usdcAddress = info.usdc;
 
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
 
     const accessManagerAddress = accessManagerRecord?.address;
+    const pauseManagerAddress = pauseManagerRecord?.address;
     const reservoirAddress = reservoirRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
+    }
+    if (!pauseManagerAddress) {
+        throw new Error("PauseManager not deployed for this network. Deploy it first.");
     }
     if (!reservoirAddress) {
         throw new Error("ReservoirUSDC not deployed for this network. Deploy it first.");
@@ -57,6 +62,7 @@ async function main() {
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
+    console.log("PauseManager:", pauseManagerAddress);
     console.log("ReservoirUSDC:", reservoirAddress);
 
     upgrades.silenceWarnings();
@@ -64,7 +70,7 @@ async function main() {
     const VaultFactory = await ethers.getContractFactory("Vault", deployer);
     const vault = await upgrades.deployProxy(
         VaultFactory,
-        [reservoirAddress, accessManagerAddress],
+        [reservoirAddress, accessManagerAddress, pauseManagerAddress],
         {
             kind: "uups",
             initializer: "initialize",
@@ -120,6 +126,7 @@ async function main() {
         `ReservoirUSDC (proxy): ${reservoirAddress}`,
         `Vault (proxy): ${vaultAddress}`,
         `AccessManager: ${accessManagerAddress}`,
+        `PauseManager: ${pauseManagerAddress}`,
         "---",
         `ReservoirUSDC implementation: ${reservoirRecord?.implementation ?? "unknown"}`,
         `Vault implementation: ${vaultImpl}`,
