@@ -393,6 +393,37 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "getTrancheOrder",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "order",
+                "type": "address[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getTrancheOrderAndGroups",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "order",
+                "type": "address[]"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "groupIds",
+                "type": "uint256[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",

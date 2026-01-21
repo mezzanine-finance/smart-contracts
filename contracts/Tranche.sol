@@ -395,6 +395,37 @@ contract Tranche is
         pricePerShare_ = convertToAssets(10 ** decimals());
     }
 
+    /// @notice Returns the amount of yield that has not yet accrued into NAV.
+    function unaccruedYield() external view returns (uint256 unaccrued) {
+        unaccrued = _unaccruedYield();
+    }
+
+    /// @notice Returns the current deposit limit parameters and computed limit.
+    function getDepositLimitInfo()
+        external
+        view
+        returns (bool enabled, uint256 limit, uint256 limitByTvl, uint256 cap)
+    {
+        enabled = depositLimitEnabled;
+        cap = maxDepositCap;
+
+        if (!enabled) {
+            limit = type(uint256).max;
+            limitByTvl = type(uint256).max;
+            return (enabled, limit, limitByTvl, cap);
+        }
+
+        uint256 totalVaultAssets = totalAssets();
+        limitByTvl = totalVaultAssets == 0
+            ? type(uint256).max
+            : (totalVaultAssets * maxDepositTvlBps) / BASIS_POINTS;
+
+        limit = limitByTvl;
+        if (cap != 0 && cap < limit) {
+            limit = cap;
+        }
+    }
+
     /// @notice Get user's pending shares and claimable assets for a given epoch.
     /// @param user - user address
     /// @param epochId - epoch to query

@@ -718,6 +718,91 @@
     },
     {
         "inputs": [],
+        "name": "getBufferConfig",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "buffer",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint16",
+                "name": "hysteresis",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint256",
+                "name": "low",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "high",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getEpochConfig",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "epochId",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "start",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "duration",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "start",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "count",
+                "type": "uint256"
+            }
+        ],
+        "name": "getTranches",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "tranche",
+                "type": "address[]"
+            },
+            {
+                "internalType": "uint16[]",
+                "name": "weightBps",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "hysteresisBps",
         "outputs": [
             {

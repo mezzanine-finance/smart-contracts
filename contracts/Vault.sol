@@ -328,6 +328,53 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         idleUSDC = usdc.balanceOf(address(this));
     }
 
+    function getTranches(
+        uint256 start,
+        uint256 count
+    )
+        external
+        view
+        returns (address[] memory tranche, uint16[] memory weightBps, bool[] memory enabled)
+    {
+        uint256 len = tranches.length;
+        if (start >= len || count == 0) {
+            return (new address[](0), new uint16[](0), new bool[](0));
+        }
+
+        uint256 end = start + count;
+        if (end > len) {
+            end = len;
+        }
+        uint256 size = end - start;
+
+        tranche = new address[](size);
+        weightBps = new uint16[](size);
+        enabled = new bool[](size);
+
+        for (uint256 i; i < size; ++i) {
+            TrancheInfo memory t = tranches[start + i];
+            tranche[i] = t.tranche;
+            weightBps[i] = t.weightBps;
+            enabled[i] = t.enabled;
+        }
+    }
+
+    function getEpochConfig()
+        external
+        view
+        returns (uint64 epochId, uint64 start, uint64 duration)
+    {
+        return (currentEpochId, epochStart, epochDuration);
+    }
+
+    function getBufferConfig()
+        external
+        view
+        returns (uint256 buffer, uint16 hysteresis, uint256 low, uint256 high)
+    {
+        return (idleBufferUSDC, hysteresisBps, bufferLowUSDC, bufferHighUSDC);
+    }
+
     //INTERNAL HELPERS
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement
