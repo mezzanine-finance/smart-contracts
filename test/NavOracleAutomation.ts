@@ -17,7 +17,9 @@ import {
     ReservoirUSDC,
     Tranche,
     Vault,
+    PauseManager,
 } from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -47,6 +49,7 @@ describe("NavOracleAutomation", () => {
     let bob: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
@@ -71,18 +74,36 @@ describe("NavOracleAutomation", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, oracle.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                oracle.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -96,6 +117,7 @@ describe("NavOracleAutomation", () => {
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _limitUSDC (max allowed)
             ],
             {
@@ -117,6 +139,7 @@ describe("NavOracleAutomation", () => {
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
                 accessManager.target, // accessManager
+                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",
@@ -131,6 +154,7 @@ describe("NavOracleAutomation", () => {
             LossManagerFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 mzusd.target,
                 [tranche.target],
                 [0],
@@ -153,6 +177,7 @@ describe("NavOracleAutomation", () => {
         await navAutomation.waitForDeployment();
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
@@ -266,6 +291,23 @@ describe("NavOracleAutomation", () => {
         await expect(
             navAutomation.connect(oracle).submitNav(navUSDC)
         ).to.be.revertedWithCustomError(navAutomation, "PendingNavExists");
+    });
+
+    it("performUpkeep reverts when protocol is paused", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(10n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+
+        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await time.increase(DAY);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+
+        await expect(navAutomation.performUpkeep("0x"))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
     });
 
     it("reject clears pending NAV", async () => {

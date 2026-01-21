@@ -176,7 +176,7 @@ describe("PauseManager", () => {
         await rawMock.waitForDeployment();
         await expect(rawMock.initialize(ethers.ZeroAddress)).to.be.revertedWithCustomError(
             rawMock,
-            "ZeroAddress"
+            "PauseManagerZeroAddress"
         );
     });
 

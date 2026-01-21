@@ -43,12 +43,17 @@ async function main() {
 
     const usdcAddress = info.usdc;
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
+    const pauseManagerRecord = getLatestDeployment(deployments, netName, "PauseManager");
     const vaultRecord = getLatestDeployment(deployments, netName, "Vault");
     const accessManagerAddress = accessManagerRecord?.address;
+    const pauseManagerAddress = pauseManagerRecord?.address;
     const vaultAddress = vaultRecord?.address;
 
     if (!accessManagerAddress) {
         throw new Error("AccessManager not deployed for this network. Deploy it first.");
+    }
+    if (!pauseManagerAddress) {
+        throw new Error("PauseManager not deployed for this network. Deploy it first.");
     }
     if (!vaultAddress) {
         throw new Error("Vault not deployed for this network. Deploy it first.");
@@ -59,6 +64,7 @@ async function main() {
 
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
+    console.log("PauseManager:", pauseManagerAddress);
     console.log("Vault:", vaultAddress);
     console.log("Redemption cap (USDC):", redemptionCapHuman);
 
@@ -67,7 +73,7 @@ async function main() {
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
     const mzusd = await upgrades.deployProxy(
         MZUSDFactory,
-        [accessManagerAddress, redemptionCapUSDC],
+        [accessManagerAddress, pauseManagerAddress, redemptionCapUSDC],
         {
             kind: "uups",
             initializer: "initialize",

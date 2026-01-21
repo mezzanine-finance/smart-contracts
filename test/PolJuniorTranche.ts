@@ -9,7 +9,15 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, PolJuniorTranche} from "../typechain-types";
+import {
+    Vault,
+    ReservoirUSDC,
+    MZUSD,
+    IERC20,
+    PolJuniorTranche,
+    PauseManager,
+} from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -40,6 +48,7 @@ describe("PolJuniorTranche", () => {
     let whale: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
 
@@ -71,18 +80,36 @@ describe("PolJuniorTranche", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, alice.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                alice.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -93,25 +120,37 @@ describe("PolJuniorTranche", () => {
         vaultAddr = await vault.getAddress();
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC, vault.target],
-        })) as unknown as MZUSD;
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [accessManager.target, pauseManager.target, usdcTotalSupply],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC, vault.target],
+            }
+        )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
         // Deploy POL tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
         pol = (await upgrades.deployProxy(
             PolFactory,
-            [mzusd.target, "POL Junior Tranche", "pJLT", accessManager.target, bob.address],
+            [
+                mzusd.target,
+                "POL Junior Tranche",
+                "pJLT",
+                accessManager.target,
+                pauseManager.target,
+                bob.address,
+            ],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // POL tranche: withdraw/redeem should be ADMIN only
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
@@ -190,6 +229,51 @@ describe("PolJuniorTranche", () => {
         }
         expect(sumShares).to.equal(supply);
     }
+
+    it("Pauses all guarded PolJuniorTranche functions", async () => {
+        await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+
+        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+        await expect(pol.connect(alice).deposit(1n, alice.address))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+        await expect(pol.connect(alice).mint(1n, alice.address))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+        await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
+
+        await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
+        await expect(pol.connect(alice).transfer(bob.address, 1n))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(pol.connect(alice).approve(bob.address, 1n))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(pol.connect(alice).transferFrom(alice.address, bob.address, 1n))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
+
+        await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+        await expect(pol.connect(deployer).withdraw(1n, deployer.address, deployer.address))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await expect(pol.connect(deployer).redeem(1n, deployer.address, deployer.address))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(pol.connect(deployer).notifyYield(1n))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
+
+        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+        await expect(pol.connect(deployer).setPolPayout(alice.address))
+            .to.be.revertedWithCustomError(pol, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+    });
 
     it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
         // Register only POL tranche to make allocation deterministic (100% to POL)

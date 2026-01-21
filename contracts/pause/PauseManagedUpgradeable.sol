@@ -13,7 +13,7 @@ abstract contract PauseManagedUpgradeable is Initializable {
 
     event PauseManagerUpdated(address indexed newManager);
 
-    error ZeroAddress();
+    error PauseManagerZeroAddress();
     error CategoryPaused(PauseCategory category);
 
     /// @notice Initialize PauseManaged with a PauseManager address.
@@ -28,7 +28,7 @@ abstract contract PauseManagedUpgradeable is Initializable {
 
     /// @notice Internal setter for PauseManager address.
     function _setPauseManager(address pauseManager_) internal {
-        if (pauseManager_ == address(0)) revert ZeroAddress();
+        if (pauseManager_ == address(0)) revert PauseManagerZeroAddress();
         _pauseManager = IPauseManager(pauseManager_);
         emit PauseManagerUpdated(pauseManager_);
     }

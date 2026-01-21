@@ -9,7 +9,8 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche} from "../typechain-types";
+import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -35,6 +36,7 @@ describe("Tranche", () => {
     let carol: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let vault: Vault;
     let mzusd: MZUSD;
     let usdc: IERC20;
@@ -57,18 +59,39 @@ describe("Tranche", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, carol.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                carol.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -82,6 +105,7 @@ describe("Tranche", () => {
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
@@ -104,6 +128,7 @@ describe("Tranche", () => {
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
                 accessManager.target, // accessManager
+                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",
@@ -114,8 +139,6 @@ describe("Tranche", () => {
         )) as unknown as Tranche;
 
         // ROLES & AccessManager wiring
-        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-
         // 2) Admin-only functions on MZUSD & Vault
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
@@ -242,6 +265,106 @@ describe("Tranche", () => {
         expect(previewAssets).to.equal(expectedMZ);
     });
 
+    it("Pauses deposits via PauseManager", async () => {
+        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+        await expect(tranche.deposit(1n, alice.address))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+    });
+
+    it("Pauses all guarded functions (umbrella mode)", async () => {
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const setUnstakeDelaySel = tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
+        const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+        await accessManager.setTargetFunctionRole(
+            tranche.target,
+            [setUnstakeDelaySel, setDepositLimitsSel],
+            ADMIN_ROLE
+        );
+        await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+
+        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+        await expect(tranche.deposit(1n, alice.address))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+        await expect(tranche.mint(1n, alice.address))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.DEPOSITS);
+        await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
+
+        await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+        await expect(tranche.requestWithdrawal(1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await expect(tranche.cancelUnstake(1n, 1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await expect(tranche.claim(1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
+
+        await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
+        await expect(tranche.transfer(bob.address, 1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(tranche.approve(bob.address, 1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await expect(tranche.transferFrom(alice.address, bob.address, 1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.TRANSFERS);
+        await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(tranche.notifyYield(1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(tranche.finalizeEpoch(1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
+
+        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+        await expect(tranche.setUnstakeDelayEpochs(1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(tranche.setDepositLimits(true, 1n, 1n))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+    });
+
+    it("Pauses withdrawals in direct mode", async () => {
+        const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+        const directTranche = (await upgrades.deployProxy(
+            TrancheFactory,
+            [
+                mzusd.target,
+                vault.target,
+                2,
+                0,
+                "Direct Tranche",
+                "dMZUSD",
+                accessManager.target,
+                pauseManager.target,
+            ],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [true],
+            }
+        )) as unknown as Tranche;
+
+        await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+        await expect(directTranche.withdraw(1n, alice.address, alice.address))
+            .to.be.revertedWithCustomError(directTranche, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+        await expect(directTranche.redeem(1n, alice.address, alice.address))
+            .to.be.revertedWithCustomError(directTranche, "CategoryPaused")
+            .withArgs(PauseCategory.WITHDRAWALS);
+    });
+
     it("Direct mode: requestWithdrawal redeems immediately", async () => {
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         const directTranche = (await upgrades.deployProxy(
@@ -254,6 +377,7 @@ describe("Tranche", () => {
                 "Direct Tranche", // name
                 "dMZUSD", // symbol
                 accessManager.target, // accessManager
+                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",

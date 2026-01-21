@@ -4,6 +4,8 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
 
 // aderyn-fp-next-line(reused-contract-name)
 interface IVault {
@@ -16,7 +18,12 @@ interface IVault {
 /// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
+contract MZUSD is
+    ERC20Upgradeable,
+    UUPSUpgradeable,
+    AccessManagedUpgradeable,
+    PauseManagedUpgradeable
+{
     IERC20 public immutable usdc;
 
     uint8 public constant USDC_DECIMALS = 6;
@@ -70,14 +77,20 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     }
 
     /// @param accessManager - address of AccessManager contract for role management
+    /// @param pauseManager - address of PauseManager contract for category-based pauses
     /// @param _initialCapUSDC - initial global redemption cap in USDC (6 decimals)
-    function initialize(address accessManager, uint256 _initialCapUSDC) external initializer {
+    function initialize(
+        address accessManager,
+        address pauseManager,
+        uint256 _initialCapUSDC
+    ) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
+        __PauseManaged_init(pauseManager);
 
         _setGlobalRedemptionCap(_initialCapUSDC);
         windowStartTimestamp = uint40(block.timestamp);
@@ -87,7 +100,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     /// @notice deposit USDC and mint MZUSD 1:1
     /// @param amountUSDC - amount of USDC to deposit (6 decimals)
-    function deposit(uint256 amountUSDC) external {
+    function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
         _txDepositedUSDC += amountUSDC;
@@ -105,7 +118,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
     /// @param amountMZ - amount of MZUSD to burn (18 decimals)
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
     /// @dev v2: will be changed to enqueue
-    function requestWithdrawal(uint256 amountMZ) external {
+    function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
         uint256 burnAmount = usdcOut * SCALE;
@@ -122,11 +135,17 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         emit Withdrawal(msg.sender, burnAmount, usdcOut);
     }
 
-    function transfer(address to, uint256 value) public override returns (bool success) {
+    function transfer(
+        address to,
+        uint256 value
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
         return super.transfer(to, value);
     }
 
-    function approve(address spender, uint256 value) public override returns (bool success) {
+    function approve(
+        address spender,
+        uint256 value
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
         return super.approve(spender, value);
     }
 
@@ -134,7 +153,7 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         address from,
         address to,
         uint256 value
-    ) public override returns (bool success) {
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
         return super.transferFrom(from, to, value);
     }
 
@@ -142,13 +161,19 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     /// @notice mint MZUSD to an address
     /// @dev Used by VAULT to mint MZUSD
-    function mint(address to, uint256 amount) external restricted {
+    function mint(
+        address to,
+        uint256 amount
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _mint(to, amount);
     }
 
     /// @notice burn MZUSD from an address
     /// @dev Used by authorized contracts to burn MZUSD
-    function burn(address from, uint256 amount) external restricted {
+    function burn(
+        address from,
+        uint256 amount
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _burn(from, amount);
     }
 
@@ -156,14 +181,18 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
 
     /// @notice set global redemption cap in USDC (6 decimals)
     /// @param newCapUSDC - new cap value; must be > 0 and <= USDC total supply
-    function setGlobalRedemptionCap(uint256 newCapUSDC) external restricted {
+    function setGlobalRedemptionCap(
+        uint256 newCapUSDC
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
         _setGlobalRedemptionCap(newCapUSDC);
     }
 
     /// @notice set the duration of the redemption window
     /// @param newDuration - new duration in seconds
-    function setRedemptionWindowDuration(uint32 newDuration) external restricted {
+    function setRedemptionWindowDuration(
+        uint32 newDuration
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (newDuration == 0) revert ZeroDuration();
         if (
             newDuration < MIN_REDEMPTION_WINDOW_DURATION ||

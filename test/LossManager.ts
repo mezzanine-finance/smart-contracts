@@ -17,7 +17,9 @@ import {
     Tranche,
     LossManager,
     PolJuniorTranche,
+    PauseManager,
 } from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -44,6 +46,7 @@ describe("LossManager", () => {
     let carol: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
 
@@ -85,18 +88,36 @@ describe("LossManager", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, carol.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                carol.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -107,19 +128,32 @@ describe("LossManager", () => {
         vaultAddr = await vault.getAddress();
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-        mzusd = (await upgrades.deployProxy(MZUSDFactory, [accessManager.target, usdcTotalSupply], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC, vault.target],
-        })) as unknown as MZUSD;
+        mzusd = (await upgrades.deployProxy(
+            MZUSDFactory,
+            [accessManager.target, pauseManager.target, usdcTotalSupply],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC, vault.target],
+            }
+        )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 1, 0, "Junior Tranche", "JLT", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                1,
+                0,
+                "Junior Tranche",
+                "JLT",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -130,7 +164,16 @@ describe("LossManager", () => {
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 2, 0, "Mezzanine Tranche", "MLT", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                2,
+                0,
+                "Mezzanine Tranche",
+                "MLT",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -141,7 +184,16 @@ describe("LossManager", () => {
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 3, 0, "Senior Tranche", "sMZUSD", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                3,
+                0,
+                "Senior Tranche",
+                "sMZUSD",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -158,7 +210,14 @@ describe("LossManager", () => {
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
         pol = (await upgrades.deployProxy(
             PolFactory,
-            [mzusd.target, "POL Junior Tranche", "pJLT", accessManager.target, bob.address],
+            [
+                mzusd.target,
+                "POL Junior Tranche",
+                "pJLT",
+                accessManager.target,
+                pauseManager.target,
+                bob.address,
+            ],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
@@ -169,6 +228,7 @@ describe("LossManager", () => {
             LossManagerFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 mzusdAddr,
                 [juniorAddr, mezzanineAddr, seniorAddr],
                 [0, 0, 0],
@@ -180,6 +240,7 @@ describe("LossManager", () => {
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
         const polRedeemSel = pol.interface.getFunction("redeem").selector;
@@ -300,6 +361,30 @@ describe("LossManager", () => {
     function min(a: bigint, b: bigint): bigint {
         return a < b ? a : b;
     }
+
+    it("Pauses protocol operations via PauseManager", async () => {
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(lossManager.connect(deployer).applyLoss(1n))
+            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+    });
+
+    it("Pauses admin operations via PauseManager", async () => {
+        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+        await expect(
+            lossManager
+                .connect(deployer)
+                .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
+        )
+            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(lossManager.connect(deployer).setMaxLossPerTxUSDC(1n))
+            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(lossManager.connect(deployer).setVault(vaultAddr))
+            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+    });
 
     // Mirrors LossManager pair split logic (floor + remainder to first tranche then second)
     function computePairBurns(lossMZ: bigint, tvl0: bigint, tvl1: bigint) {

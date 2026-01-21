@@ -16,7 +16,9 @@ import {
     Tranche,
     UmbrellaEpochFinalizer,
     Vault,
+    PauseManager,
 } from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -42,6 +44,7 @@ describe("UmbrellaEpochFinalizer", () => {
     let bob: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
@@ -66,18 +69,36 @@ describe("UmbrellaEpochFinalizer", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, alice.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                alice.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -91,6 +112,7 @@ describe("UmbrellaEpochFinalizer", () => {
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
@@ -112,6 +134,7 @@ describe("UmbrellaEpochFinalizer", () => {
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
                 accessManager.target, // accessManager
+                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",
@@ -122,6 +145,7 @@ describe("UmbrellaEpochFinalizer", () => {
         )) as unknown as Tranche;
 
         ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
@@ -219,6 +243,25 @@ describe("UmbrellaEpochFinalizer", () => {
         const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
         expect(upkeepNeeded).to.equal(false);
         expect(performData).to.equal("0x");
+    });
+
+    it("performUpkeep reverts when protocol is paused", async () => {
+        await preparePendingEpoch(alice);
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(true);
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+
+        await expect(finalizer.performUpkeep(performData))
+            .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
     });
 
     it("finalizes the previous epoch when work exists", async () => {

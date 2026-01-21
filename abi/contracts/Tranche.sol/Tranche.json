@@ -67,6 +67,17 @@
     {
         "inputs": [
             {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "attempted",
                 "type": "uint256"
@@ -333,6 +344,11 @@
     },
     {
         "inputs": [],
+        "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "ReentrancyGuardReentrantCall",
         "type": "error"
     },
@@ -539,6 +555,19 @@
             }
         ],
         "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
+            }
+        ],
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -1189,6 +1218,11 @@
                 "internalType": "address",
                 "name": "accessManager",
                 "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "pauseManager",
+                "type": "address"
             }
         ],
         "name": "initialize",
@@ -1359,6 +1393,19 @@
         "name": "notifyYield",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

@@ -9,7 +9,8 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche} from "../typechain-types";
+import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -36,6 +37,7 @@ describe("Vault Yield Distribution", () => {
     let carol: any;
 
     let accessManager: any;
+    let pauseManager: PauseManager;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
 
@@ -64,18 +66,36 @@ describe("Vault Yield Distribution", () => {
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
 
-        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-        reservoir = (await upgrades.deployProxy(ReservoirFactory, [accessManager.target], {
+        const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
+        pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [MAINNET_USDC],
-        })) as unknown as ReservoirUSDC;
+        })) as unknown as PauseManager;
+
+        const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+        reservoir = (await upgrades.deployProxy(
+            ReservoirFactory,
+            [accessManager.target, pauseManager.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [MAINNET_USDC],
+            }
+        )) as unknown as ReservoirUSDC;
 
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, 0, bob.address, 0, carol.address],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                carol.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -89,6 +109,7 @@ describe("Vault Yield Distribution", () => {
             MZUSDFactory,
             [
                 accessManager.target,
+                pauseManager.target,
                 usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
@@ -104,7 +125,16 @@ describe("Vault Yield Distribution", () => {
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 1, 0, "Junior Tranche", "JLT", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                1,
+                0,
+                "Junior Tranche",
+                "JLT",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -115,7 +145,16 @@ describe("Vault Yield Distribution", () => {
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 2, 0, "Mezzanine Tranche", "MLT", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                2,
+                0,
+                "Mezzanine Tranche",
+                "MLT",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -126,7 +165,16 @@ describe("Vault Yield Distribution", () => {
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [mzusd.target, vault.target, 3, 0, "Senior Tranche", "sMZUSD", accessManager.target],
+            [
+                mzusd.target,
+                vault.target,
+                3,
+                0,
+                "Senior Tranche",
+                "sMZUSD",
+                accessManager.target,
+                pauseManager.target,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -137,6 +185,7 @@ describe("Vault Yield Distribution", () => {
 
         // Roles
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
         const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
@@ -270,13 +319,75 @@ describe("Vault Yield Distribution", () => {
         expect(await vault.tranchesLength()).to.equal(3n);
     });
 
+    it("Pauses all guarded Vault functions", async () => {
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const withdrawSel = vault.interface.getFunction("withdraw").selector;
+        const rebalanceSel = vault.interface.getFunction("rebalance").selector;
+        const setReservoirSel = vault.interface.getFunction("setReservoir").selector;
+        const setBufferSel = vault.interface.getFunction("setBuffer").selector;
+        await accessManager.setTargetFunctionRole(
+            vault.target,
+            [withdrawSel, rebalanceSel, setReservoirSel, setBufferSel],
+            ADMIN_ROLE
+        );
+
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        await expect(vault.connect(deployer).distributeYield(0))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(vault.connect(deployer).rebalance())
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(vault.connect(deployer).withdraw(deployer.address, 1n))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await expect(vault.connect(deployer).advanceEpoch())
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.PROTOCOL);
+        await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
+
+        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).setReservoir(bob.address))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).setMZUSD(bob.address))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).setFees(1, bob.address, 1, carol.address))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(
+            vault
+                .connect(deployer)
+                .addTranche({tranche: carol.address, weightBps: 1, enabled: true})
+        )
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).updateTranche(0, 1000, false))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).setBuffer(1n, 1))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+        await expect(vault.connect(deployer).setEpochConfig(60 * 60, true))
+            .to.be.revertedWithCustomError(vault, "CategoryPaused")
+            .withArgs(PauseCategory.ADMIN);
+    });
     it("Fee receiver validation (init + setter)", async () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
 
         await expect(
             upgrades.deployProxy(
                 VaultFactory,
-                [reservoir.target, accessManager.target, 0, ethers.ZeroAddress, 0, carol.address],
+                [
+                    reservoir.target,
+                    accessManager.target,
+                    pauseManager.target,
+                    0,
+                    ethers.ZeroAddress,
+                    0,
+                    carol.address,
+                ],
                 {
                     kind: "uups",
                     initializer: "initialize",
