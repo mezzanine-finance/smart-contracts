@@ -8,7 +8,7 @@ Smart contract codebase for Mezzanine phase 1. This repo includes core contracts
 - `contracts/ReservoirUSDC.sol` — USDC liquidity buffer.
 - `contracts/MZUSD.sol` — phase 1 protocol token.
 - `contracts/LossManager.sol` — loss allocation across layers.
-- `contracts/access/` — access control and emergency policies.
+- `contracts/pause/` — PauseManager/PauseManaged category-based pauses.
 - `contracts/automation/` — automation/keepers.
 - `test/` — Hardhat tests.
 
@@ -31,4 +31,5 @@ npm test
 - `npm run gen:docs` / `npm run gen:abi` — doc and ABI generation.
 
 ## Integration notes
-See `integration-docs/` for integration references (tranches, subgraph, automation, emergency levels) and additional documentation. 
+See `integration-docs/` for integration references (tranches, subgraph, automation) and additional documentation.
+See `documentation/pause-manager.md` for category-based pause behavior.
