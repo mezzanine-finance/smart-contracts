@@ -400,7 +400,15 @@ describe("Vault Yield Distribution", () => {
         await expect(
             upgrades.deployProxy(
                 VaultFactory,
-                [reservoir.target, accessManager.target, 10_000, bob.address, 1, carol.address],
+                [
+                    reservoir.target,
+                    accessManager.target,
+                    pauseManager.target,
+                    10_000,
+                    bob.address,
+                    1,
+                    carol.address,
+                ],
                 {
                     kind: "uups",
                     initializer: "initialize",
