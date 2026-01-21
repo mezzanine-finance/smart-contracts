@@ -223,9 +223,28 @@ contract MZUSD is
         return (remainingUSDC, windowStartTimestamp);
     }
 
-    /// @notice Pure calculator - converts USDC amount to MZUSD.
-    function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
-        return amountUSDC * SCALE;
+    /// @notice Returns the current redemption window state derived from the cap and window settings.
+    function getRedemptionWindow()
+        external
+        view
+        returns (
+            uint256 capUSDC,
+            uint256 usedUSDC,
+            uint256 remainingUSDC,
+            uint40 windowStart,
+            uint40 windowEnd
+        )
+    {
+        capUSDC = globalRedemptionCapUSDC;
+        (remainingUSDC, windowStart) = getRemainingGlobalRedemptionCap();
+        usedUSDC = capUSDC - remainingUSDC;
+
+        uint32 duration = redemptionWindowDuration;
+        if (duration == 0) {
+            windowEnd = windowStart;
+        } else {
+            windowEnd = windowStart + duration;
+        }
     }
 
     function decimals() public pure override returns (uint8 decimals_) {

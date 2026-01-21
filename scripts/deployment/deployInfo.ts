@@ -18,6 +18,12 @@ export interface DeployInfo {
     upgradeDelaySeconds?: number;
     adminDelaySeconds?: number;
 
+    // fee receivers for Vault (must be non-zero and distinct)
+    performanceFeeReceiver: string;
+    protocolFeeReceiver: string;
+    performanceFeeBps: number;
+    protocolFeeBps: number;
+
     tranche?: {
         id: number;
         unstakeDelayEpochs: number;
@@ -35,6 +41,10 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
         usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC mainnet
         accessManagerAdmin: "0xYourAdminAddressHere",
         mzusdRedemptionCap: "1000000", // 1m USDC per window
+        performanceFeeReceiver: "0xYourPerformanceFeeReceiver",
+        protocolFeeReceiver: "0xYourProtocolFeeReceiver",
+        performanceFeeBps: 0,
+        protocolFeeBps: 0,
         tranche: {
             id: 1,
             unstakeDelayEpochs: 0,
@@ -52,6 +62,10 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
         usdc: "0xYourMockOrUSDCOnSepolia",
         accessManagerAdmin: "0xYourSepoliaAdmin",
         mzusdRedemptionCap: "0",
+        performanceFeeReceiver: "0xYourPerformanceFeeReceiver",
+        protocolFeeReceiver: "0xYourProtocolFeeReceiver",
+        performanceFeeBps: 0,
+        protocolFeeBps: 0,
         tranche: {
             id: 1,
             unstakeDelayEpochs: 0,
@@ -68,6 +82,10 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
         usdc: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
         accessManagerAdmin: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         mzusdRedemptionCap: "1000000",
+        performanceFeeReceiver: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
+        protocolFeeReceiver: "0x1111111111111111111111111111111111111111",
+        performanceFeeBps: 0,
+        protocolFeeBps: 0,
         emergencyEscalate: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         emergencyRelax: "0x92405f3a35f19c8ab4c7892da0250a4ded886e8b",
         relaxDelaySeconds: 2 * 24 * 60 * 60,

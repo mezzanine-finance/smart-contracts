@@ -45,6 +45,8 @@ Legend:
 | `setTrancheOrderAndGroups(address[],uint256[])` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `trancheOrder(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `trancheOrderLength()` | view | yes | external |  | read | L0,L1,L2,L3 |
+| `getTrancheOrder()` | view | yes | external |  | read | L0,L1,L2,L3 |
+| `getTrancheOrderAndGroups()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `unpause()` | nonpayable | yes | external | external restricted | pause | L0,L1,L2 |
 | `upgradeToAndCall(address, bytes)` | payable | no | inherited |  | upgrade | L0,L2,L3 |
 
@@ -60,11 +62,11 @@ Legend:
 | `authority()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `balanceOf(address)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `burn(address, uint256)` | nonpayable | yes | external | external restricted | protocol-flow | L0 |
-| `calculateDeposit(uint256)` | pure | yes | external |  | read | L0,L1,L2,L3 |
 | `calculateWithdrawalAmounts(uint256)` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `decimals()` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `deposit(uint256)` | nonpayable | yes | external | external nonReentrant restricted | user-ingress | L0 |
 | `getRemainingGlobalRedemptionCap()` | view | yes | public |  | read | L0,L1,L2,L3 |
+| `getRedemptionWindow()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `globalRedemptionCapUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `initialize(address, uint256)` | nonpayable | yes | external | external initializer | init | L0 |
 | `isConsumingScheduledOp()` | view | no | inherited |  | read | L0,L1,L2,L3 |
@@ -120,6 +122,7 @@ Legend:
 | `decimals()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `deposit(uint256, address)` | nonpayable | yes | public | restricted whenNotPaused nonReentrant | user-ingress | L0 |
 | `depositLimitEnabled()` | view | no | inherited |  | read | L0,L1,L2,L3 |
+| `getDepositLimitInfo()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `finalizeEpoch(uint256)` | nonpayable | yes | external | external nonReentrant whenNotPaused restricted | protocol-flow | L0,L1 |
 | `finalizedEpochs(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `getEpochInfo(uint256)` | view | yes | external |  | read | L0,L1,L2,L3 |
@@ -161,6 +164,7 @@ Legend:
 | `umbrellaSharesByEpoch(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `unpause()` | nonpayable | yes | external | external restricted | pause | L0,L1,L2 |
 | `unstakeDelayEpochs()` | view | no | inherited |  | read | L0,L1,L2,L3 |
+| `unaccruedYield()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `upgradeToAndCall(address, bytes)` | payable | no | inherited |  | upgrade | L0,L2,L3 |
 | `userSharesByEpoch(address, uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `vault()` | view | no | inherited |  | read | L0,L1,L2,L3 |
@@ -182,16 +186,16 @@ Legend:
 | `authority()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `bufferHighUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `bufferLowUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
+| `getBufferConfig()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `currentEpochId()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `currentIdleUSDC()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `distributeYield(uint256)` | nonpayable | yes | external | external whenNotPaused nonReentrant restricted | protocol-flow | L0 |
 | `epochDuration()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `epochStart()` | view | no | inherited |  | read | L0,L1,L2,L3 |
+| `getEpochConfig()` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `hysteresisBps()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `idleBufferUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `initialize(address, address, address)` | nonpayable | yes | external | external initializer | init | L0 |
-| `insurance()` | view | no | inherited |  | read | L0,L1,L2,L3 |
-| `insuranceBps()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `isConsumingScheduledOp()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `isTranche(address)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `mzusd()` | view | no | inherited |  | read | L0,L1,L2,L3 |
@@ -208,11 +212,11 @@ Legend:
 | `setBuffer(uint256, uint256)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setEpochConfig(uint256, bool)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setFees(uint256, address, uint256, address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
-| `setInsurance(address, uint256)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setMZUSD(address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setReservoir(address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `tranches(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `tranchesLength()` | view | yes | external |  | read | L0,L1,L2,L3 |
+| `getTranches(uint256,uint256)` | view | yes | external |  | read | L0,L1,L2,L3 |
 | `unpause()` | nonpayable | yes | external | external restricted | pause | L0,L1,L2 |
 | `updateTranche(uint256, uint256, bool)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `upgradeToAndCall(address, bytes)` | payable | no | inherited |  | upgrade | L0,L2,L3 |

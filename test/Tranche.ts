@@ -83,7 +83,15 @@ describe("Tranche", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, pauseManager.target],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                carol.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",

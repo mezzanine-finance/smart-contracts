@@ -2,34 +2,15 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
 
-interface IStrategy {
-    function invest(uint256 amount) external returns (bool success);
-    function divest(uint256 amount) external returns (uint256 withdrawn);
-    function harvest() external;
-    function totalAssets() external view returns (uint256 assets);
-}
-
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract ReservoirUSDC is
-    AccessManagedUpgradeable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable,
-    PauseManagedUpgradeable
-{
+contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
     IERC20 public immutable usdc;
-
-    IStrategy[] internal _strategies; // version 2: list of strategies
-    mapping(IStrategy => bool) internal _isStrategy; // version 2: quick check
-    mapping(IStrategy => uint256) internal _strategyCap; // version 2: optional per-strategy cap
-
-    uint256 internal _minKeepInReservoir; // version 2: do not invest below this
 
     event Deposited(address indexed from, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
@@ -50,13 +31,10 @@ contract ReservoirUSDC is
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager);
-        __ReentrancyGuard_init();
     }
 
     /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(
-        uint256 amount
-    ) external nonReentrant restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    function deposit(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(msg.sender, address(this), amount);
         emit Deposited(msg.sender, amount);
@@ -66,7 +44,7 @@ contract ReservoirUSDC is
     function withdraw(
         uint256 amount,
         address to
-    ) external nonReentrant restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 

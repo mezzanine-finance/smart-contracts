@@ -1077,6 +1077,34 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "getDepositLimitInfo",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "enabled",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "limit",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "limitByTvl",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "cap",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
@@ -1691,6 +1719,19 @@
             {
                 "internalType": "uint256",
                 "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "unaccruedYield",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "unaccrued",
                 "type": "uint256"
             }
         ],

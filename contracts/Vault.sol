@@ -52,7 +52,6 @@ contract Vault is
     IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
     IReservoir public reservoir; // address of reservoir contract for idle USDC
 
-    address public insurance; // address of insurance contract for tranche yield insurance allocation
     address public performanceFeeReceiver; // receiver of performance/curators fees
     address public protocolFeeReceiver; // receiver of protocols fees
 
@@ -68,8 +67,6 @@ contract Vault is
     uint64 public currentEpochId; // current epoch ID for yield distribution
 
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
-    //todo discuss is insurance needed?
-    uint16 public insuranceBps; // portion of yield allocated to insurance (bps of total yield)
     uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
 
@@ -84,7 +81,6 @@ contract Vault is
     event YieldDistributed(uint256 usdcUsed, uint256 mintedMZUSD, uint256 epochId);
     event TrancheRegistered(address tranche, uint256 weightBps, bool enabled);
     event TrancheUpdated(uint256 idx, uint256 weightBps, bool enabled);
-    event InsuranceUpdated(address insurance, uint256 bps);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event MZUSDChanged(address newMZUSD);
@@ -104,8 +100,7 @@ contract Vault is
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
-    error ZeroAddressWhileFeeIsOnPerformance();
-    error ZeroAddressWhileFeeIsOnProtocol();
+    error SameFeeReceivers();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -117,20 +112,32 @@ contract Vault is
     /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
     /// @param pauseManager - pause manager address for category-based pauses
+    /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
+    /// @param _performanceFeeReceiver - receiver for performance/curators fees
+    /// @param _protocolFeeBps - protocol fee in bps (can be zero)
+    /// @param _protocolFeeReceiver - receiver for protocol fees
     function initialize(
         address _reservoir,
         address accessManager,
-        address pauseManager
+        address pauseManager,
+        uint16 _performanceFeeBps,
+        address _performanceFeeReceiver,
+        uint16 _protocolFeeBps,
+        address _protocolFeeReceiver
     ) external initializer {
-        if (_reservoir == address(0) || accessManager == address(0)) {
-            revert ZeroAddress();
-        }
+        if (_reservoir == address(0) || accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
         reservoir = IReservoir(_reservoir);
+        _setFees(
+            _performanceFeeBps,
+            _performanceFeeReceiver,
+            _protocolFeeBps,
+            _protocolFeeReceiver
+        );
 
         // aderyn-ignore-next-line(large-numeric-literal)
         idleBufferUSDC = 1_000_000 * 1e6;
@@ -188,7 +195,6 @@ contract Vault is
     /// @dev called once per epoch after yield is reported
     /// @dev fees are minted in MZUSD and sent to fee receivers
     /// @dev yield is allocated to tranches based on their weights and TVL
-    /// @dev portion of yield can be allocated to insurance if configured
     function distributeYield(
         uint256 usdcReported
     ) external nonReentrant restricted whenNotPaused(PauseCategory.PROTOCOL) {
@@ -248,16 +254,12 @@ contract Vault is
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
-        if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
-            revert ZeroAddressWhileFeeIsOnPerformance();
-        if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
-            revert ZeroAddressWhileFeeIsOnProtocol();
-
-        performanceFeeBps = _performanceFeeBps;
-        performanceFeeReceiver = _performanceFeeReceiver;
-        protocolFeeBps = _protocolFeeBps;
-        protocolFeeReceiver = _protocolFeeReceiver;
+        _setFees(
+            _performanceFeeBps,
+            _performanceFeeReceiver,
+            _protocolFeeBps,
+            _protocolFeeReceiver
+        );
 
         emit FeesUpdated(
             performanceFeeBps,
@@ -295,21 +297,6 @@ contract Vault is
         tranches[idx].weightBps = weightBps;
         tranches[idx].enabled = enabled;
         emit TrancheUpdated(idx, weightBps, enabled);
-    }
-
-    /// @notice Update insurance address and bps
-    /// @param _insurance - new insurance address
-    /// @param bps - new insurance bps
-    function setInsurance(
-        address _insurance,
-        uint16 bps
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_insurance == address(0)) revert ZeroAddress();
-        if (_insurance == insurance) revert SameValue();
-        if (bps > BPS) revert TooBigBps();
-        insurance = _insurance;
-        insuranceBps = bps;
-        emit InsuranceUpdated(_insurance, bps);
     }
 
     /// @notice Update idle USDC buffer and hysteresis band
@@ -368,7 +355,79 @@ contract Vault is
         idleUSDC = usdc.balanceOf(address(this));
     }
 
+    function getTranches(
+        uint256 start,
+        uint256 count
+    )
+        external
+        view
+        returns (address[] memory tranche, uint16[] memory weightBps, bool[] memory enabled)
+    {
+        uint256 len = tranches.length;
+        if (start >= len || count == 0) {
+            return (new address[](0), new uint16[](0), new bool[](0));
+        }
+
+        uint256 end = start + count;
+        if (end > len) {
+            end = len;
+        }
+        uint256 size = end - start;
+
+        tranche = new address[](size);
+        weightBps = new uint16[](size);
+        enabled = new bool[](size);
+
+        for (uint256 i; i < size; ++i) {
+            TrancheInfo memory t = tranches[start + i];
+            tranche[i] = t.tranche;
+            weightBps[i] = t.weightBps;
+            enabled[i] = t.enabled;
+        }
+    }
+
+    function getEpochConfig()
+        external
+        view
+        returns (uint64 epochId, uint64 start, uint64 duration)
+    {
+        return (currentEpochId, epochStart, epochDuration);
+    }
+
+    function getBufferConfig()
+        external
+        view
+        returns (uint256 buffer, uint16 hysteresis, uint256 low, uint256 high)
+    {
+        return (idleBufferUSDC, hysteresisBps, bufferLowUSDC, bufferHighUSDC);
+    }
+
     //INTERNAL HELPERS
+    /// @notice Internal function to set fees
+    /// @param _performanceFeeBps - performance/curators fee in bps
+    /// @param _performanceFeeReceiver - receiver for performance/curators fees
+    /// @param _protocolFeeBps - protocol fee in bps
+    /// @param _protocolFeeReceiver - receiver for protocol fees
+    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed BPS
+    /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero and different addresses
+    function _setFees(
+        uint16 _performanceFeeBps,
+        address _performanceFeeReceiver,
+        uint16 _protocolFeeBps,
+        address _protocolFeeReceiver
+    ) internal {
+        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
+        if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
+        if (_performanceFeeReceiver == _protocolFeeReceiver) revert SameFeeReceivers();
+
+        performanceFeeBps = _performanceFeeBps;
+        performanceFeeReceiver = _performanceFeeReceiver;
+        protocolFeeBps = _protocolFeeBps;
+        protocolFeeReceiver = _protocolFeeReceiver;
+    }
+
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
@@ -429,19 +488,7 @@ contract Vault is
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
         uint256 amountForTranches = allocatableMZUSD;
-
-        // handle insurance cut
-        address insurance_ = insurance;
-        uint16 insuranceBps_ = insuranceBps;
         IMZUSD mzusdToken = mzusd;
-
-        if (insurance_ != address(0) && insuranceBps_ > 0) {
-            uint256 cut = (amountForTranches * insuranceBps_) / BPS;
-            if (cut > 0) {
-                mzusdToken.transfer(insurance_, cut);
-                amountForTranches -= cut;
-            }
-        }
 
         uint256 trancheCount = tranches.length;
         uint256 totalScore;

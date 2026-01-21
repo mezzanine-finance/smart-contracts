@@ -107,7 +107,15 @@ describe("MZUSD <-> USDC conversion", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target, pauseManager.target],
+            [
+                reservoir.target,
+                accessManager.target,
+                pauseManager.target,
+                0,
+                bob.address,
+                0,
+                charlie.address,
+            ],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -596,12 +604,6 @@ describe("MZUSD <-> USDC conversion", () => {
 
         expect(remaining).to.equal(capUSDC);
         expect(windowStart).to.equal(BigInt(latestTs));
-
-        // Preview helpers
-
-        // calculateDeposit: 123 USDC -> 123 MZUSD in 18 decimals
-        const previewMint = await mzusd.calculateDeposit(to6(123n));
-        expect(previewMint).to.equal(to18(123n));
 
         // decimals check
         const decimals = await mzusd.decimals();

@@ -147,6 +147,30 @@ contract LossManager is
         length = trancheOrder.length;
     }
 
+    function getTrancheOrder() external view returns (address[] memory order) {
+        uint256 orderLen = trancheOrder.length;
+        order = new address[](orderLen);
+        for (uint256 i = 0; i < orderLen; i++) {
+            order[i] = trancheOrder[i];
+        }
+    }
+
+    function getTrancheOrderAndGroups()
+        external
+        view
+        returns (address[] memory order, uint256[] memory groupIds)
+    {
+        uint256 orderLen = trancheOrder.length;
+        order = new address[](orderLen);
+        groupIds = new uint256[](orderLen);
+
+        for (uint256 i = 0; i < orderLen; i++) {
+            address tranche = trancheOrder[i];
+            order[i] = tranche;
+            groupIds[i] = trancheGroup[tranche];
+        }
+    }
+
     //INTERNAL HELPERS
 
     function _setTrancheOrderAndGroups(address[] memory order, uint256[] memory groupIds) internal {
