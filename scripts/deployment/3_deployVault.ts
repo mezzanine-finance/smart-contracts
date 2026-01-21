@@ -41,6 +41,10 @@ async function main() {
     const deployments = loadDeployments();
 
     const usdcAddress = info.usdc;
+    const performanceFeeReceiver = info.performanceFeeReceiver;
+    const protocolFeeReceiver = info.protocolFeeReceiver;
+    const performanceFeeBps = info.performanceFeeBps;
+    const protocolFeeBps = info.protocolFeeBps;
 
     const accessManagerRecord = getLatestDeployment(deployments, netName, "AccessManager");
     const reservoirRecord = getLatestDeployment(deployments, netName, "ReservoirUSDC");
@@ -58,13 +62,24 @@ async function main() {
     console.log("USDC:", usdcAddress);
     console.log("AccessManager:", accessManagerAddress);
     console.log("ReservoirUSDC:", reservoirAddress);
+    console.log("Performance fee receiver:", performanceFeeReceiver);
+    console.log("Protocol fee receiver:", protocolFeeReceiver);
+    console.log("Performance fee bps:", performanceFeeBps);
+    console.log("Protocol fee bps:", protocolFeeBps);
 
     upgrades.silenceWarnings();
 
     const VaultFactory = await ethers.getContractFactory("Vault", deployer);
     const vault = await upgrades.deployProxy(
         VaultFactory,
-        [reservoirAddress, accessManagerAddress],
+        [
+            reservoirAddress,
+            accessManagerAddress,
+            performanceFeeBps,
+            performanceFeeReceiver,
+            protocolFeeBps,
+            protocolFeeReceiver,
+        ],
         {
             kind: "uups",
             initializer: "initialize",

@@ -112,6 +112,11 @@
     },
     {
         "inputs": [],
+        "name": "SameFeeReceivers",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "SameValue",
         "type": "error"
     },
@@ -164,16 +169,6 @@
     {
         "inputs": [],
         "name": "ZeroAddress",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroAddressWhileFeeIsOnPerformance",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroAddressWhileFeeIsOnProtocol",
         "type": "error"
     },
     {
@@ -818,6 +813,26 @@
             {
                 "internalType": "address",
                 "name": "accessManager",
+                "type": "address"
+            },
+            {
+                "internalType": "uint16",
+                "name": "_performanceFeeBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "address",
+                "name": "_performanceFeeReceiver",
+                "type": "address"
+            },
+            {
+                "internalType": "uint16",
+                "name": "_protocolFeeBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "address",
+                "name": "_protocolFeeReceiver",
                 "type": "address"
             }
         ],

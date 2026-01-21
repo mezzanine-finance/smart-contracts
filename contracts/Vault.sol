@@ -93,8 +93,7 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
-    error ZeroAddressWhileFeeIsOnPerformance();
-    error ZeroAddressWhileFeeIsOnProtocol();
+    error SameFeeReceivers();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -105,15 +104,30 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     /// @notice Initializer
     /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
-    function initialize(address _reservoir, address accessManager) external initializer {
-        if (_reservoir == address(0) || accessManager == address(0)) {
-            revert ZeroAddress();
-        }
+    /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
+    /// @param _performanceFeeReceiver - receiver for performance/curators fees
+    /// @param _protocolFeeBps - protocol fee in bps (can be zero)
+    /// @param _protocolFeeReceiver - receiver for protocol fees
+    function initialize(
+        address _reservoir,
+        address accessManager,
+        uint16 _performanceFeeBps,
+        address _performanceFeeReceiver,
+        uint16 _protocolFeeBps,
+        address _protocolFeeReceiver
+    ) external initializer {
+        if (_reservoir == address(0) || accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __ReentrancyGuard_init();
 
         reservoir = IReservoir(_reservoir);
+        _setFees(
+            _performanceFeeBps,
+            _performanceFeeReceiver,
+            _protocolFeeBps,
+            _protocolFeeReceiver
+        );
 
         // aderyn-ignore-next-line(large-numeric-literal)
         idleBufferUSDC = 1_000_000 * 1e6;
@@ -223,16 +237,12 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted {
-        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
-        if (_performanceFeeBps > 0 && _performanceFeeReceiver == address(0))
-            revert ZeroAddressWhileFeeIsOnPerformance();
-        if (_protocolFeeBps > 0 && _protocolFeeReceiver == address(0))
-            revert ZeroAddressWhileFeeIsOnProtocol();
-
-        performanceFeeBps = _performanceFeeBps;
-        performanceFeeReceiver = _performanceFeeReceiver;
-        protocolFeeBps = _protocolFeeBps;
-        protocolFeeReceiver = _protocolFeeReceiver;
+        _setFees(
+            _performanceFeeBps,
+            _performanceFeeReceiver,
+            _protocolFeeBps,
+            _protocolFeeReceiver
+        );
 
         emit FeesUpdated(
             performanceFeeBps,
@@ -359,6 +369,31 @@ contract Vault is ReentrancyGuardUpgradeable, UUPSUpgradeable, AccessManagedUpgr
     }
 
     //INTERNAL HELPERS
+    /// @notice Internal function to set fees
+    /// @param _performanceFeeBps - performance/curators fee in bps
+    /// @param _performanceFeeReceiver - receiver for performance/curators fees
+    /// @param _protocolFeeBps - protocol fee in bps
+    /// @param _protocolFeeReceiver - receiver for protocol fees
+    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed BPS
+    /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero and different addresses
+    function _setFees(
+        uint16 _performanceFeeBps,
+        address _performanceFeeReceiver,
+        uint16 _protocolFeeBps,
+        address _protocolFeeReceiver
+    ) internal {
+        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
+        if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
+        if (_performanceFeeReceiver == _protocolFeeReceiver) revert SameFeeReceivers();
+
+        performanceFeeBps = _performanceFeeBps;
+        performanceFeeReceiver = _performanceFeeReceiver;
+        protocolFeeBps = _protocolFeeBps;
+        protocolFeeReceiver = _protocolFeeReceiver;
+    }
+
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {

@@ -77,7 +77,7 @@ describe("UmbrellaEpochFinalizer", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target, 0, bob.address, 0, alice.address],
             {
                 kind: "uups",
                 initializer: "initialize",

@@ -75,7 +75,7 @@ describe("Vault Yield Distribution", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [reservoir.target, accessManager.target],
+            [reservoir.target, accessManager.target, 0, bob.address, 0, carol.address],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -242,9 +242,9 @@ describe("Vault Yield Distribution", () => {
         const protBps0 = await vault.protocolFeeBps();
         const protReceiver0 = await vault.protocolFeeReceiver();
         expect(perfBps0).to.equal(0n);
-        expect(perfReceiver0).to.equal(ethers.ZeroAddress);
+        expect(perfReceiver0).to.equal(bob.address);
         expect(protBps0).to.equal(0n);
-        expect(protReceiver0).to.equal(ethers.ZeroAddress);
+        expect(protReceiver0).to.equal(carol.address);
 
         // After setting fees, getter must reflect updates
         await (
@@ -268,6 +268,59 @@ describe("Vault Yield Distribution", () => {
 
         // Length unchanged
         expect(await vault.tranchesLength()).to.equal(3n);
+    });
+
+    it("Fee receiver validation (init + setter)", async () => {
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+
+        await expect(
+            upgrades.deployProxy(
+                VaultFactory,
+                [reservoir.target, accessManager.target, 0, ethers.ZeroAddress, 0, carol.address],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [MAINNET_USDC],
+                }
+            )
+        ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
+
+        await expect(
+            upgrades.deployProxy(
+                VaultFactory,
+                [reservoir.target, accessManager.target, 0, bob.address, 0, bob.address],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [MAINNET_USDC],
+                }
+            )
+        ).to.be.revertedWithCustomError(VaultFactory, "SameFeeReceivers");
+
+        await expect(
+            upgrades.deployProxy(
+                VaultFactory,
+                [reservoir.target, accessManager.target, 10_000, bob.address, 1, carol.address],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [MAINNET_USDC],
+                }
+            )
+        ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");
+
+        await expect(
+            vault.connect(deployer).setFees(0, ethers.ZeroAddress, 0, carol.address)
+        ).to.be.revertedWithCustomError(vault, "ZeroAddress");
+        await expect(
+            vault.connect(deployer).setFees(0, bob.address, 0, ethers.ZeroAddress)
+        ).to.be.revertedWithCustomError(vault, "ZeroAddress");
+        await expect(
+            vault.connect(deployer).setFees(0, bob.address, 0, bob.address)
+        ).to.be.revertedWithCustomError(vault, "SameFeeReceivers");
     });
 
     it("Distributes yield by weight*TVL and sends dust (as yield part) to last tranche", async () => {
@@ -403,7 +456,7 @@ describe("Vault Yield Distribution", () => {
 
         const perfReceiver = bob.address;
         await (
-            await vault.connect(deployer).setFees(10_000, perfReceiver, 0, ethers.ZeroAddress)
+            await vault.connect(deployer).setFees(10_000, perfReceiver, 0, carol.address)
         ).wait();
 
         const usdcReported = 77n; // 0.000077 USDC (still non-zero)
