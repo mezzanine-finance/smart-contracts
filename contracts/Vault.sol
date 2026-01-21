@@ -421,15 +421,12 @@ contract Vault is
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
-        uint256 ts = block.timestamp;
-        if (ts < uint256(epochStart) + epochDuration) revert EpochTooSoon();
+        uint64 ts = uint64(block.timestamp);
+        if (ts < epochStart + epochDuration) revert EpochTooSoon();
 
-        uint64 epochId = currentEpochId + 1;
-        currentEpochId = epochId;
-        epochStart = uint64(ts);
-
-        emit EpochAdvanced(epochId, ts);
-        return epochId;
+        epochStart = ts;
+        newEpochId = ++currentEpochId;
+        emit EpochAdvanced(newEpochId, ts);
     }
 
     /// @notice Mint fees in MZUSD based on minted gross amount
@@ -489,7 +486,7 @@ contract Vault is
         TrancheInfo memory t;
 
         // calculate scores for each tranche and total score
-        for (uint256 i; i < trancheCount; i++) {
+        for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
 
