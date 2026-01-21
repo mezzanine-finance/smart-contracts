@@ -149,7 +149,7 @@ contract LossManager is
     function getTrancheOrder() external view returns (address[] memory order) {
         uint256 orderLen = trancheOrder.length;
         order = new address[](orderLen);
-        for (uint256 i = 0; i < orderLen; i++) {
+        for (uint256 i = 0; i < orderLen; ++i) {
             order[i] = trancheOrder[i];
         }
     }
@@ -163,7 +163,7 @@ contract LossManager is
         order = new address[](orderLen);
         groupIds = new uint256[](orderLen);
 
-        for (uint256 i = 0; i < orderLen; i++) {
+        for (uint256 i = 0; i < orderLen; ++i) {
             address tranche = trancheOrder[i];
             order[i] = tranche;
             groupIds[i] = trancheGroup[tranche];
@@ -176,14 +176,14 @@ contract LossManager is
         _validateTrancheConfig(order, groupIds);
 
         uint256 oldLen = trancheOrder.length;
-        for (uint256 i = 0; i < oldLen; i++) {
+        for (uint256 i = 0; i < oldLen; ++i) {
             trancheGroup[trancheOrder[i]] = 0;
         }
 
         trancheOrder = order;
 
         uint256 orderLen = order.length;
-        for (uint256 i = 0; i < orderLen; i++) {
+        for (uint256 i = 0; i < orderLen; ++i) {
             trancheGroup[order[i]] = groupIds[i];
         }
 
@@ -196,7 +196,7 @@ contract LossManager is
         for (uint256 i = 0; i < orderLen; ) {
             uint256 gid = groupIds[i];
             if (gid == 0) {
-                i++;
+                ++i;
                 continue;
             }
             emit TrancheGroupUpdated(order[i], order[i + 1], gid);
@@ -218,10 +218,10 @@ contract LossManager is
             revert LengthMismatch(orderLen, groupIds.length);
         }
 
-        for (uint256 i = 0; i < orderLen; i++) {
+        for (uint256 i = 0; i < orderLen; ++i) {
             address tranche = order[i];
             if (tranche == address(0)) revert ZeroAddress();
-            for (uint256 j = 0; j < i; j++) {
+            for (uint256 j = 0; j < i; ++j) {
                 if (order[j] == tranche) revert DuplicateTranche(tranche);
             }
         }
@@ -231,14 +231,14 @@ contract LossManager is
         for (uint256 i = 0; i < orderLen; ) {
             uint256 gid = groupIds[i];
             if (gid == 0) {
-                i++;
+                ++i;
                 continue;
             }
 
             if (i + 1 >= orderLen) revert GroupNotContiguous(gid);
             if (groupIds[i + 1] != gid) revert GroupNotContiguous(gid);
 
-            for (uint256 j = 0; j < seenCount; j++) {
+            for (uint256 j = 0; j < seenCount; ++j) {
                 if (seenGroupIds[j] == gid) revert GroupIdAlreadyAssigned(gid);
             }
             seenGroupIds[seenCount++] = gid;
@@ -371,7 +371,7 @@ contract LossManager is
     // @notice creates a copy of the current tranche order for event emission
     function _copyOrder(uint256 orderLen) internal view returns (address[] memory orderCopy) {
         orderCopy = new address[](orderLen);
-        for (uint256 j = 0; j < orderLen; j++) {
+        for (uint256 j = 0; j < orderLen; ++j) {
             orderCopy[j] = trancheOrder[j];
         }
     }

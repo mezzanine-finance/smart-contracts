@@ -429,15 +429,12 @@ contract Vault is
     /// @notice Advance epoch and validate that enough time has passed
     /// @return newEpochId - new epoch ID after advancement
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
-        uint256 ts = block.timestamp;
-        if (ts < uint256(epochStart) + epochDuration) revert EpochTooSoon();
+        uint64 ts = uint64(block.timestamp);
+        if (ts < epochStart + epochDuration) revert EpochTooSoon();
 
-        uint64 epochId = currentEpochId + 1;
-        currentEpochId = epochId;
-        epochStart = uint64(ts);
-
-        emit EpochAdvanced(epochId, ts);
-        return epochId;
+        epochStart = ts;
+        newEpochId = ++currentEpochId;
+        emit EpochAdvanced(newEpochId, ts);
     }
 
     /// @notice Mint fees in MZUSD based on minted gross amount
@@ -485,7 +482,6 @@ contract Vault is
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
-        uint256 amountForTranches = allocatableMZUSD;
         IMZUSD mzusdToken = mzusd;
 
         uint256 trancheCount = tranches.length;
@@ -497,7 +493,7 @@ contract Vault is
         TrancheInfo memory t;
 
         // calculate scores for each tranche and total score
-        for (uint256 i; i < trancheCount; i++) {
+        for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
             if (!t.enabled || t.weightBps == 0) continue;
 
@@ -522,16 +518,16 @@ contract Vault is
             if (score == 0) continue;
 
             t = tranches[i];
-            uint256 part = (amountForTranches * score) / totalScore;
-            if (i == trancheCount - 1 && amountForTranches - allocated != part) {
-                part = amountForTranches - allocated;
+            uint256 part = (allocatableMZUSD * score) / totalScore;
+            if (i == trancheCount - 1 && allocatableMZUSD - allocated != part) {
+                part = allocatableMZUSD - allocated;
             }
             mzusdToken.transfer(t.tranche, part);
             ITranche(t.tranche).notifyYield(part);
             allocated += part;
         }
 
-        return amountForTranches;
+        return allocatableMZUSD;
     }
 
     /// @notice Compute buffer bounds based on idle buffer and hysteresis
