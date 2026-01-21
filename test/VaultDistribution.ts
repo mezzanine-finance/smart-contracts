@@ -145,7 +145,6 @@ describe("Vault Yield Distribution", () => {
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setFeesSel = vault.interface.getFunction("setFees").selector;
-        const setInsuranceSel = vault.interface.getFunction("setInsurance").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
@@ -156,7 +155,6 @@ describe("Vault Yield Distribution", () => {
                 addTrancheSel,
                 updateTrancheSel,
                 setFeesSel,
-                setInsuranceSel,
                 setEpochConfigSel,
             ],
             ADMIN_ROLE
@@ -431,7 +429,7 @@ describe("Vault Yield Distribution", () => {
         await expect(tx).to.emit(vault, "YieldDistributed").withArgs(usdcReported, 0n, epochAfter);
     });
 
-    it("Fees paid, insurance receives cut, dust folds into last tranche", async () => {
+    it("Fees paid, dust folds into last tranche", async () => {
         // TVLs with awkward numbers
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(101n)));
         await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(203n)));
@@ -439,16 +437,13 @@ describe("Vault Yield Distribution", () => {
 
         const perfReceiver = bob.address;
         const protReceiver = carol.address;
-        const insurance = alice.address;
 
         const perfBps = 321n; // 3.21%
         const protBps = 123n; // 1.23%
-        const insBps = 777n; // 7.77%
 
         await (
             await vault.connect(deployer).setFees(perfBps, perfReceiver, protBps, protReceiver)
         ).wait();
-        await (await vault.connect(deployer).setInsurance(insurance, insBps)).wait();
 
         await time.increase(DAY);
 
@@ -460,7 +455,6 @@ describe("Vault Yield Distribution", () => {
 
         const perfBefore = await mzusd.balanceOf(perfReceiver);
         const protBefore = await mzusd.balanceOf(protReceiver);
-        const insBefore = await mzusd.balanceOf(insurance);
 
         const bJ0 = await mzusd.balanceOf(junior.target);
         const bM0 = await mzusd.balanceOf(mezzanine.target);
@@ -476,9 +470,7 @@ describe("Vault Yield Distribution", () => {
         const perfFee = (mintedGross * perfBps) / 10_000n;
         const protFee = (mintedGross * protBps) / 10_000n;
         const allocatable = mintedGross - perfFee - protFee;
-
-        const insCut = (allocatable * insBps) / 10_000n;
-        const amountForTranches = allocatable - insCut;
+        const amountForTranches = allocatable;
 
         const tvlJ = await junior.totalAssets();
         const tvlM = await mezzanine.totalAssets();
@@ -512,10 +504,6 @@ describe("Vault Yield Distribution", () => {
         const protAfter = await mzusd.balanceOf(protReceiver);
         expect(perfAfter - perfBefore).to.equal(perfFee);
         expect(protAfter - protBefore).to.equal(protFee);
-
-        // Insurance receives only the cut
-        const insAfter = await mzusd.balanceOf(insurance);
-        expect(insAfter - insBefore).to.equal(insCut);
 
         // Tranches receive their parts, dust is folded into the last tranche
         const bJ1 = await mzusd.balanceOf(junior.target);

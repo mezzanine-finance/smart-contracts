@@ -196,8 +196,6 @@ Legend:
 | `hysteresisBps()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `idleBufferUSDC()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `initialize(address, address, address)` | nonpayable | yes | external | external initializer | init | L0 |
-| `insurance()` | view | no | inherited |  | read | L0,L1,L2,L3 |
-| `insuranceBps()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `isConsumingScheduledOp()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `isTranche(address)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `mzusd()` | view | no | inherited |  | read | L0,L1,L2,L3 |
@@ -214,7 +212,6 @@ Legend:
 | `setBuffer(uint256, uint256)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setEpochConfig(uint256, bool)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setFees(uint256, address, uint256, address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
-| `setInsurance(address, uint256)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setMZUSD(address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `setReservoir(address)` | nonpayable | yes | external | external restricted | admin-config | L0 |
 | `tranches(uint256)` | view | no | inherited |  | read | L0,L1,L2,L3 |

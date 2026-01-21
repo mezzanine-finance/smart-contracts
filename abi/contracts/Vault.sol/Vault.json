@@ -320,25 +320,6 @@
             {
                 "indexed": false,
                 "internalType": "address",
-                "name": "insurance",
-                "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "bps",
-                "type": "uint256"
-            }
-        ],
-        "name": "InsuranceUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
                 "name": "newMZUSD",
                 "type": "address"
             }
@@ -847,32 +828,6 @@
     },
     {
         "inputs": [],
-        "name": "insurance",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "insuranceBps",
-        "outputs": [
-            {
-                "internalType": "uint16",
-                "name": "",
-                "type": "uint16"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
         "name": "isConsumingScheduledOp",
         "outputs": [
             {
@@ -1074,24 +1029,6 @@
             }
         ],
         "name": "setFees",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_insurance",
-                "type": "address"
-            },
-            {
-                "internalType": "uint16",
-                "name": "bps",
-                "type": "uint16"
-            }
-        ],
-        "name": "setInsurance",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
