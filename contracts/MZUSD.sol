@@ -218,11 +218,6 @@ contract MZUSD is ERC20Upgradeable, UUPSUpgradeable, AccessManagedUpgradeable {
         }
     }
 
-    /// @notice Pure calculator - converts USDC amount to MZUSD.
-    function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
-        return amountUSDC * SCALE;
-    }
-
     function decimals() public pure override returns (uint8 decimals_) {
         decimals_ = MZ_DECIMALS;
     }

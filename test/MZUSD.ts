@@ -509,12 +509,6 @@ describe("MZUSD <-> USDC conversion", () => {
         expect(remaining).to.equal(capUSDC);
         expect(windowStart).to.equal(BigInt(latestTs));
 
-        // Preview helpers
-
-        // calculateDeposit: 123 USDC -> 123 MZUSD in 18 decimals
-        const previewMint = await mzusd.calculateDeposit(to6(123n));
-        expect(previewMint).to.equal(to18(123n));
-
         // decimals check
         const decimals = await mzusd.decimals();
         expect(decimals).to.equal(18);

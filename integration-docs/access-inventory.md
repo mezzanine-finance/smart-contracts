@@ -62,7 +62,6 @@ Legend:
 | `authority()` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `balanceOf(address)` | view | no | inherited |  | read | L0,L1,L2,L3 |
 | `burn(address, uint256)` | nonpayable | yes | external | external restricted | protocol-flow | L0 |
-| `calculateDeposit(uint256)` | pure | yes | external |  | read | L0,L1,L2,L3 |
 | `calculateWithdrawalAmounts(uint256)` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `decimals()` | pure | yes | public |  | read | L0,L1,L2,L3 |
 | `deposit(uint256)` | nonpayable | yes | external | external nonReentrant restricted | user-ingress | L0 |
