@@ -57,10 +57,6 @@ contract Vault is
 
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
 
-    // precomputed buffer bounds
-    uint256 public bufferLowUSDC; // lower bound for idle USDC before pulling from reservoir
-    uint256 public bufferHighUSDC; // upper bound for idle USDC before sending to reservoir
-
     // epochs + config
     uint64 public epochStart; // start timestamp of current epoch
     uint64 public epochDuration; // duration of each epoch in seconds
@@ -145,8 +141,6 @@ contract Vault is
         currentEpochId = 1;
         epochStart = uint64(block.timestamp);
         epochDuration = 1 days;
-
-        _updateBufferBounds();
     }
 
     /// @dev withdraw USDC from vault to specified address
@@ -172,8 +166,7 @@ contract Vault is
     //@dev using for rebalancing USDC between vault and reservoir
     function rebalance() external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         uint256 idle = usdc.balanceOf(address(this));
-        uint256 low = bufferLowUSDC;
-        uint256 high = bufferHighUSDC;
+        (uint256 low, uint256 high) = _bufferBounds();
 
         uint256 sent;
         uint256 pulled;
@@ -309,7 +302,6 @@ contract Vault is
         if (target == 0) revert ZeroAmount();
         idleBufferUSDC = target;
         hysteresisBps = bandBps;
-        _updateBufferBounds();
         emit BufferUpdated(target, bandBps);
     }
 
@@ -398,7 +390,8 @@ contract Vault is
         view
         returns (uint256 buffer, uint16 hysteresis, uint256 low, uint256 high)
     {
-        return (idleBufferUSDC, hysteresisBps, bufferLowUSDC, bufferHighUSDC);
+        (low, high) = _bufferBounds();
+        return (idleBufferUSDC, hysteresisBps, low, high);
     }
 
     //INTERNAL HELPERS
@@ -533,16 +526,13 @@ contract Vault is
         return amountForTranches;
     }
 
-    /// @notice Update buffer bounds based on idle buffer and hysteresis
-    function _updateBufferBounds() internal {
+    /// @notice Compute buffer bounds based on idle buffer and hysteresis
+    function _bufferBounds() internal view returns (uint256 low, uint256 high) {
         uint256 buffer = idleBufferUSDC;
         uint16 bandBps = hysteresisBps;
 
-        uint256 low = (buffer * (BPS - bandBps)) / BPS;
-        uint256 high = (buffer * (BPS + bandBps)) / BPS;
-
-        bufferLowUSDC = low;
-        bufferHighUSDC = high;
+        low = (buffer * (BPS - bandBps)) / BPS;
+        high = (buffer * (BPS + bandBps)) / BPS;
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
