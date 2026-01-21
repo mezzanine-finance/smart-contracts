@@ -474,7 +474,6 @@ contract Vault is
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
-        uint256 amountForTranches = allocatableMZUSD;
         IMZUSD mzusdToken = mzusd;
 
         uint256 trancheCount = tranches.length;
@@ -511,16 +510,16 @@ contract Vault is
             if (score == 0) continue;
 
             t = tranches[i];
-            uint256 part = (amountForTranches * score) / totalScore;
-            if (i == trancheCount - 1 && amountForTranches - allocated != part) {
-                part = amountForTranches - allocated;
+            uint256 part = (allocatableMZUSD * score) / totalScore;
+            if (i == trancheCount - 1 && allocatableMZUSD - allocated != part) {
+                part = allocatableMZUSD - allocated;
             }
             mzusdToken.transfer(t.tranche, part);
             ITranche(t.tranche).notifyYield(part);
             allocated += part;
         }
 
-        return amountForTranches;
+        return allocatableMZUSD;
     }
 
     /// @notice Compute buffer bounds based on idle buffer and hysteresis
