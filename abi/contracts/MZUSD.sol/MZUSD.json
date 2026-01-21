@@ -225,6 +225,11 @@
         "type": "error"
     },
     {
+        "inputs": [],
+        "name": "InvalidRedemptionWindowDuration",
+        "type": "error"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint8",
@@ -414,6 +419,19 @@
                 "type": "uint32"
             }
         ],
+        "name": "RedemptionWindowDurationQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint32",
+                "name": "newDuration",
+                "type": "uint32"
+            }
+        ],
         "name": "RedemptionWindowDurationUpdated",
         "type": "event"
     },
@@ -479,6 +497,32 @@
         ],
         "name": "Withdrawal",
         "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_REDEMPTION_WINDOW_DURATION",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MIN_REDEMPTION_WINDOW_DURATION",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [],
@@ -769,6 +813,19 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "nextRedemptionWindowDuration",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
             }
         ],
         "stateMutability": "view",

@@ -128,11 +128,6 @@
     },
     {
         "inputs": [],
-        "name": "SameFeeReceivers",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "SameValue",
         "type": "error"
     },

@@ -100,7 +100,6 @@ contract Vault is
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
-    error SameFeeReceivers();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -420,8 +419,6 @@ contract Vault is
         if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
             revert ZeroAddress();
         }
-        if (_performanceFeeReceiver == _protocolFeeReceiver) revert SameFeeReceivers();
-
         performanceFeeBps = _performanceFeeBps;
         performanceFeeReceiver = _performanceFeeReceiver;
         protocolFeeBps = _protocolFeeBps;
