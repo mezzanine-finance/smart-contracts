@@ -276,7 +276,7 @@ contract Tranche is
     }
 
     // EPOCH FINALIZATION
-    /// @notice Finalize an epoch after it has passed on the vault.
+    /// @notice Finalize an epoch after it has passed on the vault if there are umbrella shares to process.
     /// @dev Burns umbrella shares for the epoch and records finalized data for user claims.
     /// @param epochId The epoch to finalize.
     function finalizeEpoch(

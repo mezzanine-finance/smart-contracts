@@ -317,6 +317,29 @@ describe("Tranche", () => {
             expect(limitByTvl).to.equal(0n);
             expect(limit).to.equal(0n);
         });
+
+        it("Handles 1-wei MZUSD deposit and umbrella withdrawal", async () => {
+            const vaultSigner = await imp(vault.target as string);
+            await (await mzusd.connect(vaultSigner).mint(alice.address, 1n)).wait();
+
+            await mzusd.connect(alice).approve(tranche.target, 1n);
+            await (await tranche.connect(alice).deposit(1n, alice.address)).wait();
+
+            expect(await tranche.balanceOf(alice.address)).to.equal(1n);
+
+            const epochId = await vault.currentEpochId();
+            await (await tranche.connect(alice).requestWithdrawal(1n)).wait();
+
+            await time.increase(24 * 60 * 60);
+            await (await vault.connect(deployer).advanceEpoch()).wait();
+
+            await (await tranche.connect(deployer).finalizeEpoch(epochId)).wait();
+
+            const before = await mzusd.balanceOf(alice.address);
+            await (await tranche.connect(alice).claim(epochId)).wait();
+            const after = await mzusd.balanceOf(alice.address);
+            expect(after - before).to.equal(1n);
+        });
     });
     describe("Pause guards", () => {
         it("Pauses deposits via PauseManager", async () => {
@@ -462,6 +485,7 @@ describe("Tranche", () => {
             expect(await directTranche.balanceOf(alice.address)).to.equal(0n);
             expect(await mzusd.balanceOf(alice.address)).to.equal(mintedMZ);
             expect(await mzusd.balanceOf(directTranche.target)).to.equal(0n);
+            expect(await directTranche.totalSupply()).to.equal(0n);
 
             const epochId = await vault.currentEpochId();
             expect(await directTranche.umbrellaSharesByEpoch(epochId)).to.equal(0n);
@@ -508,6 +532,50 @@ describe("Tranche", () => {
                     .redeem(remainingShares, alice.address, alice.address)
             ).wait();
 
+            expect(await directTranche.totalSupply()).to.equal(0n);
+        });
+
+        it("Direct mode: supports 1-wei withdraw and redeem", async () => {
+            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+            const directTranche = (await upgrades.deployProxy(
+                TrancheFactory,
+                [
+                    mzusd.target,
+                    vault.target,
+                    2,
+                    0,
+                    "Direct Tranche",
+                    "dMZUSD",
+                    accessManager.target,
+                    pauseManager.target,
+                ],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [true],
+                }
+            )) as unknown as Tranche;
+
+            const vaultSigner = await imp(vault.target as string);
+            await (await mzusd.connect(vaultSigner).mint(alice.address, 1n)).wait();
+
+            await mzusd.connect(alice).approve(directTranche.target, 1n);
+            await (await directTranche.connect(alice).deposit(1n, alice.address)).wait();
+            expect(await directTranche.balanceOf(alice.address)).to.equal(1n);
+
+            await (
+                await directTranche.connect(alice).withdraw(1n, alice.address, alice.address)
+            ).wait();
+            expect(await directTranche.balanceOf(alice.address)).to.equal(0n);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(1n);
+            expect(await mzusd.balanceOf(directTranche.target)).to.equal(0n);
+
+            await mzusd.connect(alice).approve(directTranche.target, 1n);
+            await (await directTranche.connect(alice).deposit(1n, alice.address)).wait();
+            await (
+                await directTranche.connect(alice).redeem(1n, alice.address, alice.address)
+            ).wait();
             expect(await directTranche.totalSupply()).to.equal(0n);
         });
     });
@@ -598,7 +666,6 @@ describe("Tranche", () => {
                     : expectedMidPrice - priceMid;
 
             expect(priceDiff).to.be.lte(1n);
-            // expect(priceMid).to.equal(expectedMidPrice);
 
             // 4) Bob comes in the middle of the stream: deposits MZUSD at the already increased price
             const bobUSDCDeposit = to6(100n);
@@ -787,6 +854,17 @@ describe("Tranche", () => {
 
             expect(pendingSharesAfter).to.equal(0n);
             expect(claimableAfter).to.equal(0n);
+        });
+        it("Does not allow transferring shares held under umbrella", async () => {
+            const {shares} = await mintAndDepositIntoTranche(alice, to6(10n), alice.address);
+
+            const epochAtRequest = await vault.currentEpochId();
+            await (await tranche.connect(alice).requestWithdrawal(shares)).wait();
+
+            expect(await tranche.balanceOf(alice.address)).to.equal(0n);
+            expect(await tranche.userSharesByEpoch(alice.address, epochAtRequest)).to.equal(shares);
+
+            await expect(tranche.connect(alice).transfer(bob.address, 1n)).to.be.reverted;
         });
         it("Handles umbrella unstake (finalize + claim for multiple users with awkward numbers)", async () => {
             const DAY = 24 * 60 * 60;
@@ -1100,6 +1178,37 @@ describe("Tranche", () => {
             const bobWalletShares = await tranche.balanceOf(bob.address);
             expect(aliceWalletShares).to.equal(aCancel1 + aCancel2);
             expect(bobWalletShares).to.be.gt(0n);
+        });
+        it("Finalizes newer epoch before older one without losing pending shares", async () => {
+            const DAY = 24 * 60 * 60;
+
+            const {shares: aShares} = await mintAndDepositIntoTranche(
+                alice,
+                to6(50n),
+                alice.address
+            );
+            const epoch1 = await vault.currentEpochId();
+            await (await tranche.connect(alice).requestWithdrawal(aShares)).wait();
+
+            await time.increase(DAY);
+            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+
+            const {shares: bShares} = await mintAndDepositIntoTranche(bob, to6(30n), bob.address);
+            const epoch2 = await vault.currentEpochId();
+            await (await tranche.connect(bob).requestWithdrawal(bShares)).wait();
+
+            await time.increase(DAY);
+            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+
+            await (await tranche.connect(deployer).finalizeEpoch(epoch2)).wait();
+
+            expect(await tranche.umbrellaSharesByEpoch(epoch1)).to.equal(aShares);
+            const [, finalized2] = await tranche.getEpochInfo(epoch2);
+            expect(finalized2).to.equal(true);
+
+            await (await tranche.connect(deployer).finalizeEpoch(epoch1)).wait();
+            const [, finalized1] = await tranche.getEpochInfo(epoch1);
+            expect(finalized1).to.equal(true);
         });
         it("Cancel unstake time and epoch stress", async () => {
             const DAY = 24 * 60 * 60;

@@ -622,6 +622,44 @@ describe("LossManager", () => {
             expect(await senior.totalAssets()).to.be.gt(0n);
         });
 
+        it("Applies loss while shares are pending under umbrella", async () => {
+            const depositMZ = await mintMZUSDFor(alice, to6(100n));
+            await depositMZIntoTranche(alice, junior, depositMZ);
+
+            const epochId = await vault.currentEpochId();
+            await (await junior.connect(alice).requestWithdrawal(depositMZ)).wait();
+
+            await time.increase(DAY);
+            const epochBefore = await vault.currentEpochId();
+            await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
+            const epochAfter = await vault.currentEpochId();
+            expect(epochAfter).to.equal(epochBefore + 1n);
+
+            const expectedRemaining = to18(100n) - to18(40n);
+            expect(await junior.totalAssets()).to.equal(expectedRemaining);
+
+            await (await junior.connect(deployer).finalizeEpoch(epochId)).wait();
+            const [, , totalShares, totalAssets] = await junior.getEpochInfo(epochId);
+            expect(totalShares).to.equal(depositMZ);
+            expect(totalAssets).to.equal(expectedRemaining);
+
+            const before = await mzusd.balanceOf(alice.address);
+            await (await junior.connect(alice).claim(epochId)).wait();
+            const after = await mzusd.balanceOf(alice.address);
+            expect(after - before).to.equal(expectedRemaining);
+        });
+
+        it("Reverts when applyLoss is called twice within the same epoch", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+
+            await time.increase(DAY);
+            await (await lossManager.connect(deployer).applyLoss(to6(1n))).wait();
+
+            await expect(
+                lossManager.connect(deployer).applyLoss(to6(1n))
+            ).to.be.revertedWithCustomError(vault, "EpochTooSoon");
+        });
+
         it("Revert InsufficientCover if total cover is not enough", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
             await time.increase(DAY);

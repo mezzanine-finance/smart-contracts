@@ -395,6 +395,12 @@ contract Vault is
         idleUSDC = usdc.balanceOf(address(this));
     }
 
+    /// @notice Get tranche info in paginated manner.
+    /// @param start The starting tranche index.
+    /// @param count The number of tranches to return.
+    /// @return tranche The tranche addresses.
+    /// @return weights The tranche weights (bps).
+    /// @return enabled The tranche enabled flags.
     function getTranches(
         uint256 start,
         uint256 count

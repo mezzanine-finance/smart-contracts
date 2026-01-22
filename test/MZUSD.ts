@@ -262,6 +262,7 @@ describe("MZUSD <-> USDC conversion", () => {
             const aliceUSDCBefore = await usdc.balanceOf(alice.address);
             const vaultUSDCBefore = await usdc.balanceOf(vault.target);
             const aliceMZBefore = await mzusd.balanceOf(alice.address);
+            const supplyBefore = await mzusd.totalSupply();
 
             expect(aliceUSDCBefore).to.equal(depositAmountUSDC);
             expect(aliceMZBefore).to.equal(0n);
@@ -278,6 +279,7 @@ describe("MZUSD <-> USDC conversion", () => {
             const aliceUSDCAfter = await usdc.balanceOf(alice.address);
             const vaultUSDCAfter = await usdc.balanceOf(vault.target);
             const aliceMZAfter = await mzusd.balanceOf(alice.address);
+            const supplyAfter = await mzusd.totalSupply();
 
             // Alice's USDC were spent
             expect(aliceUSDCAfter).to.equal(0n);
@@ -287,6 +289,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
             // Alice received MZUSD 1:1 to USDC in 18 decimals.
             expect(aliceMZAfter - aliceMZBefore).to.equal(expectedMZAmount);
+            expect(supplyAfter - supplyBefore).to.equal(expectedMZAmount);
         });
 
         it("Should burn MZUSD and withdraw USDC back to the user", async () => {
@@ -313,10 +316,12 @@ describe("MZUSD <-> USDC conversion", () => {
             const aliceUSDCAfterDeposit = await usdc.balanceOf(alice.address);
             const aliceMZAfterDeposit = await mzusd.balanceOf(alice.address);
             const vaultUSDCAfterDeposit = await usdc.balanceOf(vault.target);
+            const supplyAfterDeposit = await mzusd.totalSupply();
 
             expect(aliceUSDCAfterDeposit).to.equal(0n);
             expect(aliceMZAfterDeposit).to.equal(expectedMZAmount);
             expect(vaultUSDCAfterDeposit - vaultUSDCBefore).to.equal(depositAmountUSDC);
+            expect(supplyAfterDeposit).to.equal(expectedMZAmount);
 
             await expect(mzusd.connect(alice).requestWithdrawal(0n))
                 .to.be.revertedWithCustomError(mzusd, "TooSmallWithdrawalAmount")
@@ -337,13 +342,35 @@ describe("MZUSD <-> USDC conversion", () => {
             const aliceUSDCAfterWithdraw = await usdc.balanceOf(alice.address);
             const aliceMZAfterWithdraw = await mzusd.balanceOf(alice.address);
             const vaultUSDCAfterWithdraw = await usdc.balanceOf(vault.target);
+            const supplyAfterWithdraw = await mzusd.totalSupply();
 
             // Alice got her USDC back and burned all MZUSD
             expect(aliceMZAfterWithdraw).to.equal(0n);
             expect(aliceUSDCAfterWithdraw).to.equal(depositAmountUSDC);
+            expect(supplyAfterWithdraw).to.equal(0n);
 
             // Vault lost exactly the withdrawn amount
             expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(depositAmountUSDC);
+        });
+
+        it("Direct USDC transfer to MZUSD does not affect deposits or withdrawals", async () => {
+            const strayUSDC = to6(12n);
+            await usdc.connect(whale).transfer(mzusd.target, strayUSDC);
+            const mzUsdcBefore = await usdc.balanceOf(mzusd.target);
+            expect(mzUsdcBefore).to.equal(strayUSDC);
+
+            const depositAmountUSDC = to6(25n);
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            const aliceMZ = await mzusd.balanceOf(alice.address);
+            await (await mzusd.connect(alice).requestWithdrawal(aliceMZ)).wait();
+
+            const aliceUSDC = await usdc.balanceOf(alice.address);
+            expect(aliceUSDC).to.equal(depositAmountUSDC);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
+
+            const mzUsdcAfter = await usdc.balanceOf(mzusd.target);
+            expect(mzUsdcAfter).to.equal(mzUsdcBefore);
         });
 
         it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {

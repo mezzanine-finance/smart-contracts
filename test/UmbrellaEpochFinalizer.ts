@@ -237,6 +237,21 @@ describe("UmbrellaEpochFinalizer", () => {
         return {shares, candidate};
     }
 
+    it("checkUpkeep returns false for epoch 0 when nothing is pending", async () => {
+        const currentEpoch = await vault.currentEpochId();
+        expect(currentEpoch).to.equal(1n);
+
+        const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
+        const finalizer = (await Finalizer.deploy(
+            tranche.target
+        )) as unknown as UmbrellaEpochFinalizer;
+        await finalizer.waitForDeployment();
+
+        const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+        expect(performData).to.equal("0x");
+    });
+
     it("checkUpkeep returns false when there is no work", async () => {
         await mintAndDepositIntoTranche(alice, to6(1n));
         await advanceEpoch();
