@@ -569,6 +569,33 @@ describe("Vault Yield Distribution", () => {
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
 
+        it("Long pause still allows only one distribution per epoch", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+
+            const epochBefore = await vault.currentEpochId();
+            const startBefore = await vault.epochStart();
+            const duration = BigInt(await vault.epochDuration());
+
+            await time.increase(duration * 3n + 5n);
+
+            const tx = await vault.connect(deployer).distributeYield(to6(1n));
+            const receipt = await tx.wait();
+            const block = await ethers.provider.getBlock(receipt!.blockNumber);
+            const startAfter = await vault.epochStart();
+
+            expect(startAfter).to.equal(BigInt(block!.timestamp));
+            expect(startAfter).to.be.greaterThanOrEqual(startBefore + duration * 3n);
+            expect(await vault.currentEpochId()).to.equal(epochBefore + 1n);
+
+            await expect(
+                vault.connect(deployer).distributeYield(to6(1n))
+            ).to.be.revertedWithCustomError(vault, "EpochTooSoon");
+
+            await time.increase(duration);
+            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            expect(await vault.currentEpochId()).to.equal(epochBefore + 2n);
+        });
+
         it("Weight scaling does not change allocation", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
             await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
