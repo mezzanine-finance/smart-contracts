@@ -67,6 +67,9 @@ contract Tranche is
     /// @notice Timestamp when current yield streaming should finish (all yield accrued).
     uint64 public yieldStreamEnd;
 
+    /// @notice Assets reserved for finalized-but-unclaimed umbrella withdrawals.
+    uint256 public reservedAssets;
+
     mapping(uint256 => FinalizedEpoch) public finalizedEpochs;
 
     // umbrella withdrawals
@@ -269,6 +272,7 @@ contract Tranche is
         uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
         userSharesByEpoch[msg.sender][epochId] = 0;
+        reservedAssets -= userAssets;
 
         IERC20(asset()).safeTransfer(msg.sender, userAssets);
 
@@ -300,6 +304,7 @@ contract Tranche is
             isFinalized: true
         });
 
+        reservedAssets += assetsToCredit;
         _burn(address(this), sharesToFinalize);
 
         emit EpochFinalized(epochId, sharesToFinalize, assetsToCredit);
@@ -431,13 +436,14 @@ contract Tranche is
     function totalAssets() public view override returns (uint256 totalAssets_) {
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         uint256 unaccrued = _unaccruedYield();
+        uint256 reserved = reservedAssets;
 
-        if (unaccrued > balance) {
+        if (unaccrued + reserved > balance) {
             // Should not happen if notifyYield is used correctly, but guard against underflow.
             return 0;
         }
 
-        totalAssets_ = balance - unaccrued;
+        totalAssets_ = balance - unaccrued - reserved;
     }
 
     /// @notice Convenience view - price per share using virtual NAV

@@ -724,6 +724,56 @@ describe("Tranche", () => {
         });
     });
     describe("Umbrella withdrawals", () => {
+        it("Finalization should not inflate pricePerShare before claims", async () => {
+            const DAY = 24 * 60 * 60;
+            await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
+
+            const ppsBefore = await tranche.pricePerShare();
+            const epochAtRequest = await vault.currentEpochId();
+
+            await tranche.connect(alice).requestWithdrawal(to18(50n));
+
+            await time.increase(DAY);
+            await vault.connect(deployer).distributeYield(0);
+
+            await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            const ppsAfter = await tranche.pricePerShare();
+            expect(ppsAfter).to.equal(ppsBefore);
+        });
+
+        it("Deposits after finalize should mint at fair PPS", async () => {
+            const DAY = 24 * 60 * 60;
+            await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
+
+            const epochAtRequest = await vault.currentEpochId();
+            await tranche.connect(alice).requestWithdrawal(to18(50n));
+
+            await time.increase(DAY);
+            await vault.connect(deployer).distributeYield(0);
+            await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            const bobSharesBefore = await tranche.balanceOf(bob.address);
+            const {mintedMZ} = await mintAndDepositIntoTranche(bob, to6(10n), bob.address);
+            const bobSharesAfter = await tranche.balanceOf(bob.address);
+
+            expect(bobSharesAfter - bobSharesBefore).to.equal(mintedMZ);
+        });
+
+        it("totalAssets should exclude finalized-but-unclaimed assets", async () => {
+            const DAY = 24 * 60 * 60;
+            await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
+
+            const epochAtRequest = await vault.currentEpochId();
+            await tranche.connect(alice).requestWithdrawal(to18(50n));
+
+            await time.increase(DAY);
+            await vault.connect(deployer).distributeYield(0);
+            await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            expect(await tranche.totalAssets()).to.equal(to18(50n));
+        });
+
         it("Handles umbrella unstake and claim flow", async () => {
             const DAY = 24 * 60 * 60;
 
