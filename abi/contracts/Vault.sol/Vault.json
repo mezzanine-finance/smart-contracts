@@ -311,6 +311,19 @@
                 "type": "uint256"
             }
         ],
+        "name": "EpochDurationQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochDuration",
+                "type": "uint256"
+            }
+        ],
         "name": "EpochDurationSet",
         "type": "event"
     },
@@ -1032,6 +1045,19 @@
     },
     {
         "inputs": [],
+        "name": "pendingEpochDuration",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "performanceFeeBps",
         "outputs": [
             {
@@ -1152,11 +1178,6 @@
                 "internalType": "uint64",
                 "name": "_epochDuration",
                 "type": "uint64"
-            },
-            {
-                "internalType": "bool",
-                "name": "resetStart",
-                "type": "bool"
             }
         ],
         "name": "setEpochConfig",
