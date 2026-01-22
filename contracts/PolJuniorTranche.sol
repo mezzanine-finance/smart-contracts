@@ -28,9 +28,9 @@ contract PolJuniorTranche is
     address public polPayout;
 
     event PolPayoutUpdated(address payout);
-    event PolPayout(uint256 amount);
-    event PolPayoutHookFailed(address indexed payout, uint256 amount);
+    event PolPayoutNotified(uint256 amount);
 
+    error PolPayoutNotSet();
     error ZeroAddress();
     error ZeroYieldPassed();
 
@@ -43,14 +43,14 @@ contract PolJuniorTranche is
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
-    /// @param pauseManager - pause manager address for category-based pauses
+    /// @param _pauseManager - pause manager address for category-based pauses
     /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
         string memory name_,
         string memory symbol_,
         address accessManager,
-        address pauseManager,
+        address _pauseManager,
         address polPayoutAddress
     ) external initializer {
         if (accessManager == address(0) || address(assetToken) == address(0)) revert ZeroAddress();
@@ -59,14 +59,12 @@ contract PolJuniorTranche is
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(_pauseManager);
         __ReentrancyGuard_init();
 
         polPayout = polPayoutAddress;
     }
 
-    /// ERC4626 entry points (role-controlled via AccessManager)
-    /// @dev AccessManager should set these to PUBLIC_ROLE
     function deposit(
         uint256 assets,
         address receiver
@@ -79,6 +77,36 @@ contract PolJuniorTranche is
         address receiver
     ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
         return super.mint(shares, receiver);
+    }
+
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    )
+        public
+        override
+        nonReentrant
+        restricted
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 shares)
+    {
+        return super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    )
+        public
+        override
+        nonReentrant
+        restricted
+        whenNotPaused(PauseCategory.WITHDRAWALS)
+        returns (uint256 assets)
+    {
+        return super.redeem(shares, receiver, owner);
     }
 
     function transfer(
@@ -118,49 +146,18 @@ contract PolJuniorTranche is
         return super.transferFrom(from, to, value);
     }
 
-    // ERC4626 exit points (role-controlled via AccessManager)
-    /// @dev AccessManager should set these to ADMIN_ROLE
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    )
-        public
-        override
-        nonReentrant
-        restricted
-        whenNotPaused(PauseCategory.WITHDRAWALS)
-        returns (uint256 shares)
-    {
-        return super.withdraw(assets, receiver, owner);
-    }
-
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    )
-        public
-        override
-        nonReentrant
-        restricted
-        whenNotPaused(PauseCategory.WITHDRAWALS)
-        returns (uint256 assets)
-    {
-        return super.redeem(shares, receiver, owner);
-    }
-
     /// @notice Vault calls this after transferring yieldAmount of MZUSD to this contract.
-    /// @dev Forwards yield immediately to polPayout and optionally calls a hook on polPayout.
+    /// @dev Forwards yield immediately to polPayout.
     function notifyYield(
         uint256 yieldAmount
     ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
+
         address payout = polPayout;
-        if (payout == address(0)) revert ZeroAddress();
+        if (payout == address(0)) revert PolPayoutNotSet();
 
         IERC20(asset()).safeTransfer(payout, yieldAmount);
-        emit PolPayout(yieldAmount);
+        emit PolPayoutNotified(yieldAmount);
     }
 
     /// @notice Update polPayout address
