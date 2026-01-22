@@ -274,7 +274,7 @@ describe("PolJuniorTranche", () => {
 
     it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
         // Register only POL tranche to make allocation deterministic (100% to POL)
-        await vault.addTranche({tranche: polAddr, weightBps: 10_000, enabled: true});
+        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
 
         // Deposit principal by Alice (PUBLIC deposit should work)
         const alicePrincipal = await mintMZUSDFor(alice, to6(1n));
@@ -315,7 +315,7 @@ describe("PolJuniorTranche", () => {
     });
 
     it("Many users deposit, admin withdraws across owners", async () => {
-        await vault.addTranche({tranche: polAddr, weightBps: 10_000, enabled: true});
+        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
 
         const participants = [alice, ...users.slice(0, 8)];
 
@@ -375,7 +375,7 @@ describe("PolJuniorTranche", () => {
     });
 
     it("Repeated deposit/withdraw roundtrips", async () => {
-        await vault.addTranche({tranche: polAddr, weightBps: 10_000, enabled: true});
+        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
 
         await mintMZUSDFor(alice, to6(200n));
         const startBal = await mzusd.balanceOf(alice.address);

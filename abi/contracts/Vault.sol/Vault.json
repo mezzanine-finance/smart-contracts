@@ -13,17 +13,6 @@
     {
         "inputs": [
             {
-                "internalType": "uint64",
-                "name": "currentVersion",
-                "type": "uint64"
-            }
-        ],
-        "name": "AccessConfigVersionTooLow",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "address",
                 "name": "authority",
                 "type": "address"
@@ -417,7 +406,7 @@
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "weightBps",
+                "name": "weight",
                 "type": "uint256"
             },
             {
@@ -442,7 +431,7 @@
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "weightBps",
+                "name": "weight",
                 "type": "uint256"
             },
             {
@@ -579,12 +568,12 @@
     },
     {
         "inputs": [],
-        "name": "UPGRADE_INTERFACE_VERSION",
+        "name": "TRANCHE_WEIGHT_LIMIT",
         "outputs": [
             {
-                "internalType": "string",
+                "internalType": "uint16",
                 "name": "",
-                "type": "string"
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -592,12 +581,12 @@
     },
     {
         "inputs": [],
-        "name": "accessConfigVersion",
+        "name": "UPGRADE_INTERFACE_VERSION",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "string",
                 "name": "",
-                "type": "uint64"
+                "type": "string"
             }
         ],
         "stateMutability": "view",
@@ -614,7 +603,7 @@
                     },
                     {
                         "internalType": "uint16",
-                        "name": "weightBps",
+                        "name": "weight",
                         "type": "uint16"
                     },
                     {
@@ -657,24 +646,6 @@
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "configurator",
-                "type": "address"
-            },
-            {
-                "internalType": "uint64",
-                "name": "version",
-                "type": "uint64"
-            }
-        ],
-        "name": "configureAccess",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -815,7 +786,7 @@
             },
             {
                 "internalType": "uint16[]",
-                "name": "weightBps",
+                "name": "weights",
                 "type": "uint16[]"
             },
             {
@@ -1159,7 +1130,7 @@
             },
             {
                 "internalType": "uint16",
-                "name": "weightBps",
+                "name": "weight",
                 "type": "uint16"
             },
             {
@@ -1193,7 +1164,7 @@
             },
             {
                 "internalType": "uint16",
-                "name": "weightBps",
+                "name": "weight",
                 "type": "uint16"
             },
             {

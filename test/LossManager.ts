@@ -317,9 +317,9 @@ describe("LossManager", () => {
         // wire and register
         await vault.setMZUSD(mzusdAddr);
 
-        await vault.addTranche({tranche: juniorAddr, weightBps: 2000, enabled: true});
-        await vault.addTranche({tranche: mezzanineAddr, weightBps: 3000, enabled: true});
-        await vault.addTranche({tranche: seniorAddr, weightBps: 5000, enabled: true});
+        await vault.addTranche({tranche: juniorAddr, weight: 2000, enabled: true});
+        await vault.addTranche({tranche: mezzanineAddr, weight: 3000, enabled: true});
+        await vault.addTranche({tranche: seniorAddr, weight: 5000, enabled: true});
 
         snapshot = await takeSnapshot();
     });

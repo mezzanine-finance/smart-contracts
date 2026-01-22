@@ -114,7 +114,7 @@ async function main() {
     console.log("\nRegistering tranche in Vault...");
     const txAdd = await vault.addTranche({
         tranche: proxyAddress,
-        weightBps: trancheInfo.weightBps,
+        weight: trancheInfo.weight,
         enabled: trancheInfo.enabled,
     });
     await txAdd.wait();

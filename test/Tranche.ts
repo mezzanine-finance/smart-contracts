@@ -166,7 +166,7 @@ describe("Tranche", () => {
 
         await vault.addTranche({
             tranche: tranche.target,
-            weightBps: 10_000,
+            weight: 10_000,
             enabled: true,
         });
 

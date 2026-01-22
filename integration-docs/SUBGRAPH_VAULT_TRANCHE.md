@@ -21,7 +21,7 @@ Labeling can be derived from on-chain metadata:
 - Optionally use `Tranche.trancheId()` and `isPolJunior()` as extra identifiers.
 
 If you still need to validate against Vault config, you can query:
-- `Vault.tranches(idx)` -> `(tranche, weightBps, enabled)`
+- `Vault.tranches(idx)` -> `(tranche, weight, enabled)`
 - Events: `TrancheRegistered`, `TrancheUpdated`
 
 ## Units and scaling
@@ -35,8 +35,8 @@ All tranche-level metrics (TVL, share price, yield amounts) are in MZUSD (18 dec
 ## Key events to index
 
 Vault (`Vault.sol`):
-- `TrancheRegisterzed(tranche, weightBps, enabled)`
-- `TrancheUpdated(idx, weightBps, enabled)`
+- `TrancheRegisterzed(tranche, weight, enabled)`
+- `TrancheUpdated(idx, weight, enabled)`
 - `YieldDistributed(usdcUsed, mintedMZUSD, epochId)`
 - `EpochAdvanced(epochId, startTs)`
 - `EpochDurationSet(epochDuration)`
@@ -150,7 +150,7 @@ Tranche:
 - `Vault`
   - `id`, `currentEpochId`, `epochDuration`
 - `Tranche`
-  - `id`, `vault`, `trancheId`, `name`, `symbol`, `weightBps`, `enabled`, `isPolJunior`
+  - `id`, `vault`, `trancheId`, `name`, `symbol`, `weight`, `enabled`, `isPolJunior`
 - `TrancheSnapshot`
   - `tranche`, `timestamp`, `tvl`, `sharePrice`, `apr`
 - `TrancheYield`

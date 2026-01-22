@@ -33,12 +33,15 @@ contract Vault is
     /// @notice Info for each registered tranche
     struct TrancheInfo {
         address tranche;
-        uint16 weightBps;
+        uint16 weight;
         bool enabled;
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
     uint16 public constant BPS = 10_000;
+    // Max allowed tranche weight (relative, not bps).
+    // aderyn-ignore-next-line(large-numeric-literal)
+    uint16 public constant TRANCHE_WEIGHT_LIMIT = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
@@ -75,8 +78,8 @@ contract Vault is
     event FeesPaid(uint256 performanceMZUSD, uint256 protocolMZUSD, uint256 epochId);
     event Rebalanced(uint256 sent, uint256 pulled, uint256 idleAfter);
     event YieldDistributed(uint256 usdcUsed, uint256 mintedMZUSD, uint256 epochId);
-    event TrancheRegistered(address tranche, uint256 weightBps, bool enabled);
-    event TrancheUpdated(uint256 idx, uint256 weightBps, bool enabled);
+    event TrancheRegistered(address tranche, uint256 weight, bool enabled);
+    event TrancheUpdated(uint256 idx, uint256 weight, bool enabled);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event MZUSDChanged(address newMZUSD);
@@ -262,27 +265,27 @@ contract Vault is
         if (info.tranche == address(0)) revert ZeroAddress();
         if (isTranche[info.tranche]) revert TrancheExists();
         if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
-        if (info.weightBps > BPS) revert TooBigBps();
+        if (info.weight > TRANCHE_WEIGHT_LIMIT) revert TooBigBps();
 
-        tranches.push(TrancheInfo(info.tranche, info.weightBps, info.enabled));
+        tranches.push(TrancheInfo(info.tranche, info.weight, info.enabled));
         isTranche[info.tranche] = true;
-        emit TrancheRegistered(info.tranche, info.weightBps, info.enabled);
+        emit TrancheRegistered(info.tranche, info.weight, info.enabled);
     }
 
     /// @notice Update tranche info
     /// @param idx - index of tranche in tranches array
-    /// @param weightBps - new weight in bps
+    /// @param weight - new weight for yield allocation
     /// @param enabled - whether tranche is enabled for yield allocation
     function updateTranche(
         uint256 idx,
-        uint16 weightBps,
+        uint16 weight,
         bool enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (idx >= tranches.length) revert TrancheIndexOOB();
-        if (weightBps > BPS) revert TooBigBps();
-        tranches[idx].weightBps = weightBps;
+        if (weight > TRANCHE_WEIGHT_LIMIT) revert TooBigBps();
+        tranches[idx].weight = weight;
         tranches[idx].enabled = enabled;
-        emit TrancheUpdated(idx, weightBps, enabled);
+        emit TrancheUpdated(idx, weight, enabled);
     }
 
     /// @notice Update idle USDC buffer and hysteresis band
@@ -347,7 +350,7 @@ contract Vault is
     )
         external
         view
-        returns (address[] memory tranche, uint16[] memory weightBps, bool[] memory enabled)
+        returns (address[] memory tranche, uint16[] memory weights, bool[] memory enabled)
     {
         uint256 len = tranches.length;
         if (start >= len || count == 0) {
@@ -361,13 +364,13 @@ contract Vault is
         uint256 size = end - start;
 
         tranche = new address[](size);
-        weightBps = new uint16[](size);
+        weights = new uint16[](size);
         enabled = new bool[](size);
 
         for (uint256 i; i < size; ++i) {
             TrancheInfo memory t = tranches[start + i];
             tranche[i] = t.tranche;
-            weightBps[i] = t.weightBps;
+            weights[i] = t.weight;
             enabled[i] = t.enabled;
         }
     }
@@ -473,7 +476,7 @@ contract Vault is
 
         uint256 trancheCount = tranches.length;
         uint256 totalScore;
-        uint256 totalWeightsBps;
+        uint256 totalWeight;
         uint256[] memory scores = new uint256[](trancheCount);
 
         address firstEnabledTranche;
@@ -482,20 +485,20 @@ contract Vault is
         // calculate scores for each tranche and total score
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
-            if (!t.enabled || t.weightBps == 0) continue;
+            if (!t.enabled || t.weight == 0) continue;
 
             if (firstEnabledTranche == address(0)) {
                 firstEnabledTranche = t.tranche;
             }
 
-            // score = weightBps * TVL
-            uint256 score = uint256(t.weightBps) * ITranche(t.tranche).totalAssets();
+            // score = weight * TVL
+            uint256 score = uint256(t.weight) * ITranche(t.tranche).totalAssets();
             scores[i] = score;
             totalScore += score;
-            totalWeightsBps += t.weightBps;
+            totalWeight += t.weight;
         }
 
-        if (totalWeightsBps == 0) revert WeightsZero();
+        if (totalWeight == 0) revert WeightsZero();
         if (totalScore == 0) revert TVLZero();
 
         // allocate yield based on scores

@@ -239,9 +239,9 @@ describe("Vault Yield Distribution", () => {
         // wire and register
         await vault.setMZUSD(mzusd.target);
 
-        await vault.addTranche({tranche: junior.target, weightBps: 2000, enabled: true});
-        await vault.addTranche({tranche: mezzanine.target, weightBps: 3000, enabled: true});
-        await vault.addTranche({tranche: senior.target, weightBps: 5000, enabled: true});
+        await vault.addTranche({tranche: junior.target, weight: 2000, enabled: true});
+        await vault.addTranche({tranche: mezzanine.target, weight: 3000, enabled: true});
+        await vault.addTranche({tranche: senior.target, weight: 5000, enabled: true});
 
         snapshot = await takeSnapshot();
     });
@@ -354,9 +354,7 @@ describe("Vault Yield Distribution", () => {
             .to.be.revertedWithCustomError(vault, "CategoryPaused")
             .withArgs(PauseCategory.ADMIN);
         await expect(
-            vault
-                .connect(deployer)
-                .addTranche({tranche: carol.address, weightBps: 1, enabled: true})
+            vault.connect(deployer).addTranche({tranche: carol.address, weight: 1, enabled: true})
         )
             .to.be.revertedWithCustomError(vault, "CategoryPaused")
             .withArgs(PauseCategory.ADMIN);
@@ -422,6 +420,25 @@ describe("Vault Yield Distribution", () => {
             vault.connect(deployer).setFees(0, bob.address, 0, ethers.ZeroAddress)
         ).to.be.revertedWithCustomError(vault, "ZeroAddress");
         await vault.connect(deployer).setFees(0, bob.address, 0, bob.address);
+    });
+
+    it("Enforces tranche weight limit for add/update", async () => {
+        const limit = await vault.TRANCHE_WEIGHT_LIMIT();
+        const over = limit + 1n;
+
+        await expect(
+            vault.connect(deployer).updateTranche(0, over, true)
+        ).to.be.revertedWithCustomError(vault, "TooBigBps");
+        await vault.connect(deployer).updateTranche(0, limit, true);
+
+        await expect(
+            vault
+                .connect(deployer)
+                .addTranche({tranche: alice.address, weight: over, enabled: true})
+        ).to.be.revertedWithCustomError(vault, "TooBigBps");
+        await vault
+            .connect(deployer)
+            .addTranche({tranche: alice.address, weight: limit, enabled: true});
     });
 
     it("Distributes yield by weight*TVL and sends dust (as yield part) to last tranche", async () => {
@@ -496,6 +513,239 @@ describe("Vault Yield Distribution", () => {
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });
 
+    it("Weight scaling does not change allocation", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
+        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(10n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 1, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 2, true)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 3, true)).wait();
+
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(11n);
+
+        const snapshotInner = await takeSnapshot();
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bM0 = await mzusd.balanceOf(mezzanine.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+        await (await vault.connect(deployer).distributeYield(reportedUSDC)).wait();
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bM1 = await mzusd.balanceOf(mezzanine.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+        const partJSmall = bJ1 - bJ0;
+        const partMSmall = bM1 - bM0;
+        const partSSmall = bS1 - bS0;
+
+        await snapshotInner.restore();
+
+        await (await vault.connect(deployer).updateTranche(0, 1000, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 2000, true)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 3000, true)).wait();
+
+        const bJ2 = await mzusd.balanceOf(junior.target);
+        const bM2 = await mzusd.balanceOf(mezzanine.target);
+        const bS2 = await mzusd.balanceOf(senior.target);
+        await (await vault.connect(deployer).distributeYield(reportedUSDC)).wait();
+        const bJ3 = await mzusd.balanceOf(junior.target);
+        const bM3 = await mzusd.balanceOf(mezzanine.target);
+        const bS3 = await mzusd.balanceOf(senior.target);
+        const partJLarge = bJ3 - bJ2;
+        const partMLarge = bM3 - bM2;
+        const partSLarge = bS3 - bS2;
+
+        expect(partJSmall).to.equal(partJLarge);
+        expect(partMSmall).to.equal(partMLarge);
+        expect(partSSmall).to.equal(partSLarge);
+    });
+
+    it("Supports arbitrary weight granularity", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(20n)));
+        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(30n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 10, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 55, true)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 5600, true)).wait();
+
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(13n);
+        const expectedYield = to18(13n);
+        const newEpochId = (await vault.currentEpochId()) + 1n;
+
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bM0 = await mzusd.balanceOf(mezzanine.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const startTs = BigInt(block!.timestamp);
+        const duration = BigInt(await vault.epochDuration());
+        const endTs = startTs + duration;
+
+        const tvlJ = await junior.totalAssets();
+        const tvlM = await mezzanine.totalAssets();
+        const tvlS = await senior.totalAssets();
+
+        const scoreJ = 10n * tvlJ;
+        const scoreM = 55n * tvlM;
+        const scoreS = 5600n * tvlS;
+        const totalScore = scoreJ + scoreM + scoreS;
+
+        const partJ = (expectedYield * scoreJ) / totalScore;
+        const partM = (expectedYield * scoreM) / totalScore;
+        const partS = (expectedYield * scoreS) / totalScore;
+        const dust = expectedYield - (partJ + partM + partS);
+        const partSWithDust = partS + dust;
+
+        await expect(tx)
+            .to.emit(junior, "YieldNotified")
+            .withArgs(newEpochId, partJ, startTs, endTs);
+        await expect(tx)
+            .to.emit(mezzanine, "YieldNotified")
+            .withArgs(newEpochId, partM, startTs, endTs);
+        await expect(tx)
+            .to.emit(senior, "YieldNotified")
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
+
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bM1 = await mzusd.balanceOf(mezzanine.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+
+        expect(bJ1 - bJ0).to.equal(partJ);
+        expect(bM1 - bM0).to.equal(partM);
+        expect(bS1 - bS0).to.equal(partSWithDust);
+
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+    });
+
+    it("Allocates correctly when weights sum above 10k", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(20n)));
+        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(30n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 8000, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 9000, true)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
+
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(19n);
+        const expectedYield = to18(19n);
+        const newEpochId = (await vault.currentEpochId()) + 1n;
+
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bM0 = await mzusd.balanceOf(mezzanine.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const startTs = BigInt(block!.timestamp);
+        const duration = BigInt(await vault.epochDuration());
+        const endTs = startTs + duration;
+
+        const tvlJ = await junior.totalAssets();
+        const tvlM = await mezzanine.totalAssets();
+        const tvlS = await senior.totalAssets();
+
+        const scoreJ = 8000n * tvlJ;
+        const scoreM = 9000n * tvlM;
+        const scoreS = 10_000n * tvlS;
+        const totalScore = scoreJ + scoreM + scoreS;
+
+        const partJ = (expectedYield * scoreJ) / totalScore;
+        const partM = (expectedYield * scoreM) / totalScore;
+        const partS = (expectedYield * scoreS) / totalScore;
+        const dust = expectedYield - (partJ + partM + partS);
+        const partSWithDust = partS + dust;
+
+        await expect(tx)
+            .to.emit(junior, "YieldNotified")
+            .withArgs(newEpochId, partJ, startTs, endTs);
+        await expect(tx)
+            .to.emit(mezzanine, "YieldNotified")
+            .withArgs(newEpochId, partM, startTs, endTs);
+        await expect(tx)
+            .to.emit(senior, "YieldNotified")
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
+
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bM1 = await mzusd.balanceOf(mezzanine.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+
+        expect(bJ1 - bJ0).to.equal(partJ);
+        expect(bM1 - bM0).to.equal(partM);
+        expect(bS1 - bS0).to.equal(partSWithDust);
+
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+    });
+
+    it("Sends dust to the last tranche even if it has the smallest weight", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
+        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(10n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 9999, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 8000, true)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 1, true)).wait();
+
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(13n);
+        const expectedYield = to18(13n);
+        const newEpochId = (await vault.currentEpochId()) + 1n;
+
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bM0 = await mzusd.balanceOf(mezzanine.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const startTs = BigInt(block!.timestamp);
+        const duration = BigInt(await vault.epochDuration());
+        const endTs = startTs + duration;
+
+        const tvlJ = await junior.totalAssets();
+        const tvlM = await mezzanine.totalAssets();
+        const tvlS = await senior.totalAssets();
+
+        const scoreJ = 9999n * tvlJ;
+        const scoreM = 8000n * tvlM;
+        const scoreS = 1n * tvlS;
+        const totalScore = scoreJ + scoreM + scoreS;
+
+        const partJ = (expectedYield * scoreJ) / totalScore;
+        const partM = (expectedYield * scoreM) / totalScore;
+        const partS = (expectedYield * scoreS) / totalScore;
+        const dust = expectedYield - (partJ + partM + partS);
+        const partSWithDust = partS + dust;
+
+        await expect(tx)
+            .to.emit(junior, "YieldNotified")
+            .withArgs(newEpochId, partJ, startTs, endTs);
+        await expect(tx)
+            .to.emit(mezzanine, "YieldNotified")
+            .withArgs(newEpochId, partM, startTs, endTs);
+        await expect(tx)
+            .to.emit(senior, "YieldNotified")
+            .withArgs(newEpochId, partSWithDust, startTs, endTs);
+
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bM1 = await mzusd.balanceOf(mezzanine.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+
+        expect(bJ1 - bJ0).to.equal(partJ);
+        expect(bM1 - bM0).to.equal(partM);
+        expect(bS1 - bS0).to.equal(partSWithDust);
+
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+    });
+
     it("Disabled tranche doesn't receive yield + notifyYield", async () => {
         // equal TVLs to make it easier, but still exact math + dust
         await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(50n)));
@@ -549,6 +799,49 @@ describe("Vault Yield Distribution", () => {
         expect(bM1).to.equal(bM0); // no allocation
         expect(bS1 - bS0).to.equal(partSWithDust);
         expect(bJ1 - bJ0).to.equal(partJ);
+
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+    });
+
+    it("Only enabled non-zero weights participate in allocation", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
+        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(10n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 0, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 4000, false)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 6000, true)).wait();
+
+        await time.increase(DAY);
+
+        const reportedUSDC = to6(7n);
+        const expectedYield = to18(7n);
+        const newEpochId = (await vault.currentEpochId()) + 1n;
+
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bM0 = await mzusd.balanceOf(mezzanine.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const startTs = BigInt(block!.timestamp);
+        const duration = BigInt(await vault.epochDuration());
+        const endTs = startTs + duration;
+
+        await expect(tx).to.not.emit(junior, "YieldNotified");
+        await expect(tx).to.not.emit(mezzanine, "YieldNotified");
+        await expect(tx)
+            .to.emit(senior, "YieldNotified")
+            .withArgs(newEpochId, expectedYield, startTs, endTs);
+
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bM1 = await mzusd.balanceOf(mezzanine.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+
+        expect(bJ1).to.equal(bJ0);
+        expect(bM1).to.equal(bM0);
+        expect(bS1 - bS0).to.equal(expectedYield);
 
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });

@@ -29,7 +29,7 @@ export interface DeployInfo {
         unstakeDelayEpochs: number;
         name: string;
         symbol: string;
-        weightBps: number;
+        weight: number;
         enabled: boolean;
         polJuniorMode: boolean;
         polPayout: string;
@@ -50,7 +50,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             unstakeDelayEpochs: 0,
             name: "Senior Tranche",
             symbol: "sMZUSD",
-            weightBps: 10_000,
+            weight: 10_000,
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
@@ -71,7 +71,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             unstakeDelayEpochs: 0,
             name: "Senior Tranche",
             symbol: "sMZUSD",
-            weightBps: 10_000,
+            weight: 10_000,
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
@@ -96,7 +96,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             unstakeDelayEpochs: 0,
             name: "Senior Tranche",
             symbol: "sMZUSD",
-            weightBps: 10_000,
+            weight: 10_000,
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
