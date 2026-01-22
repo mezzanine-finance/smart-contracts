@@ -370,7 +370,9 @@ contract LossManager is
             uint256 cap1 = tvl1 - burn1;
             uint256 add1 = cap1 < rem ? cap1 : rem;
             burn1 += add1;
+            rem -= add1;
         }
+        if (rem != 0) revert InsufficientCover(rem);
     }
 
     // @notice creates a copy of the current tranche order for event emission
