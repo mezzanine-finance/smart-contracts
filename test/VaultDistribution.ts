@@ -421,15 +421,16 @@ describe("Vault Yield Distribution", () => {
                 )
             ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
 
+            const overMax = (await vault.MAX_TOTAL_FEE_BPS()) + 1n;
             await expect(
                 upgrades.deployProxy(
                     VaultFactory,
                     [
                         accessManager.target,
                         pauseManager.target,
-                        10_000,
+                        overMax,
                         bob.address,
-                        1,
+                        0,
                         carol.address,
                     ],
                     {
@@ -983,61 +984,68 @@ describe("Vault Yield Distribution", () => {
             expect(bS1 - bS0).to.equal(expectedYield);
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
-        it("Epoch advances, fees minted (fees = 100%), and no tranche notify/transfer happens", async () => {
+        it("Epoch advances, fees minted (max 50%), and yield is still allocated", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(1n)));
             await time.increase(DAY);
 
             const perfReceiver = bob.address;
+            const perfBps = 5_000;
             await (
-                await vault.connect(deployer).setFees(10_000, perfReceiver, 0, carol.address)
+                await vault.connect(deployer).setFees(perfBps, perfReceiver, 0, carol.address)
             ).wait();
 
             const usdcReported = 77n; // 0.000077 USDC (still non-zero)
             const expectedGross = usdcReported * 1_000_000_000_000n; // * 1e12 -> 18d MZUSD
+            const expectedFee = expectedGross / 2n;
+            const expectedAlloc = expectedGross - expectedFee;
 
             const epochBefore = await vault.currentEpochId();
             const feeBalBefore = await mzusd.balanceOf(perfReceiver);
+            const juniorBalBefore = await mzusd.balanceOf(junior.target);
 
             const tx = await vault.connect(deployer).distributeYield(usdcReported);
-            await expect(tx).to.not.emit(junior, "YieldNotified");
-            await expect(tx).to.not.emit(mezzanine, "YieldNotified");
-            await expect(tx).to.not.emit(senior, "YieldNotified");
+            await tx.wait();
 
             const epochAfter = await vault.currentEpochId();
             expect(epochAfter).to.equal(epochBefore + 1n);
 
             const feeBalAfter = await mzusd.balanceOf(perfReceiver);
-            expect(feeBalAfter - feeBalBefore).to.equal(expectedGross);
+            expect(feeBalAfter - feeBalBefore).to.equal(expectedFee);
+
+            const juniorBalAfter = await mzusd.balanceOf(junior.target);
+            expect(juniorBalAfter - juniorBalBefore).to.equal(expectedAlloc);
 
             // No allocation mint should remain on Vault
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
-
-            await expect(tx)
-                .to.emit(vault, "YieldDistributed")
-                .withArgs(usdcReported, 0n, epochAfter);
         });
 
         it("Fees can be paid to the same receiver for both fee types", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(1n)));
             await time.increase(DAY);
 
             const receiver = bob.address;
-            const perfBps = 4000;
-            const protBps = 6000; // total 100%
+            const perfBps = 2000;
+            const protBps = 3000; // total 50%
             await (
                 await vault.connect(deployer).setFees(perfBps, receiver, protBps, receiver)
             ).wait();
 
             const usdcReported = 55n;
             const expectedGross = usdcReported * 1_000_000_000_000n; // * 1e12 -> 18d MZUSD
+            const expectedFee = (expectedGross * BigInt(perfBps + protBps)) / 10_000n;
+            const expectedAlloc = expectedGross - expectedFee;
 
             const feeBalBefore = await mzusd.balanceOf(receiver);
+            const juniorBalBefore = await mzusd.balanceOf(junior.target);
 
             const tx = await vault.connect(deployer).distributeYield(usdcReported);
-            await expect(tx).to.not.emit(junior, "YieldNotified");
-            await expect(tx).to.not.emit(mezzanine, "YieldNotified");
-            await expect(tx).to.not.emit(senior, "YieldNotified");
+            await tx.wait();
 
             const feeBalAfter = await mzusd.balanceOf(receiver);
-            expect(feeBalAfter - feeBalBefore).to.equal(expectedGross);
+            expect(feeBalAfter - feeBalBefore).to.equal(expectedFee);
+
+            const juniorBalAfter = await mzusd.balanceOf(junior.target);
+            expect(juniorBalAfter - juniorBalBefore).to.equal(expectedAlloc);
 
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });

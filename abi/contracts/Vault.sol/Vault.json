@@ -613,6 +613,19 @@
     },
     {
         "inputs": [],
+        "name": "MAX_TOTAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "MAX_TRANCHES",
         "outputs": [
             {
