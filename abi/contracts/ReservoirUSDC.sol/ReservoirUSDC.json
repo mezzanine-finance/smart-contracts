@@ -333,11 +333,11 @@
     },
     {
         "inputs": [],
-        "name": "totalAssets",
+        "name": "totalUSDC",
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "balance",
                 "type": "uint256"
             }
         ],

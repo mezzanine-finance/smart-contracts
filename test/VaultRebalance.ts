@@ -146,7 +146,7 @@ describe("Vault <-> Reservoir", () => {
     }
 
     describe("Getters", () => {
-        it("Getters expose buffer bounds and reservoir totalAssets", async () => {
+        it("Getters expose buffer bounds and reservoir totalUSDC", async () => {
             const target = to6(1000n);
             const bandBps = 1000n; // 10%
 
@@ -163,7 +163,7 @@ describe("Vault <-> Reservoir", () => {
             expect(high).to.equal(expectedHigh);
 
             await whaleTransfer(reservoir.target as string, to6(123n));
-            expect(await reservoir.totalAssets()).to.equal(to6(123n));
+            expect(await reservoir.totalUSDC()).to.equal(to6(123n));
         });
     });
 

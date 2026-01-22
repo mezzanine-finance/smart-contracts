@@ -53,9 +53,9 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         emit Withdrawn(to, amount);
     }
 
-    /// @notice helper to see how much USDC is on balance
-    function totalAssets() external view returns (uint256 assets) {
-        assets = usdc.balanceOf(address(this));
+    /// @notice Helper to see how much USDC is on balance
+    function totalUSDC() external view returns (uint256 balance) {
+        balance = usdc.balanceOf(address(this));
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
