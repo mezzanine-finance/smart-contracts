@@ -113,6 +113,7 @@ contract Tranche is
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
+    error ZeroAssetSupply();
 
     /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
     constructor(bool _directWithdrawEnabled) {
@@ -456,23 +457,7 @@ contract Tranche is
         returns (bool enabled, uint256 limit, uint256 limitByTvl, uint256 cap)
     {
         enabled = depositLimitEnabled;
-        cap = maxDepositCap;
-
-        if (!enabled) {
-            limit = type(uint256).max;
-            limitByTvl = type(uint256).max;
-            return (enabled, limit, limitByTvl, cap);
-        }
-
-        uint256 totalVaultAssets = totalAssets();
-        limitByTvl = totalVaultAssets == 0
-            ? type(uint256).max
-            : (totalVaultAssets * maxDepositTvlBps) / BASIS_POINTS;
-
-        limit = limitByTvl;
-        if (cap != 0 && cap < limit) {
-            limit = cap;
-        }
+        (limit, limitByTvl, cap) = _computeDepositLimit();
     }
 
     /// @notice Get user's pending shares and claimable assets for a given epoch.
@@ -562,22 +547,48 @@ contract Tranche is
         unaccrued = amount - accrued;
     }
 
+    /// @dev Deposit limits apply only to user deposits/mints; yield streaming via notifyYield
+    /// does not check these limits and can continue even when deposits would revert.
+    // Global deposit limits (cap + % of total supply).
     function _checkDepositLimit(uint256 amount) internal view {
-        if (!depositLimitEnabled) return;
+        (uint256 limit, , ) = _computeDepositLimit();
+        if (amount > limit) revert DepositLimitExceeded(amount, limit);
+    }
 
-        uint256 totalVaultAssets = totalAssets(); // virtual TVL with streaming
-        uint256 limitByTvl = totalVaultAssets == 0
-            ? type(uint256).max
-            : (totalVaultAssets * maxDepositTvlBps) / BASIS_POINTS;
+    function _computeDepositLimit()
+        internal
+        view
+        returns (uint256 limit, uint256 limitByTvl, uint256 cap)
+    {
+        cap = maxDepositCap;
 
-        uint256 finalLimit = limitByTvl;
-        if (maxDepositCap != 0 && maxDepositCap < finalLimit) {
-            finalLimit = maxDepositCap;
+        if (!depositLimitEnabled) {
+            limit = type(uint256).max;
+            limitByTvl = type(uint256).max;
+            return (limit, limitByTvl, cap);
         }
 
-        if (amount > finalLimit) {
-            revert DepositLimitExceeded(amount, finalLimit);
+        uint256 assetTotalSupply = IERC20(asset()).totalSupply();
+        if (assetTotalSupply == 0) revert ZeroAssetSupply();
+
+        uint256 trancheAssets = totalAssets(); // virtual TVL with streaming
+        uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BASIS_POINTS;
+        if (maxTotalByTvl <= trancheAssets) {
+            limitByTvl = 0;
+        } else {
+            limitByTvl = maxTotalByTvl - trancheAssets;
         }
+
+        uint256 limitByCap = type(uint256).max;
+        if (cap != 0) {
+            if (cap <= trancheAssets) {
+                limitByCap = 0;
+            } else {
+                limitByCap = cap - trancheAssets;
+            }
+        }
+
+        limit = limitByTvl < limitByCap ? limitByTvl : limitByCap;
     }
 
     function _setUnstakeDelayEpochs(uint256 epochsDelay) internal {

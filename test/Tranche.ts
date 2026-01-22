@@ -1144,131 +1144,55 @@ describe("Tranche", () => {
         await mintMZUSDFor(bob, to6(300n));
         await mintMZUSDFor(carol, to6(400n));
 
-        // Phase 0: enable limits with BOTH cap and tvlBps active
-        // cap binds when TVL=0; after first deposit TVL-bps should bind
-        const cap0 = to18(60n);
-        const tvlBps0 = 5000n; // 50%
+        const totalSupply0 = await mzusd.totalSupply();
+
+        // Phase 0: enable limits (global caps, not per-tx)
+        const cap0 = 0n; // no cap
+        const tvlBps0 = 4000n; // 40% of total supply
         const txCfg0 = await tranche.connect(deployer).setDepositLimits(true, cap0, tvlBps0);
         await expect(txCfg0).to.emit(tranche, "DepositLimitUpdated").withArgs(true, cap0, tvlBps0);
 
-        // Phase 1: TVL=0, cap is the only meaningful limiter
-        // Alice tries to deposit > cap => revert with exact limit (stable, no streaming)
-        const aliceTooMuch = to18(61n);
-        await mzusd.connect(alice).approve(tranche.target, aliceTooMuch);
-        await expect(tranche.connect(alice).deposit(aliceTooMuch, alice.address))
-            .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-            .withArgs(aliceTooMuch, cap0);
+        const maxTotal0 = (totalSupply0 * tvlBps0) / 10_000n;
 
-        // Alice deposits exactly cap -> OK
-        const aliceExact = cap0;
+        // Alice deposits 200 -> OK
+        const aliceExact = to18(200n);
         await mzusd.connect(alice).approve(tranche.target, aliceExact);
         await (await tranche.connect(alice).deposit(aliceExact, alice.address)).wait();
         expect(await tranche.totalAssets()).to.equal(aliceExact);
 
-        // Phase 2: TVL-bps becomes tighter than cap after TVL > 0
-        // With TVL = 60 and tvlBps = 50%, max per-deposit is 30
-        const limit1 = (aliceExact * tvlBps0) / 10_000n;
-        expect(limit1).to.equal(to18(30n));
+        // Remaining capacity after Alice
+        const limit1 = maxTotal0 - aliceExact;
 
-        // Bob attempts 31 -> revert with exact limit (still stable)
-        const bob31 = to18(31n);
-        await mzusd.connect(bob).approve(tranche.target, bob31);
-        await expect(tranche.connect(bob).deposit(bob31, bob.address))
+        // Bob attempts to exceed remaining capacity -> revert
+        const bob170 = to18(170n);
+        await mzusd.connect(bob).approve(tranche.target, bob170);
+        await expect(tranche.connect(bob).deposit(bob170, bob.address))
             .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-            .withArgs(bob31, limit1);
+            .withArgs(bob170, limit1);
 
-        // Admin tightens TVL-bps mid-flight (this should affect future deposits immediately)
-        const cap2 = cap0;
-        const tvlBps2 = 1000n; // 10%
-        const txCfg2 = await tranche.connect(deployer).setDepositLimits(true, cap2, tvlBps2);
-        await expect(txCfg2).to.emit(tranche, "DepositLimitUpdated").withArgs(true, cap2, tvlBps2);
-
-        // Now TVL = 60 -> limit = 6
-        const limit2 = (aliceExact * tvlBps2) / 10_000n;
-        expect(limit2).to.equal(to18(6n));
-
-        // Bob attempts 7 -> revert
-        const bob7 = to18(7n);
-        await mzusd.connect(bob).approve(tranche.target, bob7);
-        await expect(tranche.connect(bob).deposit(bob7, bob.address))
-            .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-            .withArgs(bob7, limit2);
-
-        // Admin loosens TVL-bps but introduces a smaller cap to bind instead
-        // This checks that finalLimit = min(limitByTvl, cap) is applied
-        const cap3 = to18(20n);
-        const tvlBps3 = 9000n; // 90% -> limitByTvl would be 54, cap binds to 20
+        // Admin sets a tighter global cap to bind instead of TVL-bps
+        const cap3 = to18(250n);
+        const tvlBps3 = tvlBps0;
         const txCfg3 = await tranche.connect(deployer).setDepositLimits(true, cap3, tvlBps3);
         await expect(txCfg3).to.emit(tranche, "DepositLimitUpdated").withArgs(true, cap3, tvlBps3);
 
-        const limit3ByTvl = (aliceExact * tvlBps3) / 10_000n;
-        expect(limit3ByTvl).to.equal(to18(54n));
-        const finalLimit3 = cap3;
+        const capRemaining = cap3 - aliceExact;
 
-        // Bob deposits exactly cap (20) -> OK
-        await mzusd.connect(bob).approve(tranche.target, finalLimit3);
-        await (await tranche.connect(bob).deposit(finalLimit3, bob.address)).wait();
-
-        // Carol attempts cap + 1 (21) -> revert with exact limit (still stable)
-        const carol21 = to18(21n);
-        await mzusd.connect(carol).approve(tranche.target, carol21);
-        await expect(tranche.connect(carol).deposit(carol21, carol.address))
+        const bob60 = to18(60n);
+        await mzusd.connect(bob).approve(tranche.target, bob60);
+        await expect(tranche.connect(bob).deposit(bob60, bob.address))
             .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-            .withArgs(carol21, finalLimit3);
+            .withArgs(bob60, capRemaining);
 
-        // TVL should now be 80 (60 + 20)
-        expect(await tranche.totalAssets()).to.equal(to18(80n));
+        await mzusd.connect(bob).approve(tranche.target, capRemaining);
+        await (await tranche.connect(bob).deposit(capRemaining, bob.address)).wait();
+        expect(await tranche.totalAssets()).to.equal(cap3);
 
-        // Phase 2.5: direct transfer (donation) increases NAV and thus increases TVL-based limit
-        // Anyone can send MZUSD directly to the tranche (without calling deposit),
-        // which increases totalAssets() and can raise the TVL-bps limit for future deposits
-
-        // Switch to pure TVL-bps limiting (no cap) to make the effect obvious.
-        const capDonate = 0n;
-        const tvlBpsDonate = 500n; // 5%
-        const txCfgDonate = await tranche
-            .connect(deployer)
-            .setDepositLimits(true, capDonate, tvlBpsDonate);
-        await expect(txCfgDonate)
-            .to.emit(tranche, "DepositLimitUpdated")
-            .withArgs(true, capDonate, tvlBpsDonate);
-
-        const navBeforeDonate = await tranche.totalAssets();
-        expect(navBeforeDonate).to.equal(to18(80n));
-
-        const limitBeforeDonate = (navBeforeDonate * tvlBpsDonate) / 10_000n;
-        expect(limitBeforeDonate).to.equal(to18(4n)); // 80 * 5% = 4
-
-        // Bob tries to deposit 10 -> should revert because limit is only 4
-        const bob10 = to18(10n);
-        await mzusd.connect(bob).approve(tranche.target, bob10);
-        await expect(tranche.connect(bob).deposit(bob10, bob.address))
+        const carol1 = to18(1n);
+        await mzusd.connect(carol).approve(tranche.target, carol1);
+        await expect(tranche.connect(carol).deposit(carol1, carol.address))
             .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-            .withArgs(bob10, limitBeforeDonate);
-
-        // Mint and donate MZUSD directly to the tranche (bypassing deposit)
-        const vaultSigner = await imp(vault.target as string);
-        const donation = to18(1000n);
-        await (await mzusd.connect(vaultSigner).mint(carol.address, donation)).wait();
-
-        const balTrancheBefore = await mzusd.balanceOf(tranche.target);
-        await (await mzusd.connect(carol).transfer(tranche.target, donation)).wait();
-        const balTrancheAfter = await mzusd.balanceOf(tranche.target);
-        expect(balTrancheAfter).to.equal(balTrancheBefore + donation);
-
-        const navAfterDonate = await tranche.totalAssets();
-        expect(navAfterDonate).to.equal(navBeforeDonate + donation);
-
-        const limitAfterDonate = (navAfterDonate * tvlBpsDonate) / 10_000n;
-        expect(limitAfterDonate).to.equal(to18(54n)); // (80 + 1000) * 5% = 54
-
-        // Now Bob's 10 deposit should pass under the higher TVL-based limit.
-        await mzusd.connect(bob).approve(tranche.target, bob10);
-        await (await tranche.connect(bob).deposit(bob10, bob.address)).wait();
-
-        // NAV is no longer 80, donation + Bob deposit should be reflected in totalAssets
-        const navAfterDonateAndDeposit = await tranche.totalAssets();
-        expect(navAfterDonateAndDeposit).to.equal(navAfterDonate + bob10);
+            .withArgs(carol1, 0n);
 
         // Phase 3: streaming NAV stress (limits should use virtual NAV, not raw balance)
         // Start a yield stream by advancing epoch and distributing yield
@@ -1284,9 +1208,9 @@ describe("Tranche", () => {
         // While stream is active - balance includes full yield, NAV excludes unaccrued part
         expect(nav).to.be.lt(bal);
 
-        // Tighten limits mid-stream to make it very sensitive to NAV (not balance)
+        // Loosen cap and set TVL-bps to allow only small headroom
         const cap4 = 0n; // disable cap so TVL-bps rules
-        const tvlBps4 = 500n; // 5%
+        const tvlBps4 = 3000n; // 30%
         const txCfg4 = await tranche.connect(deployer).setDepositLimits(true, cap4, tvlBps4);
         await expect(txCfg4).to.emit(tranche, "DepositLimitUpdated").withArgs(true, cap4, tvlBps4);
 

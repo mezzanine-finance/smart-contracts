@@ -56,8 +56,13 @@ Optional for UI lists:
 - If `depositLimitEnabled == false`: no limit.
 - Else:
   - `tvl = totalAssets()` (18d)
-  - `limitByTvl = (tvl == 0) ? MAX_UINT : (tvl * maxDepositTvlBps / 10_000)`
-  - `finalLimit = min(limitByTvl, maxDepositCap)` if `maxDepositCap > 0`, otherwise `limitByTvl`.
+  - `supply = asset.totalSupply()` (18d)
+  - If `supply == 0`: deposit will revert with `ZeroAssetSupply`.
+  - `maxTotalByTvl = (supply * maxDepositTvlBps / 10_000)`
+  - `limitByTvl = (maxTotalByTvl <= tvl) ? 0 : (maxTotalByTvl - tvl)`
+  - `limitByCap = (maxDepositCap == 0) ? MAX_UINT : ((maxDepositCap <= tvl) ? 0 : (maxDepositCap - tvl))`
+  - `finalLimit = min(limitByTvl, limitByCap)`
+  - `finalLimit` is remaining capacity (global cap), not a per-transaction limit.
   - If `amount > finalLimit`, deposit will revert.
 
 ### On user input
