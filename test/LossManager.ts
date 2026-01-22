@@ -622,6 +622,52 @@ describe("LossManager", () => {
             expect(await senior.totalAssets()).to.be.gt(0n);
         });
 
+        it("Does not burn finalized umbrella reserves", async () => {
+            await lossManager.setTrancheOrderAndGroups([juniorAddr], [0]);
+
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+
+            const epochAtRequest = await vault.currentEpochId();
+            await junior.connect(alice).requestWithdrawal(to18(60n));
+
+            await time.increase(DAY);
+            await vault.connect(deployer).distributeYield(0);
+
+            await junior.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            await time.increase(DAY);
+            await lossManager.connect(deployer).applyLoss(to6(40n));
+
+            const balBefore = await mzusd.balanceOf(alice.address);
+            await junior.connect(alice).claim(epochAtRequest);
+            const balAfter = await mzusd.balanceOf(alice.address);
+
+            expect(balAfter - balBefore).to.equal(to18(60n));
+        });
+
+        it("Reverts when loss exceeds non-reserved assets", async () => {
+            await lossManager.setTrancheOrderAndGroups([juniorAddr], [0]);
+
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+
+            const epochAtRequest = await vault.currentEpochId();
+            await junior.connect(alice).requestWithdrawal(to18(60n));
+
+            await time.increase(DAY);
+            await vault.connect(deployer).distributeYield(0);
+            await junior.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            await time.increase(DAY);
+            await expect(
+                lossManager.connect(deployer).applyLoss(to6(41n))
+            ).to.be.revertedWithCustomError(lossManager, "InsufficientCover");
+
+            const balBefore = await mzusd.balanceOf(alice.address);
+            await junior.connect(alice).claim(epochAtRequest);
+            const balAfter = await mzusd.balanceOf(alice.address);
+            expect(balAfter - balBefore).to.equal(to18(60n));
+        });
+
         it("Revert InsufficientCover if total cover is not enough", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
             await time.increase(DAY);
