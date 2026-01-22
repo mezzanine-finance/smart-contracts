@@ -44,6 +44,9 @@ Role IDs can be any `uint64`; names below are logical groupings.
   - Restricts `upgradeToAndCall` on UUPS contracts.
   - Recommended: execution delay enforced via AccessManager.
 
+- `RESERVOIR_WITHDRAW_ROLE` (Vault + curators addresses)
+  - Lets Vault and designated protocol operators call `ReservoirUSDC.withdraw`.
+
 ## Role mapping by contract
 ### PauseManager (UUPS)
 - `pauseGlobal`, `pauseContract` → `PAUSER_ROLE`
@@ -77,7 +80,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### ReservoirUSDC (UUPS)
-- `deposit`, `withdraw` → only the configured Vault address
+- `deposit` → not AccessManager-gated (PauseManager only)
+- `withdraw` → `RESERVOIR_WITHDRAW_ROLE` (Vault + curators/strategists)
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### LossManager (UUPS)

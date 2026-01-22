@@ -15,8 +15,8 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-// Role for Vault to call Reservoir.deposit/withdraw
-const VAULT_ROLE = 2n;
+// Role for Vault to call Reservoir.withdraw
+const RESERVOIR_WITHDRAW_ROLE = 2n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
@@ -119,17 +119,16 @@ describe("Vault <-> Reservoir", () => {
             ADMIN_ROLE
         );
 
-        const reservoirDepositSelector = reservoir.interface.getFunction("deposit").selector;
         const reservoirWithdrawSelector = reservoir.interface.getFunction("withdraw").selector;
 
         await accessManager.setTargetFunctionRole(
             reservoir.target,
-            [reservoirDepositSelector, reservoirWithdrawSelector],
-            VAULT_ROLE
+            [reservoirWithdrawSelector],
+            RESERVOIR_WITHDRAW_ROLE
         );
 
         await accessManager.grantRole(
-            VAULT_ROLE,
+            RESERVOIR_WITHDRAW_ROLE,
             vault.target,
             0 // executionDelay
         );
@@ -307,7 +306,7 @@ describe("Vault <-> Reservoir", () => {
 
     describe("Access control", () => {
         it("Pauses protocol operations via PauseManager", async () => {
-            await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+            await accessManager.grantRole(RESERVOIR_WITHDRAW_ROLE, deployer.address, 0);
 
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
             await expect(vault.connect(deployer).rebalance())
