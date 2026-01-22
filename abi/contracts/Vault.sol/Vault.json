@@ -107,6 +107,39 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "actualDecimals",
+                "type": "uint8"
+            }
+        ],
+        "name": "InvalidMZUSDDecimals",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDUSDC",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDVault",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "MZUSDAlreadySet",
         "type": "error"

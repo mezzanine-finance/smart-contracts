@@ -11,6 +11,9 @@ import "./pause/PauseCategory.sol";
 // aderyn-fp-next-line(reused-contract-name)
 interface IMZUSD is IERC20 {
     function mint(address to, uint256 amount) external;
+    function usdc() external view returns (address);
+    function vault() external view returns (address);
+    function decimals() external view returns (uint8);
 }
 // aderyn-fp-next-line(reused-contract-name)
 interface ITranche {
@@ -101,6 +104,9 @@ contract Vault is
     error SameValue();
     error MZUSDAlreadySet();
     error NotMZUSD();
+    error InvalidMZUSDDecimals(uint8 actualDecimals);
+    error InvalidMZUSDUSDC(address actualUSDC);
+    error InvalidMZUSDVault(address actualVault);
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -231,6 +237,12 @@ contract Vault is
     function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
         if (address(mzusd) != address(0)) revert MZUSDAlreadySet();
+        uint8 decimals = IMZUSD(_mzusd).decimals();
+        if (decimals != 18) revert InvalidMZUSDDecimals(decimals);
+        address mzusdUSDC = IMZUSD(_mzusd).usdc();
+        if (mzusdUSDC != address(usdc)) revert InvalidMZUSDUSDC(mzusdUSDC);
+        address mzusdVault = IMZUSD(_mzusd).vault();
+        if (mzusdVault != address(this)) revert InvalidMZUSDVault(mzusdVault);
         mzusd = IMZUSD(_mzusd);
         emit MZUSDChanged(_mzusd);
     }
