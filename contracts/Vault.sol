@@ -73,6 +73,7 @@ contract Vault is
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
     address public lossManager; // canonical loss manager (set once)
     address public navOracle; // canonical NAV automation address
+    uint64 public pendingEpochDuration; // queued duration to apply on next epoch
 
     event FeesUpdated(
         uint256 performanceBps,
@@ -93,6 +94,7 @@ contract Vault is
     event NavOracleUpdated(address newNavOracle);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
+    event EpochDurationQueued(uint256 epochDuration);
 
     error ZeroAmount();
     error NoTranchesAdded();
@@ -353,25 +355,19 @@ contract Vault is
         _rebalance();
     }
 
-    /// @notice Update epoch duration
+    /// @notice Queue epoch duration update for next epoch.
+    /// @dev AccessManager should enforce an execution delay for this method.
     /// @param _epochDuration - new epoch duration in seconds
-    /// @param resetStart - whether to reset epoch start timestamp to now
     function setEpochConfig(
-        uint64 _epochDuration,
-        bool resetStart
+        uint64 _epochDuration
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (
             _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
         ) {
             revert InvalidEpochDuration();
         }
-        epochDuration = _epochDuration;
-        if (resetStart) {
-            uint64 ts = uint64(block.timestamp);
-            epochStart = ts;
-            emit EpochAdvanced(currentEpochId, ts);
-        }
-        emit EpochDurationSet(_epochDuration);
+        pendingEpochDuration = _epochDuration;
+        emit EpochDurationQueued(_epochDuration);
     }
 
     /// @notice Advances the epoch if enough time has passed.
@@ -475,6 +471,13 @@ contract Vault is
         epochStart = ts;
         newEpochId = ++currentEpochId;
         emit EpochAdvanced(newEpochId, ts);
+
+        uint64 queuedDuration = pendingEpochDuration;
+        if (queuedDuration != 0) {
+            epochDuration = queuedDuration;
+            pendingEpochDuration = 0;
+            emit EpochDurationSet(queuedDuration);
+        }
     }
 
     /// @notice Mint fees in MZUSD based on minted gross amount
