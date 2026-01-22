@@ -239,177 +239,221 @@ describe("PolJuniorTranche", () => {
         expect(sumShares).to.equal(supply);
     }
 
-    it("Pauses all guarded PolJuniorTranche functions", async () => {
-        await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+    describe("Pause guards", () => {
+        it("Pauses all guarded PolJuniorTranche functions", async () => {
+            await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
 
-        await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
-        await expect(pol.connect(alice).deposit(1n, alice.address))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.DEPOSITS);
-        await expect(pol.connect(alice).mint(1n, alice.address))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.DEPOSITS);
-        await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
+            await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
+            await expect(pol.connect(alice).deposit(1n, alice.address))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.DEPOSITS);
+            await expect(pol.connect(alice).mint(1n, alice.address))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.DEPOSITS);
+            await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
 
-        await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
-        await expect(pol.connect(alice).transfer(bob.address, 1n))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.TRANSFERS);
-        await expect(pol.connect(alice).approve(bob.address, 1n))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.TRANSFERS);
-        await expect(pol.connect(alice).transferFrom(alice.address, bob.address, 1n))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.TRANSFERS);
-        await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
+            await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
+            await expect(pol.connect(alice).transfer(bob.address, 1n))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.TRANSFERS);
+            await expect(pol.connect(alice).approve(bob.address, 1n))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.TRANSFERS);
+            await expect(pol.connect(alice).transferFrom(alice.address, bob.address, 1n))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.TRANSFERS);
+            await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
 
-        await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
-        await expect(pol.connect(deployer).withdraw(1n, deployer.address, deployer.address))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.WITHDRAWALS);
-        await expect(pol.connect(deployer).redeem(1n, deployer.address, deployer.address))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.WITHDRAWALS);
-        await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
+            await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+            await expect(pol.connect(deployer).withdraw(1n, deployer.address, deployer.address))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.WITHDRAWALS);
+            await expect(pol.connect(deployer).redeem(1n, deployer.address, deployer.address))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.WITHDRAWALS);
+            await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
 
-        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-        await expect(pol.connect(deployer).notifyYield(1n))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
-        await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
+            await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+            await expect(pol.connect(deployer).notifyYield(1n))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.PROTOCOL);
+            await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
 
-        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
-        await expect(pol.connect(deployer).setPolPayout(alice.address))
-            .to.be.revertedWithCustomError(pol, "CategoryPaused")
-            .withArgs(PauseCategory.ADMIN);
+            await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+            await expect(pol.connect(deployer).setPolPayout(alice.address))
+                .to.be.revertedWithCustomError(pol, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
+        });
     });
 
-    it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
-        // Register only POL tranche to make allocation deterministic (100% to POL)
-        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+    describe("Yield forwarding", () => {
+        it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
+            // Register only POL tranche to make allocation deterministic (100% to POL)
+            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
 
-        // Deposit principal by Alice (PUBLIC deposit should work)
-        const alicePrincipal = await mintMZUSDFor(alice, to6(1n));
-        await depositMZInto(alice, pol, alicePrincipal);
+            // Deposit principal by Alice (PUBLIC deposit should work)
+            const alicePrincipal = await mintMZUSDFor(alice, to6(1n));
+            await depositMZInto(alice, pol, alicePrincipal);
 
-        // Deposit principal by Admin (so that admin can later withdraw without allowance issues)
-        const adminPrincipal = await mintMZUSDFor(deployer, to6(100n));
-        await depositMZInto(deployer, pol, adminPrincipal);
+            // Deposit principal by Admin (so that admin can later withdraw without allowance issues)
+            const adminPrincipal = await mintMZUSDFor(deployer, to6(100n));
+            await depositMZInto(deployer, pol, adminPrincipal);
 
-        const withdrawAmt = to18(40n);
-        // Withdraw is restricted to admin: Alice cannot withdraw
-        await expect(pol.connect(alice).withdraw(withdrawAmt, alice.address, alice.address)).to.be
-            .reverted;
+            const withdrawAmt = to18(40n);
+            // Withdraw is restricted to admin: Alice cannot withdraw
+            await expect(pol.connect(alice).withdraw(withdrawAmt, alice.address, alice.address)).to
+                .be.reverted;
 
-        // Admin can withdraw its own position
-        const adminBalBefore = await mzusd.balanceOf(deployer.address);
-        await (
-            await pol.connect(deployer).withdraw(withdrawAmt, deployer.address, deployer.address)
-        ).wait();
-        const adminBalAfter = await mzusd.balanceOf(deployer.address);
-        expect(adminBalAfter - adminBalBefore).to.equal(withdrawAmt);
-
-        // Distribute yield -> should be forwarded to bob (payout)
-        const payoutBefore = await mzusd.balanceOf(bob.address);
-
-        await time.increase(DAY);
-        const reported = to6(20n); // 20 USDC -> 20e18 MZUSD
-        await (await vault.connect(deployer).distributeYield(reported)).wait();
-
-        const payoutAfter = await mzusd.balanceOf(bob.address);
-        expect(payoutAfter - payoutBefore).to.equal(to18(20n));
-
-        // POL tranche should not retain yield, only remaining principal stays
-        const totalPrincipal = alicePrincipal + adminPrincipal;
-        const expectedPrincipalLeft = totalPrincipal - withdrawAmt;
-        expect(await mzusd.balanceOf(polAddr)).to.equal(expectedPrincipalLeft);
-        expect(await pol.totalAssets()).to.equal(expectedPrincipalLeft);
-    });
-
-    it("Many users deposit, admin withdraws across owners", async () => {
-        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
-
-        const participants = [alice, ...users.slice(0, 8)];
-
-        // Deposit varying sizes
-        let totalDeposited = 0n;
-        for (let i = 0; i < participants.length; i++) {
-            const u = participants[i];
-            const usdcAmt = to6(BigInt((i + 1) * 5)); // 5,10,15,... USDC
-            const mzAmt = await mintMZUSDFor(u, usdcAmt);
-            totalDeposited += mzAmt;
-
-            const shares = await depositMZInto(u, pol, mzAmt);
-            expect(shares).to.equal(mzAmt);
-
-            // Let admin operate on behalf of the owner (ERC4626 allowance path)
-            await (await pol.connect(u).approve(deployer.address, shares)).wait();
-        }
-
-        expect(await pol.totalAssets()).to.equal(totalDeposited);
-        await assertPolInvariants(participants);
-
-        // Admin withdraws half from each owner to the owner as receiver
-        let totalWithdrawn = 0n;
-        for (const u of participants) {
-            const sharesBal = await pol.balanceOf(u.address);
-            const assetsToWithdraw = sharesBal / 2n;
-            if (assetsToWithdraw === 0n) continue;
-
-            const mzBefore = await mzusd.balanceOf(u.address);
+            // Admin can withdraw its own position
+            const adminBalBefore = await mzusd.balanceOf(deployer.address);
             await (
-                await pol.connect(deployer).withdraw(assetsToWithdraw, u.address, u.address)
+                await pol
+                    .connect(deployer)
+                    .withdraw(withdrawAmt, deployer.address, deployer.address)
             ).wait();
-            const mzAfter = await mzusd.balanceOf(u.address);
-            expect(mzAfter - mzBefore).to.equal(assetsToWithdraw);
+            const adminBalAfter = await mzusd.balanceOf(deployer.address);
+            expect(adminBalAfter - adminBalBefore).to.equal(withdrawAmt);
 
-            totalWithdrawn += assetsToWithdraw;
-        }
+            // Distribute yield -> should be forwarded to bob (payout)
+            const payoutBefore = await mzusd.balanceOf(bob.address);
 
-        const expectedLeft = totalDeposited - totalWithdrawn;
-        expect(await pol.totalAssets()).to.equal(expectedLeft);
-        await assertPolInvariants(participants);
+            await time.increase(DAY);
+            const reported = to6(20n); // 20 USDC -> 20e18 MZUSD
+            await (await vault.connect(deployer).distributeYield(reported)).wait();
 
-        // Distribute yield multiple times: payout increases, tranche accounting stays on principal only
-        const payoutBefore = await mzusd.balanceOf(bob.address);
-        await time.increase(DAY);
-        await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
+            const payoutAfter = await mzusd.balanceOf(bob.address);
+            expect(payoutAfter - payoutBefore).to.equal(to18(20n));
 
-        // Vault enforces one distribution per epoch window.
-        await time.increase(DAY);
-        await (await vault.connect(deployer).distributeYield(to6(13n))).wait();
-        const payoutAfter = await mzusd.balanceOf(bob.address);
-        expect(payoutAfter - payoutBefore).to.equal(to18(20n));
-
-        // Tranche retains only principal
-        expect(await pol.totalAssets()).to.equal(expectedLeft);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(expectedLeft);
+            // POL tranche should not retain yield, only remaining principal stays
+            const totalPrincipal = alicePrincipal + adminPrincipal;
+            const expectedPrincipalLeft = totalPrincipal - withdrawAmt;
+            expect(await mzusd.balanceOf(polAddr)).to.equal(expectedPrincipalLeft);
+            expect(await pol.totalAssets()).to.equal(expectedPrincipalLeft);
+        });
     });
 
-    it("Repeated deposit/withdraw roundtrips", async () => {
-        await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+    describe("ERC20 and admin flows", () => {
+        it("Mints, transfers, redeems, and updates payout", async () => {
+            const mintUSDC = to6(25n);
+            const minted = await mintMZUSDFor(alice, mintUSDC);
 
-        await mintMZUSDFor(alice, to6(200n));
-        const startBal = await mzusd.balanceOf(alice.address);
+            const shares = to18(10n);
+            const assetsRequired = await pol.previewMint(shares);
+            expect(assetsRequired).to.be.lte(minted);
 
-        // Allow admin to withdraw on behalf of alice for the whole test.
-        await (await pol.connect(alice).approve(deployer.address, ethers.MaxUint256)).wait();
+            await mzusd.connect(alice).approve(polAddr, assetsRequired);
+            await (await pol.connect(alice).mint(shares, alice.address)).wait();
 
-        for (let i = 0; i < 25; i++) {
-            const amt = to18(BigInt((i % 5) + 1)); // 1-5 MZUSD
+            await (await pol.connect(alice).transfer(bob.address, shares / 2n)).wait();
 
-            const aliceBefore = await mzusd.balanceOf(alice.address);
-            const shares = await depositMZInto(alice, pol, amt);
-            expect(shares).to.equal(amt);
+            await (await pol.connect(alice).approve(deployer.address, shares / 2n)).wait();
+            await (
+                await pol.connect(deployer).transferFrom(alice.address, bob.address, shares / 2n)
+            ).wait();
 
-            await (await pol.connect(deployer).withdraw(amt, alice.address, alice.address)).wait();
-            const aliceAfter = await mzusd.balanceOf(alice.address);
-            expect(aliceAfter).to.equal(aliceBefore);
-        }
+            const bobShares = await pol.balanceOf(bob.address);
+            await (await pol.connect(bob).approve(deployer.address, bobShares)).wait();
 
-        expect(await pol.totalAssets()).to.equal(0n);
-        expect(await pol.totalSupply()).to.equal(0n);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
-        expect(await mzusd.balanceOf(alice.address)).to.equal(startBal);
+            const bobBefore = await mzusd.balanceOf(bob.address);
+            await (await pol.connect(deployer).redeem(bobShares, bob.address, bob.address)).wait();
+            const bobAfter = await mzusd.balanceOf(bob.address);
+
+            expect(bobAfter - bobBefore).to.equal(bobShares);
+
+            await expect(pol.connect(deployer).setPolPayout(alice.address))
+                .to.emit(pol, "PolPayoutUpdated")
+                .withArgs(alice.address);
+        });
+    });
+
+    describe("Multi-user flows", () => {
+        it("Many users deposit, admin withdraws across owners", async () => {
+            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+
+            const participants = [alice, ...users.slice(0, 8)];
+
+            // Deposit varying sizes
+            let totalDeposited = 0n;
+            for (let i = 0; i < participants.length; i++) {
+                const u = participants[i];
+                const usdcAmt = to6(BigInt((i + 1) * 5)); // 5,10,15,... USDC
+                const mzAmt = await mintMZUSDFor(u, usdcAmt);
+                totalDeposited += mzAmt;
+
+                const shares = await depositMZInto(u, pol, mzAmt);
+                expect(shares).to.equal(mzAmt);
+
+                // Let admin operate on behalf of the owner (ERC4626 allowance path)
+                await (await pol.connect(u).approve(deployer.address, shares)).wait();
+            }
+
+            expect(await pol.totalAssets()).to.equal(totalDeposited);
+            await assertPolInvariants(participants);
+
+            // Admin withdraws half from each owner to the owner as receiver
+            let totalWithdrawn = 0n;
+            for (const u of participants) {
+                const sharesBal = await pol.balanceOf(u.address);
+                const assetsToWithdraw = sharesBal / 2n;
+                if (assetsToWithdraw === 0n) continue;
+
+                const mzBefore = await mzusd.balanceOf(u.address);
+                await (
+                    await pol.connect(deployer).withdraw(assetsToWithdraw, u.address, u.address)
+                ).wait();
+                const mzAfter = await mzusd.balanceOf(u.address);
+                expect(mzAfter - mzBefore).to.equal(assetsToWithdraw);
+
+                totalWithdrawn += assetsToWithdraw;
+            }
+
+            const expectedLeft = totalDeposited - totalWithdrawn;
+            expect(await pol.totalAssets()).to.equal(expectedLeft);
+            await assertPolInvariants(participants);
+
+            // Distribute yield multiple times: payout increases, tranche accounting stays on principal only
+            const payoutBefore = await mzusd.balanceOf(bob.address);
+            await time.increase(DAY);
+            await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
+
+            // Vault enforces one distribution per epoch window.
+            await time.increase(DAY);
+            await (await vault.connect(deployer).distributeYield(to6(13n))).wait();
+            const payoutAfter = await mzusd.balanceOf(bob.address);
+            expect(payoutAfter - payoutBefore).to.equal(to18(20n));
+
+            // Tranche retains only principal
+            expect(await pol.totalAssets()).to.equal(expectedLeft);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(expectedLeft);
+        });
+
+        it("Repeated deposit/withdraw roundtrips", async () => {
+            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+
+            await mintMZUSDFor(alice, to6(200n));
+            const startBal = await mzusd.balanceOf(alice.address);
+
+            // Allow admin to withdraw on behalf of alice for the whole test.
+            await (await pol.connect(alice).approve(deployer.address, ethers.MaxUint256)).wait();
+
+            for (let i = 0; i < 25; i++) {
+                const amt = to18(BigInt((i % 5) + 1)); // 1-5 MZUSD
+
+                const aliceBefore = await mzusd.balanceOf(alice.address);
+                const shares = await depositMZInto(alice, pol, amt);
+                expect(shares).to.equal(amt);
+
+                await (
+                    await pol.connect(deployer).withdraw(amt, alice.address, alice.address)
+                ).wait();
+                const aliceAfter = await mzusd.balanceOf(alice.address);
+                expect(aliceAfter).to.equal(aliceBefore);
+            }
+
+            expect(await pol.totalAssets()).to.equal(0n);
+            expect(await pol.totalSupply()).to.equal(0n);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(startBal);
+        });
     });
 });

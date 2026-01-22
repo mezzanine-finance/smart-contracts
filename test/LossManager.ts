@@ -371,27 +371,6 @@ describe("LossManager", () => {
         return a < b ? a : b;
     }
 
-    it("Pauses protocol operations via PauseManager", async () => {
-        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-        await expect(lossManager.connect(deployer).applyLoss(1n))
-            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
-    });
-
-    it("Pauses admin operations via PauseManager", async () => {
-        await pauseManager.pauseGlobal(PauseCategory.ADMIN);
-        await expect(
-            lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
-        )
-            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
-            .withArgs(PauseCategory.ADMIN);
-        await expect(lossManager.connect(deployer).setMaxLossPerTxUSDC(1n))
-            .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
-            .withArgs(PauseCategory.ADMIN);
-    });
-
     // Mirrors LossManager pair split logic (floor + remainder to first tranche then second)
     function computePairBurns(lossMZ: bigint, tvl0: bigint, tvl1: bigint) {
         const pairTVL = tvl0 + tvl1;
@@ -422,456 +401,523 @@ describe("LossManager", () => {
         return {burn0, burn1, lossForPair};
     }
 
-    it("Reorder tranches repeatedly (applyLoss always burns correctly in the specified order)", async () => {
-        // Big buffers so we can burn many times
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5000n)));
-        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(5000n)));
-        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(5000n)));
+    describe("Pause guards", () => {
+        it("Pauses protocol operations via PauseManager", async () => {
+            await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+            await expect(lossManager.connect(deployer).applyLoss(1n))
+                .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+                .withArgs(PauseCategory.PROTOCOL);
+        });
 
-        // permutations
-        const perms: string[][] = [
-            [juniorAddr, mezzanineAddr, seniorAddr],
-            [juniorAddr, seniorAddr, mezzanineAddr],
-            [mezzanineAddr, juniorAddr, seniorAddr],
-            [mezzanineAddr, seniorAddr, juniorAddr],
-            [seniorAddr, juniorAddr, mezzanineAddr],
-            [seniorAddr, mezzanineAddr, juniorAddr],
-        ];
+        it("Pauses admin operations via PauseManager", async () => {
+            await pauseManager.pauseGlobal(PauseCategory.ADMIN);
+            await expect(
+                lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
+            )
+                .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
+            await expect(lossManager.connect(deployer).setMaxLossPerTxUSDC(1n))
+                .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
+        });
+    });
 
-        // track expected balances
-        const expected: Record<string, bigint> = {};
-        expected[juniorAddr] = await mzusd.balanceOf(juniorAddr);
-        expected[mezzanineAddr] = await mzusd.balanceOf(mezzanineAddr);
-        expected[seniorAddr] = await mzusd.balanceOf(seniorAddr);
+    describe("Initialization and views", () => {
+        it("Exposes tranche order and groups", async () => {
+            const len = await lossManager.trancheOrderLength();
+            expect(len).to.equal(3n);
 
-        const burnStep = to18(1n); // applyLoss(1 USDC) burns 1e18 mzUSD
-        for (let i = 0; i < 24; i++) {
-            const order: string[] = perms[i % perms.length];
+            const order = await lossManager.getTrancheOrder();
+            expect(order).to.deep.equal([juniorAddr, mezzanineAddr, seniorAddr]);
 
-            const tx1 = await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(order, new Array(order.length).fill(0));
-            await tx1.wait();
+            const [order2, groups] = await lossManager.getTrancheOrderAndGroups();
+            expect(order2).to.deep.equal([juniorAddr, mezzanineAddr, seniorAddr]);
+            expect(groups).to.deep.equal([0n, 0n, 0n]);
+        });
+
+        it("Reverts on zero address during initialization", async () => {
+            const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
+            await expect(
+                upgrades.deployProxy(
+                    LossManagerFactory,
+                    [
+                        ethers.ZeroAddress,
+                        pauseManager.target,
+                        mzusdAddr,
+                        vaultAddr,
+                        [juniorAddr],
+                        [0],
+                        0,
+                    ],
+                    {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+                )
+            ).to.be.revertedWithCustomError(LossManagerFactory, "ZeroAddress");
+        });
+    });
+
+    describe("Loss application flows", () => {
+        it("Reorder tranches repeatedly (applyLoss always burns correctly in the specified order)", async () => {
+            // Big buffers so we can burn many times
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5000n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(5000n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(5000n)));
+
+            // permutations
+            const perms: string[][] = [
+                [juniorAddr, mezzanineAddr, seniorAddr],
+                [juniorAddr, seniorAddr, mezzanineAddr],
+                [mezzanineAddr, juniorAddr, seniorAddr],
+                [mezzanineAddr, seniorAddr, juniorAddr],
+                [seniorAddr, juniorAddr, mezzanineAddr],
+                [seniorAddr, mezzanineAddr, juniorAddr],
+            ];
+
+            // track expected balances
+            const expected: Record<string, bigint> = {};
+            expected[juniorAddr] = await mzusd.balanceOf(juniorAddr);
+            expected[mezzanineAddr] = await mzusd.balanceOf(mezzanineAddr);
+            expected[seniorAddr] = await mzusd.balanceOf(seniorAddr);
+
+            const burnStep = to18(1n); // applyLoss(1 USDC) burns 1e18 mzUSD
+            for (let i = 0; i < 24; i++) {
+                const order: string[] = perms[i % perms.length];
+
+                const tx1 = await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(order, new Array(order.length).fill(0));
+                await tx1.wait();
+
+                await time.increase(DAY);
+                const tx2 = await lossManager.connect(deployer).applyLoss(to6(1n));
+                const receipt2 = await tx2.wait();
+
+                // expected burn only from first tranche (they all have enough TVL)
+                expected[order[0]] -= burnStep;
+
+                expect(await mzusd.balanceOf(juniorAddr)).to.equal(expected[juniorAddr]);
+                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(expected[mezzanineAddr]);
+                expect(await mzusd.balanceOf(seniorAddr)).to.equal(expected[seniorAddr]);
+
+                // Event should reflect the current order and cuts
+                const parsed = parseLossApplied(receipt2);
+                expect(parsed).to.not.equal(null);
+
+                const usdcLoss = parsed!.args.usdcLoss as bigint;
+                const lossMZ = parsed!.args.lossMZ as bigint;
+                const tranchesArr = parsed!.args.tranches as string[];
+                const cuts = parsed!.args.cutsMZ as bigint[];
+
+                expect(usdcLoss).to.equal(to6(1n));
+                expect(lossMZ).to.equal(to18(1n));
+                expect(tranchesArr).to.deep.equal(order);
+                expect(cuts.length).to.equal(3);
+                expect(cuts[0]).to.equal(to18(1n));
+                expect(cuts[1]).to.equal(0n);
+                expect(cuts[2]).to.equal(0n);
+            }
+        });
+
+        it("Should burn correctly (burns across tranches by order, and after order change burns by new order)", async () => {
+            // Smaller amounts to force multi-tranche burning
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(7n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(9n)));
+
+            // Order: [junior, mezz, senior]
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
+            ).wait();
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+            const s0 = await mzusd.balanceOf(seniorAddr);
 
             await time.increase(DAY);
-            const tx2 = await lossManager.connect(deployer).applyLoss(to6(1n));
-            const receipt2 = await tx2.wait();
+            // Apply loss = 10 USDC -> burn 10e18: junior(5) + mezz(5)
+            await (await lossManager.connect(deployer).applyLoss(to6(10n))).wait();
 
-            // expected burn only from first tranche (they all have enough TVL)
-            expected[order[0]] -= burnStep;
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(5n));
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
+            expect(await mzusd.balanceOf(seniorAddr)).to.equal(s0);
 
-            expect(await mzusd.balanceOf(juniorAddr)).to.equal(expected[juniorAddr]);
-            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(expected[mezzanineAddr]);
-            expect(await mzusd.balanceOf(seniorAddr)).to.equal(expected[seniorAddr]);
+            // Change order: [senior, mezz, junior]
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups([seniorAddr, mezzanineAddr, juniorAddr], [0, 0, 0])
+            ).wait();
 
-            // Event should reflect the current order and cuts
-            const parsed = parseLossApplied(receipt2);
-            expect(parsed).to.not.equal(null);
+            const j1 = await mzusd.balanceOf(juniorAddr);
+            const m1 = await mzusd.balanceOf(mezzanineAddr);
+            const s1 = await mzusd.balanceOf(seniorAddr);
 
-            const usdcLoss = parsed!.args.usdcLoss as bigint;
-            const lossMZ = parsed!.args.lossMZ as bigint;
-            const tranchesArr = parsed!.args.tranches as string[];
-            const cuts = parsed!.args.cutsMZ as bigint[];
+            await time.increase(DAY);
+            // Apply loss = 11 USDC -> burn 11e18: senior burns 9, remaining 2 burns from mezz (mezz has 2 left after the first loss)
+            await (await lossManager.connect(deployer).applyLoss(to6(11n))).wait();
 
-            expect(usdcLoss).to.equal(to6(1n));
-            expect(lossMZ).to.equal(to18(1n));
-            expect(tranchesArr).to.deep.equal(order);
-            expect(cuts.length).to.equal(3);
-            expect(cuts[0]).to.equal(to18(1n));
-            expect(cuts[1]).to.equal(0n);
-            expect(cuts[2]).to.equal(0n);
-        }
+            expect(await mzusd.balanceOf(seniorAddr)).to.equal(s1 - to18(9n));
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m1 - to18(2n));
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j1);
+        });
+
+        it("Integration (deposits + vault distributeYield (streaming) + applyLoss)", async () => {
+            // 1) Deposit principal into each tranche (100 each)
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(100n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(100n)));
+
+            // 2) Advance epoch and distribute yield (starts streaming on each tranche)
+            await time.increase(DAY);
+            const reported = to6(30n); // 30 MZUSD total (1:1)
+            await (await vault.connect(deployer).distributeYield(reported)).wait();
+
+            // At t=0 of stream: totalAssets should still be equal to principal (yield is fully unaccrued)
+            expect(await junior.totalAssets()).to.equal(to18(100n));
+            expect(await mezzanine.totalAssets()).to.equal(to18(100n));
+            expect(await senior.totalAssets()).to.equal(to18(100n));
+
+            // 3) Apply loss while stream is active.
+            // Order defaults: [junior, mezzanine, senior]
+            // Loss = 180 -> burns junior(100 + 1s accrued) + mezz(remaining), leaves senior untouched
+            const jBalBefore = await mzusd.balanceOf(juniorAddr);
+            const mBalBefore = await mzusd.balanceOf(mezzanineAddr);
+            const sBalBefore = await mzusd.balanceOf(seniorAddr);
+            const duration = await vault.epochDuration();
+
+            // applyLoss advances epoch internally -> make it allowed
+            await time.increase(duration);
+
+            // execute applyLoss at streamStart + duration + 1 (yield fully accrued)
+            const streamStart = await junior.yieldStreamStart();
+            await time.setNextBlockTimestamp(Number(streamStart + duration + 1n));
+
+            const lossMZ = to18(180n);
+            const juniorYield = await junior.yieldStreamingAmount();
+            const accruedJunior = juniorYield; // full accrual at end+1s
+
+            const expectedJuniorBurn = to18(100n) + accruedJunior;
+            const remainingAfterJunior = lossMZ - expectedJuniorBurn;
+
+            await (await lossManager.connect(deployer).applyLoss(to6(180n))).wait();
+
+            const jBalAfter = await mzusd.balanceOf(juniorAddr);
+            const mBalAfter = await mzusd.balanceOf(mezzanineAddr);
+            const sBalAfter = await mzusd.balanceOf(seniorAddr);
+
+            expect(jBalBefore - jBalAfter).to.equal(expectedJuniorBurn);
+            expect(mBalBefore - mBalAfter).to.equal(remainingAfterJunior);
+            expect(sBalAfter).to.equal(sBalBefore);
+
+            // Immediately after loss, junior virtual NAV should become 0 (because balance = unaccrued yield)
+            expect(await junior.totalAssets()).to.equal(0n);
+
+            // No further streaming in this epoch; ensure getters remain stable (no underflows)
+            await time.increase(duration / 2n);
+            expect(await junior.totalAssets()).to.equal(0n);
+            expect(await mezzanine.totalAssets()).to.be.gt(0n);
+            expect(await senior.totalAssets()).to.be.gt(0n);
+        });
+
+        it("Revert InsufficientCover if total cover is not enough", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
+            await time.increase(DAY);
+            await expect(
+                lossManager.connect(deployer).applyLoss(to6(11n))
+            ).to.be.revertedWithCustomError(lossManager, "InsufficientCover");
+        });
+    });
+    describe("Order configuration validation", () => {
+        it("Reverts in setTrancheOrderAndGroups + applyLoss zero", async () => {
+            await expect(
+                lossManager.connect(deployer).setTrancheOrderAndGroups([], [])
+            ).to.be.revertedWithCustomError(lossManager, "ZeroLength");
+
+            await expect(
+                lossManager.connect(deployer).setTrancheOrderAndGroups([juniorAddr], [])
+            ).to.be.revertedWithCustomError(lossManager, "LengthMismatch");
+
+            await expect(
+                lossManager.connect(deployer).setTrancheOrderAndGroups([ethers.ZeroAddress], [0])
+            ).to.be.revertedWithCustomError(lossManager, "ZeroAddress");
+
+            await expect(lossManager.connect(deployer).applyLoss(0)).to.be.revertedWithCustomError(
+                lossManager,
+                "ZeroAmount"
+            );
+        });
+
+        it("Reverts on duplicate tranche in order", async () => {
+            await expect(
+                lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups([juniorAddr, juniorAddr], [0, 0])
+            ).to.be.revertedWithCustomError(lossManager, "DuplicateTranche");
+        });
+
+        it("Reverts when group id is reused across pairs", async () => {
+            await expect(
+                lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [1, 1, 1, 1]
+                    )
+            ).to.be.revertedWithCustomError(lossManager, "GroupIdAlreadyAssigned");
+        });
+
+        it("Reverts when group id has no adjacent pair at the end", async () => {
+            await expect(
+                lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups([juniorAddr, polAddr, mezzanineAddr], [0, 0, 1])
+            ).to.be.revertedWithCustomError(lossManager, "GroupNotContiguous");
+        });
+
+        it("Clears previous groups on reconfiguration", async () => {
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [9, 9, 0, 0]
+                    )
+            ).wait();
+
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [0, 0, 0, 0]
+                    )
+            ).wait();
+
+            expect(await lossManager.trancheGroup(juniorAddr)).to.equal(0n);
+            expect(await lossManager.trancheGroup(polAddr)).to.equal(0n);
+        });
     });
 
-    it("Should burn correctly (burns across tranches by order, and after order change burns by new order)", async () => {
-        // Smaller amounts to force multi-tranche burning
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
-        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(7n)));
-        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(9n)));
+    describe("Limits", () => {
+        it("Enforces maxLossPerTxUSDC", async () => {
+            await (await lossManager.connect(deployer).setMaxLossPerTxUSDC(to6(5n))).wait();
 
-        // Order: [junior, mezz, senior]
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups([juniorAddr, mezzanineAddr, seniorAddr], [0, 0, 0])
-        ).wait();
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const m0 = await mzusd.balanceOf(mezzanineAddr);
-        const s0 = await mzusd.balanceOf(seniorAddr);
-
-        await time.increase(DAY);
-        // Apply loss = 10 USDC -> burn 10e18: junior(5) + mezz(5)
-        await (await lossManager.connect(deployer).applyLoss(to6(10n))).wait();
-
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(5n));
-        expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
-        expect(await mzusd.balanceOf(seniorAddr)).to.equal(s0);
-
-        // Change order: [senior, mezz, junior]
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups([seniorAddr, mezzanineAddr, juniorAddr], [0, 0, 0])
-        ).wait();
-
-        const j1 = await mzusd.balanceOf(juniorAddr);
-        const m1 = await mzusd.balanceOf(mezzanineAddr);
-        const s1 = await mzusd.balanceOf(seniorAddr);
-
-        await time.increase(DAY);
-        // Apply loss = 11 USDC -> burn 11e18: senior burns 9, remaining 2 burns from mezz (mezz has 2 left after the first loss)
-        await (await lossManager.connect(deployer).applyLoss(to6(11n))).wait();
-
-        expect(await mzusd.balanceOf(seniorAddr)).to.equal(s1 - to18(9n));
-        expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m1 - to18(2n));
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j1);
+            await expect(
+                lossManager.connect(deployer).applyLoss(to6(6n))
+            ).to.be.revertedWithCustomError(lossManager, "LimitExceeded");
+        });
     });
 
-    it("Integration (deposits + vault distributeYield (streaming) + applyLoss)", async () => {
-        // 1) Deposit principal into each tranche (100 each)
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-        await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(100n)));
-        await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(100n)));
+    describe("Pair mode", () => {
+        it("Pair-mode: proportional loss across [Junior, POL Junior] when contiguous and same tranche group", async () => {
+            // deposit: junior = 100, pol = 300
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
 
-        // 2) Advance epoch and distribute yield (starts streaming on each tranche)
-        await time.increase(DAY);
-        const reported = to6(30n); // 30 MZUSD total (1:1)
-        await (await vault.connect(deployer).distributeYield(reported)).wait();
+            // order: [junior, pol, mezz, senior]
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [1, 1, 0, 0]
+                    )
+            ).wait();
 
-        // At t=0 of stream: totalAssets should still be equal to principal (yield is fully unaccrued)
-        expect(await junior.totalAssets()).to.equal(to18(100n));
-        expect(await mezzanine.totalAssets()).to.equal(to18(100n));
-        expect(await senior.totalAssets()).to.equal(to18(100n));
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
 
-        // 3) Apply loss while stream is active.
-        // Order defaults: [junior, mezzanine, senior]
-        // Loss = 180 -> burns junior(100 + 1s accrued) + mezz(remaining), leaves senior untouched
-        const jBalBefore = await mzusd.balanceOf(juniorAddr);
-        const mBalBefore = await mzusd.balanceOf(mezzanineAddr);
-        const sBalBefore = await mzusd.balanceOf(seniorAddr);
-        const duration = await vault.epochDuration();
+            // loss 40 -> split 1:3 -> 10 and 30
+            await time.increase(DAY);
+            await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
 
-        // applyLoss advances epoch internally -> make it allowed
-        await time.increase(duration);
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(10n));
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(30n));
+        });
 
-        // execute applyLoss at streamStart + duration + 1 (yield fully accrued)
-        const streamStart = await junior.yieldStreamStart();
-        await time.setNextBlockTimestamp(Number(streamStart + duration + 1n));
+        it("Pair-mode burns full TVL when loss equals pair TVL", async () => {
+            const jDeposit = await mintMZUSDFor(alice, to6(100n));
+            await depositMZIntoTranche(alice, junior, jDeposit);
 
-        const lossMZ = to18(180n);
-        const juniorYield = await junior.yieldStreamingAmount();
-        const accruedJunior = juniorYield; // full accrual at end+1s
+            const pDeposit = await mintMZUSDFor(alice, to6(300n));
+            await depositMZIntoTranche(alice, pol, pDeposit);
 
-        const expectedJuniorBurn = to18(100n) + accruedJunior;
-        const remainingAfterJunior = lossMZ - expectedJuniorBurn;
-
-        await (await lossManager.connect(deployer).applyLoss(to6(180n))).wait();
-
-        const jBalAfter = await mzusd.balanceOf(juniorAddr);
-        const mBalAfter = await mzusd.balanceOf(mezzanineAddr);
-        const sBalAfter = await mzusd.balanceOf(seniorAddr);
-
-        expect(jBalBefore - jBalAfter).to.equal(expectedJuniorBurn);
-        expect(mBalBefore - mBalAfter).to.equal(remainingAfterJunior);
-        expect(sBalAfter).to.equal(sBalBefore);
-
-        // Immediately after loss, junior virtual NAV should become 0 (because balance = unaccrued yield)
-        expect(await junior.totalAssets()).to.equal(0n);
-
-        // No further streaming in this epoch; ensure getters remain stable (no underflows)
-        await time.increase(duration / 2n);
-        expect(await junior.totalAssets()).to.equal(0n);
-        expect(await mezzanine.totalAssets()).to.be.gt(0n);
-        expect(await senior.totalAssets()).to.be.gt(0n);
-    });
-
-    it("Revert InsufficientCover if total cover is not enough", async () => {
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
-        await time.increase(DAY);
-        await expect(
-            lossManager.connect(deployer).applyLoss(to6(11n))
-        ).to.be.revertedWithCustomError(lossManager, "InsufficientCover");
-    });
-
-    it("Reverts in setTrancheOrderAndGroups + applyLoss zero", async () => {
-        await expect(
-            lossManager.connect(deployer).setTrancheOrderAndGroups([], [])
-        ).to.be.revertedWithCustomError(lossManager, "ZeroLength");
-
-        await expect(
-            lossManager.connect(deployer).setTrancheOrderAndGroups([juniorAddr], [])
-        ).to.be.revertedWithCustomError(lossManager, "LengthMismatch");
-
-        await expect(
-            lossManager.connect(deployer).setTrancheOrderAndGroups([ethers.ZeroAddress], [0])
-        ).to.be.revertedWithCustomError(lossManager, "ZeroAddress");
-
-        await expect(lossManager.connect(deployer).applyLoss(0)).to.be.revertedWithCustomError(
-            lossManager,
-            "ZeroAmount"
-        );
-    });
-
-    it("Reverts on duplicate tranche in order", async () => {
-        await expect(
-            lossManager.connect(deployer).setTrancheOrderAndGroups([juniorAddr, juniorAddr], [0, 0])
-        ).to.be.revertedWithCustomError(lossManager, "DuplicateTranche");
-    });
-
-    it("Reverts when group id is reused across pairs", async () => {
-        await expect(
-            lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [1, 1, 1, 1]
-                )
-        ).to.be.revertedWithCustomError(lossManager, "GroupIdAlreadyAssigned");
-    });
-
-    it("Reverts when group id has no adjacent pair at the end", async () => {
-        await expect(
-            lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups([juniorAddr, polAddr, mezzanineAddr], [0, 0, 1])
-        ).to.be.revertedWithCustomError(lossManager, "GroupNotContiguous");
-    });
-
-    it("Clears previous groups on reconfiguration", async () => {
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [9, 9, 0, 0]
-                )
-        ).wait();
-
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [0, 0, 0, 0]
-                )
-        ).wait();
-
-        expect(await lossManager.trancheGroup(juniorAddr)).to.equal(0n);
-        expect(await lossManager.trancheGroup(polAddr)).to.equal(0n);
-    });
-
-    it("Enforces maxLossPerTxUSDC", async () => {
-        await (await lossManager.connect(deployer).setMaxLossPerTxUSDC(to6(5n))).wait();
-
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-
-        await expect(
-            lossManager.connect(deployer).applyLoss(to6(6n))
-        ).to.be.revertedWithCustomError(lossManager, "LimitExceeded");
-    });
-
-    it("Pair-mode: proportional loss across [Junior, POL Junior] when contiguous and same tranche group", async () => {
-        // deposit: junior = 100, pol = 300
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
-
-        // order: [junior, pol, mezz, senior]
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [1, 1, 0, 0]
-                )
-        ).wait();
-
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const p0 = await mzusd.balanceOf(polAddr);
-
-        // loss 40 -> split 1:3 -> 10 and 30
-        await time.increase(DAY);
-        await (await lossManager.connect(deployer).applyLoss(to6(40n))).wait();
-
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(10n));
-        expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(30n));
-    });
-
-    it("Pair-mode burns full TVL when loss equals pair TVL", async () => {
-        const jDeposit = await mintMZUSDFor(alice, to6(100n));
-        await depositMZIntoTranche(alice, junior, jDeposit);
-
-        const pDeposit = await mintMZUSDFor(alice, to6(300n));
-        await depositMZIntoTranche(alice, pol, pDeposit);
-
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [2, 2, 0, 0]
-                )
-        ).wait();
-
-        const jTvl = await junior.totalAssets();
-        const pTvl = await pol.totalAssets();
-
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const p0 = await mzusd.balanceOf(polAddr);
-
-        await time.increase(DAY);
-        await (await lossManager.connect(deployer).applyLoss(to6(400n))).wait();
-
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - jTvl);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - pTvl);
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(0n);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
-    });
-
-    it("Pair-mode burns only from the tranche with TVL", async () => {
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(50n)));
-
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [3, 3, 0, 0]
-                )
-        ).wait();
-
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const p0 = await mzusd.balanceOf(polAddr);
-
-        await time.increase(DAY);
-        await (await lossManager.connect(deployer).applyLoss(to6(10n))).wait();
-
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
-        expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(10n));
-    });
-
-    it("Pair-mode passes remainder to the next tranche", async () => {
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(5n)));
-        await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(20n)));
-
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [4, 4, 0, 0]
-                )
-        ).wait();
-
-        const j0 = await mzusd.balanceOf(juniorAddr);
-        const p0 = await mzusd.balanceOf(polAddr);
-        const m0 = await mzusd.balanceOf(mezzanineAddr);
-
-        await time.increase(DAY);
-        await (await lossManager.connect(deployer).applyLoss(to6(15n))).wait();
-
-        expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(5n));
-        expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(5n));
-        expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
-    });
-
-    it("Pair mode burns match expected proportional split (30 iterations)", async () => {
-        // Big buffers
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10_000n)));
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(30_000n)));
-
-        // Put pair first
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                    [1, 1, 0, 0]
-                )
-        ).wait();
-
-        const mStart = await mzusd.balanceOf(mezzanineAddr);
-        const sStart = await mzusd.balanceOf(seniorAddr);
-
-        for (let k = 1; k <= 30; k++) {
-            const lossUSDC = BigInt((k % 97) + 1); // 1 - 97
-            const lossMZ = to18(lossUSDC);
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [2, 2, 0, 0]
+                    )
+            ).wait();
 
             const jTvl = await junior.totalAssets();
             const pTvl = await pol.totalAssets();
 
-            const jBal0 = await mzusd.balanceOf(juniorAddr);
-            const pBal0 = await mzusd.balanceOf(polAddr);
-
-            const {burn0, burn1, lossForPair} = computePairBurns(lossMZ, jTvl, pTvl);
-            await time.increase(DAY);
-            await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
-
-            expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
-            expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
-            expect(burn0 + burn1).to.equal(lossForPair);
-
-            // untouched (pair always covers)
-            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mStart);
-            expect(await mzusd.balanceOf(seniorAddr)).to.equal(sStart);
-        }
-    });
-
-    it("Pair-mode works when pair is not first (sequential then proportional)", async () => {
-        // Setup TVL: mezz small, then pair big
-        await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(200n)));
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
-
-        await (
-            await lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
-                    [0, 7, 7, 0]
-                )
-        ).wait();
-
-        for (let k = 1; k <= 20; k++) {
-            const lossUSDC = 5n + BigInt(k); // 6..25
-            const lossMZ = to18(lossUSDC);
-
-            const mTvl = await mezzanine.totalAssets();
-            const jTvl = await junior.totalAssets();
-            const pTvl = await pol.totalAssets();
-
-            const mBal0 = await mzusd.balanceOf(mezzanineAddr);
-            const jBal0 = await mzusd.balanceOf(juniorAddr);
-            const pBal0 = await mzusd.balanceOf(polAddr);
-
-            const burnMezz = min(mTvl, lossMZ);
-            const remaining = lossMZ - burnMezz;
-
-            const {burn0, burn1} = computePairBurns(remaining, jTvl, pTvl);
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
 
             await time.increase(DAY);
-            await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
+            await (await lossManager.connect(deployer).applyLoss(to6(400n))).wait();
 
-            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - burnMezz);
-            expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
-            expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
-        }
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - jTvl);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - pTvl);
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(0n);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
+        });
+
+        it("Pair-mode burns only from the tranche with TVL", async () => {
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(50n)));
+
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [3, 3, 0, 0]
+                    )
+            ).wait();
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
+
+            await time.increase(DAY);
+            await (await lossManager.connect(deployer).applyLoss(to6(10n))).wait();
+
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(10n));
+        });
+
+        it("Pair-mode passes remainder to the next tranche", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(5n)));
+            await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(20n)));
+
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [4, 4, 0, 0]
+                    )
+            ).wait();
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+
+            await time.increase(DAY);
+            await (await lossManager.connect(deployer).applyLoss(to6(15n))).wait();
+
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0 - to18(5n));
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(5n));
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
+        });
+
+        it("Pair mode burns match expected proportional split (30 iterations)", async () => {
+            // Big buffers
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10_000n)));
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(30_000n)));
+
+            // Put pair first
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                        [1, 1, 0, 0]
+                    )
+            ).wait();
+
+            const mStart = await mzusd.balanceOf(mezzanineAddr);
+            const sStart = await mzusd.balanceOf(seniorAddr);
+
+            for (let k = 1; k <= 30; k++) {
+                const lossUSDC = BigInt((k % 97) + 1); // 1 - 97
+                const lossMZ = to18(lossUSDC);
+
+                const jTvl = await junior.totalAssets();
+                const pTvl = await pol.totalAssets();
+
+                const jBal0 = await mzusd.balanceOf(juniorAddr);
+                const pBal0 = await mzusd.balanceOf(polAddr);
+
+                const {burn0, burn1, lossForPair} = computePairBurns(lossMZ, jTvl, pTvl);
+                await time.increase(DAY);
+                await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
+
+                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
+                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
+                expect(burn0 + burn1).to.equal(lossForPair);
+
+                // untouched (pair always covers)
+                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mStart);
+                expect(await mzusd.balanceOf(seniorAddr)).to.equal(sStart);
+            }
+        });
+
+        it("Pair-mode works when pair is not first (sequential then proportional)", async () => {
+            // Setup TVL: mezz small, then pair big
+            await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(200n)));
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
+
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
+                        [0, 7, 7, 0]
+                    )
+            ).wait();
+
+            for (let k = 1; k <= 20; k++) {
+                const lossUSDC = 5n + BigInt(k); // 6..25
+                const lossMZ = to18(lossUSDC);
+
+                const mTvl = await mezzanine.totalAssets();
+                const jTvl = await junior.totalAssets();
+                const pTvl = await pol.totalAssets();
+
+                const mBal0 = await mzusd.balanceOf(mezzanineAddr);
+                const jBal0 = await mzusd.balanceOf(juniorAddr);
+                const pBal0 = await mzusd.balanceOf(polAddr);
+
+                const burnMezz = min(mTvl, lossMZ);
+                const remaining = lossMZ - burnMezz;
+
+                const {burn0, burn1} = computePairBurns(remaining, jTvl, pTvl);
+
+                await time.increase(DAY);
+                await (await lossManager.connect(deployer).applyLoss(to6(lossUSDC))).wait();
+
+                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - burnMezz);
+                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
+                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
+            }
+        });
     });
 
-    it("Group Id set but NOT contiguous -> reverts in setTrancheOrderAndGroups", async () => {
-        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-        await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
-        await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
+    describe("Order configuration validation (edge)", () => {
+        it("Group Id set but NOT contiguous -> reverts in setTrancheOrderAndGroups", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
+            await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
 
-        // Not contiguous: junior, mezz, pol, senior
-        await expect(
-            lossManager
-                .connect(deployer)
-                .setTrancheOrderAndGroups(
-                    [juniorAddr, mezzanineAddr, polAddr, seniorAddr],
-                    [1, 0, 1, 0]
-                )
-        ).to.be.revertedWithCustomError(lossManager, "GroupNotContiguous");
+            // Not contiguous: junior, mezz, pol, senior
+            await expect(
+                lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndGroups(
+                        [juniorAddr, mezzanineAddr, polAddr, seniorAddr],
+                        [1, 0, 1, 0]
+                    )
+            ).to.be.revertedWithCustomError(lossManager, "GroupNotContiguous");
+        });
     });
 });

@@ -153,144 +153,184 @@ describe("Vault <-> Reservoir", () => {
         await usdc.connect(whale).transfer(to, amount6);
     }
 
-    it("Sends excess idle USDC to Reservoir when idle > high bound", async () => {
-        // Fund Vault with 1500 USDC -> should send 500 to Reservoir
-        await whaleTransfer(vault.target as string, to6(1500n));
+    describe("Getters", () => {
+        it("Getters expose buffer bounds and reservoir totalAssets", async () => {
+            const target = to6(1000n);
+            const bandBps = 1000n; // 10%
 
-        const vaultBefore = await usdc.balanceOf(vault.target);
-        const resBefore = await usdc.balanceOf(reservoir.target);
+            await whaleTransfer(vault.target as string, target);
+            await vault.connect(deployer).setBuffer(target, Number(bandBps));
 
-        expect(vaultBefore).to.equal(to6(1500n));
-        expect(resBefore).to.equal(0n);
+            const [buffer, hysteresis, low, high] = await vault.getBufferConfig();
+            const expectedLow = (target * (10_000n - bandBps)) / 10_000n;
+            const expectedHigh = (target * (10_000n + bandBps)) / 10_000n;
 
-        // Buffer target: 1000 USDC, band: 10% -> low=900, high=1100
-        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
-            .to.emit(vault, "Rebalanced")
-            .withArgs(to6(500n), 0n, to6(1000n));
+            expect(buffer).to.equal(target);
+            expect(hysteresis).to.equal(bandBps);
+            expect(low).to.equal(expectedLow);
+            expect(high).to.equal(expectedHigh);
 
-        const vaultAfter = await usdc.balanceOf(vault.target);
-        const resAfter = await usdc.balanceOf(reservoir.target);
-
-        expect(vaultAfter).to.equal(to6(1000n));
-        expect(resAfter - resBefore).to.equal(to6(500n));
+            await whaleTransfer(reservoir.target as string, to6(123n));
+            expect(await reservoir.totalAssets()).to.equal(to6(123n));
+        });
     });
 
-    it("Pulls USDC from Reservoir when idle < low bound", async () => {
-        // Fund Reservoir so it can pay out
-        await whaleTransfer(reservoir.target as string, to6(600n));
-
-        // Fund Vault with 500 (< low=900) -> should pull 500 to reach 1000
-        await whaleTransfer(vault.target as string, to6(500n));
-
-        const vaultBefore = await usdc.balanceOf(vault.target);
-        const resBefore = await usdc.balanceOf(reservoir.target);
-
-        expect(vaultBefore).to.equal(to6(500n));
-        expect(resBefore).to.equal(to6(600n));
-
-        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
-            .to.emit(vault, "Rebalanced")
-            .withArgs(0n, to6(500n), to6(1000n));
-
-        const vaultAfter = await usdc.balanceOf(vault.target);
-        const resAfter = await usdc.balanceOf(reservoir.target);
-
-        expect(vaultAfter).to.equal(to6(1000n));
-        expect(resBefore - resAfter).to.equal(to6(500n));
+    describe("Initialization", () => {
+        it("Reverts on zero accessManager during Reservoir init", async () => {
+            const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
+            await expect(
+                upgrades.deployProxy(ReservoirFactory, [ethers.ZeroAddress, pauseManager.target], {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [MAINNET_USDC],
+                })
+            ).to.be.revertedWithCustomError(ReservoirFactory, "ZeroAddress");
+        });
     });
 
-    it("Pulls partial USDC when Reservoir has less than needed", async () => {
-        // Reservoir has only 200, Vault idle is 500 -> need 500 to reach 1000
-        await whaleTransfer(reservoir.target as string, to6(200n));
-        await whaleTransfer(vault.target as string, to6(500n));
+    describe("Rebalance flows", () => {
+        it("Sends excess idle USDC to Reservoir when idle > high bound", async () => {
+            // Fund Vault with 1500 USDC -> should send 500 to Reservoir
+            await whaleTransfer(vault.target as string, to6(1500n));
 
-        const resBefore = await usdc.balanceOf(reservoir.target);
+            const vaultBefore = await usdc.balanceOf(vault.target);
+            const resBefore = await usdc.balanceOf(reservoir.target);
 
-        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
-            .to.emit(vault, "Rebalanced")
-            .withArgs(0n, to6(200n), to6(700n));
+            expect(vaultBefore).to.equal(to6(1500n));
+            expect(resBefore).to.equal(0n);
 
-        const vaultAfter = await usdc.balanceOf(vault.target);
-        const resAfter = await usdc.balanceOf(reservoir.target);
+            // Buffer target: 1000 USDC, band: 10% -> low=900, high=1100
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "Rebalanced")
+                .withArgs(to6(500n), 0n, to6(1000n));
 
-        expect(vaultAfter).to.equal(to6(700n));
-        expect(resBefore - resAfter).to.equal(to6(200n));
+            const vaultAfter = await usdc.balanceOf(vault.target);
+            const resAfter = await usdc.balanceOf(reservoir.target);
+
+            expect(vaultAfter).to.equal(to6(1000n));
+            expect(resAfter - resBefore).to.equal(to6(500n));
+        });
+
+        it("Pulls USDC from Reservoir when idle < low bound", async () => {
+            // Fund Reservoir so it can pay out
+            await whaleTransfer(reservoir.target as string, to6(600n));
+
+            // Fund Vault with 500 (< low=900) -> should pull 500 to reach 1000
+            await whaleTransfer(vault.target as string, to6(500n));
+
+            const vaultBefore = await usdc.balanceOf(vault.target);
+            const resBefore = await usdc.balanceOf(reservoir.target);
+
+            expect(vaultBefore).to.equal(to6(500n));
+            expect(resBefore).to.equal(to6(600n));
+
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "Rebalanced")
+                .withArgs(0n, to6(500n), to6(1000n));
+
+            const vaultAfter = await usdc.balanceOf(vault.target);
+            const resAfter = await usdc.balanceOf(reservoir.target);
+
+            expect(vaultAfter).to.equal(to6(1000n));
+            expect(resBefore - resAfter).to.equal(to6(500n));
+        });
+
+        it("Pulls partial USDC when Reservoir has less than needed", async () => {
+            // Reservoir has only 200, Vault idle is 500 -> need 500 to reach 1000
+            await whaleTransfer(reservoir.target as string, to6(200n));
+            await whaleTransfer(vault.target as string, to6(500n));
+
+            const resBefore = await usdc.balanceOf(reservoir.target);
+
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "Rebalanced")
+                .withArgs(0n, to6(200n), to6(700n));
+
+            const vaultAfter = await usdc.balanceOf(vault.target);
+            const resAfter = await usdc.balanceOf(reservoir.target);
+
+            expect(vaultAfter).to.equal(to6(700n));
+            expect(resBefore - resAfter).to.equal(to6(200n));
+        });
+
+        it("Reverts when Reservoir is empty and idle < low bound", async () => {
+            await whaleTransfer(vault.target as string, to6(500n));
+
+            await expect(
+                vault.connect(deployer).setBuffer(to6(1000n), 1000)
+            ).to.be.revertedWithCustomError(vault, "ReservoirEmpty");
+        });
+
+        it("Does nothing when idle is within [low, high] band", async () => {
+            // 1050 is within [900,1100] => no move
+            await whaleTransfer(vault.target as string, to6(1050n));
+
+            const vaultBefore = await usdc.balanceOf(vault.target);
+            const resBefore = await usdc.balanceOf(reservoir.target);
+
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "Rebalanced")
+                .withArgs(0n, 0n, to6(1050n));
+
+            const vaultAfter = await usdc.balanceOf(vault.target);
+            const resAfter = await usdc.balanceOf(reservoir.target);
+
+            expect(vaultAfter).to.equal(vaultBefore);
+            expect(resAfter).to.equal(resBefore);
+        });
+
+        it("setBuffer uses the new target/band for rebalance decisions", async () => {
+            await whaleTransfer(vault.target as string, to6(1000n));
+            await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+            // With the old config, 1200 would be above high=1100.
+            await whaleTransfer(vault.target as string, to6(200n));
+
+            const resBefore = await usdc.balanceOf(reservoir.target);
+
+            // New target makes 1200 fall inside [1170, 1430], so no move.
+            await expect(vault.connect(deployer).setBuffer(to6(1300n), 1000))
+                .to.emit(vault, "Rebalanced")
+                .withArgs(0n, 0n, to6(1200n));
+
+            const resAfter = await usdc.balanceOf(reservoir.target);
+            const vaultAfter = await usdc.balanceOf(vault.target);
+
+            expect(resAfter).to.equal(resBefore);
+            expect(vaultAfter).to.equal(to6(1200n));
+        });
+
+        it("rebalance moves funds explicitly after setBuffer", async () => {
+            await whaleTransfer(vault.target as string, to6(1000n));
+            await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+            await whaleTransfer(vault.target as string, to6(500n));
+
+            await expect(vault.connect(deployer).rebalance())
+                .to.emit(vault, "Rebalanced")
+                .withArgs(to6(500n), 0n, to6(1000n));
+        });
     });
 
-    it("Reverts when Reservoir is empty and idle < low bound", async () => {
-        await whaleTransfer(vault.target as string, to6(500n));
+    describe("Access control", () => {
+        it("Pauses protocol operations via PauseManager", async () => {
+            await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
 
-        await expect(
-            vault.connect(deployer).setBuffer(to6(1000n), 1000)
-        ).to.be.revertedWithCustomError(vault, "ReservoirEmpty");
-    });
+            await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+            await expect(vault.connect(deployer).rebalance())
+                .to.be.revertedWithCustomError(vault, "CategoryPaused")
+                .withArgs(PauseCategory.PROTOCOL);
+            await expect(reservoir.connect(deployer).deposit(1n))
+                .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
+                .withArgs(PauseCategory.PROTOCOL);
+            await expect(reservoir.connect(deployer).withdraw(1n, deployer.address))
+                .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
+                .withArgs(PauseCategory.PROTOCOL);
+        });
 
-    it("Does nothing when idle is within [low, high] band", async () => {
-        // 1050 is within [900,1100] => no move
-        await whaleTransfer(vault.target as string, to6(1050n));
-
-        const vaultBefore = await usdc.balanceOf(vault.target);
-        const resBefore = await usdc.balanceOf(reservoir.target);
-
-        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
-            .to.emit(vault, "Rebalanced")
-            .withArgs(0n, 0n, to6(1050n));
-
-        const vaultAfter = await usdc.balanceOf(vault.target);
-        const resAfter = await usdc.balanceOf(reservoir.target);
-
-        expect(vaultAfter).to.equal(vaultBefore);
-        expect(resAfter).to.equal(resBefore);
-    });
-
-    it("setBuffer uses the new target/band for rebalance decisions", async () => {
-        await whaleTransfer(vault.target as string, to6(1000n));
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-
-        // With the old config, 1200 would be above high=1100.
-        await whaleTransfer(vault.target as string, to6(200n));
-
-        const resBefore = await usdc.balanceOf(reservoir.target);
-
-        // New target makes 1200 fall inside [1170, 1430], so no move.
-        await expect(vault.connect(deployer).setBuffer(to6(1300n), 1000))
-            .to.emit(vault, "Rebalanced")
-            .withArgs(0n, 0n, to6(1200n));
-
-        const resAfter = await usdc.balanceOf(reservoir.target);
-        const vaultAfter = await usdc.balanceOf(vault.target);
-
-        expect(resAfter).to.equal(resBefore);
-        expect(vaultAfter).to.equal(to6(1200n));
-    });
-
-    it("rebalance moves funds explicitly after setBuffer", async () => {
-        await whaleTransfer(vault.target as string, to6(1000n));
-        await vault.connect(deployer).setBuffer(to6(1000n), 1000);
-
-        await whaleTransfer(vault.target as string, to6(500n));
-
-        await expect(vault.connect(deployer).rebalance())
-            .to.emit(vault, "Rebalanced")
-            .withArgs(to6(500n), 0n, to6(1000n));
-    });
-
-    it("Pauses protocol operations via PauseManager", async () => {
-        await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
-
-        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-        await expect(vault.connect(deployer).rebalance())
-            .to.be.revertedWithCustomError(vault, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
-        await expect(reservoir.connect(deployer).deposit(1n))
-            .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
-        await expect(reservoir.connect(deployer).withdraw(1n, deployer.address))
-            .to.be.revertedWithCustomError(reservoir, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
-    });
-
-    it("Reverts for non-authorized caller (restricted)", async () => {
-        await expect(vault.connect(alice).rebalance()).to.be.reverted;
+        it("Reverts for non-authorized caller (restricted)", async () => {
+            await expect(vault.connect(alice).rebalance()).to.be.reverted;
+        });
     });
 });
