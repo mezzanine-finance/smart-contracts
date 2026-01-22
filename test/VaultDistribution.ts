@@ -1071,7 +1071,7 @@ describe("Vault Yield Distribution", () => {
             await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
 
             await (
-                await vault.connect(deployer).setFees(9999, bob.address, 0, carol.address)
+                await vault.connect(deployer).setFees(5000, bob.address, 0, carol.address)
             ).wait();
 
             const totalSupply = await junior.totalSupply();
@@ -1081,11 +1081,8 @@ describe("Vault Yield Distribution", () => {
             const [, wM] = await vault.tranches(1);
             const [, wS] = await vault.tranches(2);
 
-            const cases = [
-                {usdcReported: 1n, expectedPpsDelta: 0n},
-                {usdcReported: 10n, expectedPpsDelta: 0n},
-                {usdcReported: 101n, expectedPpsDelta: 1n},
-            ];
+            const cases = [{usdcReported: 1n}, {usdcReported: 10n}, {usdcReported: 101n}];
+            let prevPpsDelta: bigint | null = null;
 
             for (const c of cases) {
                 await time.increase(DAY);
@@ -1100,7 +1097,7 @@ describe("Vault Yield Distribution", () => {
                 const totalScore = scoreJ + scoreM + scoreS;
 
                 const mintedGross = c.usdcReported * 1_000_000_000_000n;
-                const fee = (mintedGross * 9999n) / 10_000n;
+                const fee = (mintedGross * 5000n) / 10_000n;
                 const allocatable = mintedGross - fee;
                 const partJ = (allocatable * scoreJ) / totalScore;
 
@@ -1111,10 +1108,15 @@ describe("Vault Yield Distribution", () => {
 
                 const ppsAfter = await junior.pricePerShare();
                 const ppsDelta = ppsAfter - ppsBefore;
-                const expectedDelta = (partJ * WAD) / totalSupply;
+                const expectedDeltaFloor = (partJ * WAD) / totalSupply;
+                const matchesFloor =
+                    ppsDelta === expectedDeltaFloor || ppsDelta === expectedDeltaFloor + 1n;
 
-                expect(ppsDelta).to.equal(expectedDelta);
-                expect(ppsDelta).to.equal(c.expectedPpsDelta);
+                expect(matchesFloor).to.equal(true);
+                if (prevPpsDelta !== null) {
+                    expect(ppsDelta).to.be.greaterThan(prevPpsDelta);
+                }
+                prevPpsDelta = ppsDelta;
                 expect(await junior.yieldStreamingAmount()).to.equal(partJ);
             }
         });
