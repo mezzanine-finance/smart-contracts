@@ -33,14 +33,14 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         __PauseManaged_init(pauseManager);
     }
 
-    /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    /// @notice Typically called by the Vault to move idle USDC into the Reservoir.
+    function deposit(uint256 amount) external whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(msg.sender, address(this), amount);
         emit Deposited(msg.sender, amount);
     }
 
-    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.
+    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault OR called by the Curators to move funds into the main fund to earn yield.
     function withdraw(
         uint256 amount,
         address to
