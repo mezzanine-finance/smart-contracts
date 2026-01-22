@@ -1085,6 +1085,64 @@ describe("Vault Yield Distribution", () => {
 
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
+
+        it("Tiny tranche yield streams, but PPS moves only above the rounding threshold", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(1000n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(500_000n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(500_000n)));
+
+            await (await vault.connect(deployer).updateTranche(0, 1, true)).wait();
+            await (await vault.connect(deployer).updateTranche(1, 10_000, true)).wait();
+            await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
+
+            await (
+                await vault.connect(deployer).setFees(9999, bob.address, 0, carol.address)
+            ).wait();
+
+            const totalSupply = await junior.totalSupply();
+            const WAD = 10n ** 18n;
+
+            const [, wJ] = await vault.tranches(0);
+            const [, wM] = await vault.tranches(1);
+            const [, wS] = await vault.tranches(2);
+
+            const cases = [
+                {usdcReported: 1n, expectedPpsDelta: 0n},
+                {usdcReported: 10n, expectedPpsDelta: 0n},
+                {usdcReported: 101n, expectedPpsDelta: 1n},
+            ];
+
+            for (const c of cases) {
+                await time.increase(DAY);
+
+                const tvlJ = await junior.totalAssets();
+                const tvlM = await mezzanine.totalAssets();
+                const tvlS = await senior.totalAssets();
+
+                const scoreJ = wJ * tvlJ;
+                const scoreM = wM * tvlM;
+                const scoreS = wS * tvlS;
+                const totalScore = scoreJ + scoreM + scoreS;
+
+                const mintedGross = c.usdcReported * 1_000_000_000_000n;
+                const fee = (mintedGross * 9999n) / 10_000n;
+                const allocatable = mintedGross - fee;
+                const partJ = (allocatable * scoreJ) / totalScore;
+
+                const ppsBefore = await junior.pricePerShare();
+
+                await (await vault.connect(deployer).distributeYield(c.usdcReported)).wait();
+                await time.increase(DAY);
+
+                const ppsAfter = await junior.pricePerShare();
+                const ppsDelta = ppsAfter - ppsBefore;
+                const expectedDelta = (partJ * WAD) / totalSupply;
+
+                expect(ppsDelta).to.equal(expectedDelta);
+                expect(ppsDelta).to.equal(c.expectedPpsDelta);
+                expect(await junior.yieldStreamingAmount()).to.equal(partJ);
+            }
+        });
         it("Epoch advances, fees minted (fees = 100%), and no tranche notify/transfer happens", async () => {
             await time.increase(DAY);
 
