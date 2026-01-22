@@ -170,7 +170,7 @@ contract LossManager is
     function getTrancheOrder() external view returns (address[] memory order) {
         uint256 orderLen = trancheOrder.length;
         order = new address[](orderLen);
-        for (uint256 i = 0; i < orderLen; ++i) {
+        for (uint256 i; i < orderLen; ++i) {
             order[i] = trancheOrder[i];
         }
     }
@@ -184,7 +184,7 @@ contract LossManager is
         order = new address[](orderLen);
         groupIds = new uint256[](orderLen);
 
-        for (uint256 i = 0; i < orderLen; ++i) {
+        for (uint256 i; i < orderLen; ++i) {
             address tranche = trancheOrder[i];
             order[i] = tranche;
             groupIds[i] = trancheGroup[tranche];
@@ -197,14 +197,14 @@ contract LossManager is
         _validateTrancheConfig(order, groupIds);
 
         uint256 oldLen = trancheOrder.length;
-        for (uint256 i = 0; i < oldLen; ++i) {
+        for (uint256 i; i < oldLen; ++i) {
             trancheGroup[trancheOrder[i]] = 0;
         }
 
         trancheOrder = order;
 
         uint256 orderLen = order.length;
-        for (uint256 i = 0; i < orderLen; ++i) {
+        for (uint256 i; i < orderLen; ++i) {
             trancheGroup[order[i]] = groupIds[i];
         }
 
@@ -214,7 +214,7 @@ contract LossManager is
 
     function _emitGroupUpdates(address[] memory order, uint256[] memory groupIds) internal {
         uint256 orderLen = order.length;
-        for (uint256 i = 0; i < orderLen; ) {
+        for (uint256 i; i < orderLen; ) {
             uint256 gid = groupIds[i];
             if (gid == 0) {
                 ++i;
@@ -239,7 +239,7 @@ contract LossManager is
             revert LengthMismatch(orderLen, groupIds.length);
         }
 
-        for (uint256 i = 0; i < orderLen; ++i) {
+        for (uint256 i; i < orderLen; ++i) {
             address tranche = order[i];
             if (tranche == address(0)) revert ZeroAddress();
             for (uint256 j = 0; j < i; ++j) {
@@ -249,7 +249,7 @@ contract LossManager is
 
         uint256[] memory seenGroupIds = new uint256[](orderLen);
         uint256 seenCount;
-        for (uint256 i = 0; i < orderLen; ) {
+        for (uint256 i; i < orderLen; ) {
             uint256 gid = groupIds[i];
             if (gid == 0) {
                 ++i;

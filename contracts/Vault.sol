@@ -255,13 +255,18 @@ contract Vault is
     function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
         if (address(mzusd) != address(0)) revert MZUSDAlreadySet();
+
         uint8 decimals = IMZUSD(_mzusd).decimals();
         if (decimals != 18) revert InvalidMZUSDDecimals(decimals);
+
         address mzusdUSDC = IMZUSD(_mzusd).usdc();
         if (mzusdUSDC != address(usdc)) revert InvalidMZUSDUSDC(mzusdUSDC);
+
         address mzusdVault = IMZUSD(_mzusd).vault();
         if (mzusdVault != address(this)) revert InvalidMZUSDVault(mzusdVault);
+
         mzusd = IMZUSD(_mzusd);
+
         emit MZUSDChanged(_mzusd);
     }
 
