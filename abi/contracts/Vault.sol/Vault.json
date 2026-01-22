@@ -171,6 +171,11 @@
     },
     {
         "inputs": [],
+        "name": "ReservoirEmpty",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "SameValue",
         "type": "error"
     },

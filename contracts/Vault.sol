@@ -107,6 +107,7 @@ contract Vault is
     error InvalidMZUSDDecimals(uint8 actualDecimals);
     error InvalidMZUSDUSDC(address actualUSDC);
     error InvalidMZUSDVault(address actualVault);
+    error ReservoirEmpty();
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -552,7 +553,10 @@ contract Vault is
             usdc.approve(address(reservoir), sent);
             reservoir.deposit(sent);
         } else if (idle < low) {
-            pulled = idleBufferUSDC - idle;
+            uint256 need = idleBufferUSDC - idle;
+            uint256 available = usdc.balanceOf(address(reservoir));
+            if (available == 0) revert ReservoirEmpty();
+            pulled = available < need ? available : need;
             reservoir.withdraw(pulled, address(this));
         }
         emit Rebalanced(sent, pulled, usdc.balanceOf(address(this)));

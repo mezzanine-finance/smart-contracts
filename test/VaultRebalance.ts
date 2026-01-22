@@ -199,6 +199,32 @@ describe("Vault <-> Reservoir", () => {
         expect(resBefore - resAfter).to.equal(to6(500n));
     });
 
+    it("Pulls partial USDC when Reservoir has less than needed", async () => {
+        // Reservoir has only 200, Vault idle is 500 -> need 500 to reach 1000
+        await whaleTransfer(reservoir.target as string, to6(200n));
+        await whaleTransfer(vault.target as string, to6(500n));
+
+        const resBefore = await usdc.balanceOf(reservoir.target);
+
+        await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+            .to.emit(vault, "Rebalanced")
+            .withArgs(0n, to6(200n), to6(700n));
+
+        const vaultAfter = await usdc.balanceOf(vault.target);
+        const resAfter = await usdc.balanceOf(reservoir.target);
+
+        expect(vaultAfter).to.equal(to6(700n));
+        expect(resBefore - resAfter).to.equal(to6(200n));
+    });
+
+    it("Reverts when Reservoir is empty and idle < low bound", async () => {
+        await whaleTransfer(vault.target as string, to6(500n));
+
+        await expect(
+            vault.connect(deployer).setBuffer(to6(1000n), 1000)
+        ).to.be.revertedWithCustomError(vault, "ReservoirEmpty");
+    });
+
     it("Does nothing when idle is within [low, high] band", async () => {
         // 1050 is within [900,1100] => no move
         await whaleTransfer(vault.target as string, to6(1050n));
