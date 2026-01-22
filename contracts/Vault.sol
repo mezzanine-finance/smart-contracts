@@ -42,6 +42,7 @@ contract Vault is
 
     // aderyn-ignore-next-line(large-numeric-literal)
     uint16 public constant BPS = 10_000;
+    uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
     // Max allowed tranche weight (relative, not bps).
     // aderyn-ignore-next-line(large-numeric-literal)
     uint16 public constant TRANCHE_WEIGHT_LIMIT = 10_000;
@@ -56,7 +57,7 @@ contract Vault is
 
     IERC20 public immutable usdc; // address of USDC token
     IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
-    IReservoir public reservoir; // address of reservoir contract for idle USDC
+    IReservoir public immutable reservoir; // address of reservoir contract for idle USDC
 
     address public performanceFeeReceiver; // receiver of performance/curators fees
     address public protocolFeeReceiver; // receiver of protocols fees
@@ -89,7 +90,6 @@ contract Vault is
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event MZUSDChanged(address newMZUSD);
-    event ReservoirUpdated(address newReservoir);
     event LossManagerUpdated(address newLossManager);
     event NavOracleUpdated(address newNavOracle);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
@@ -133,14 +133,14 @@ contract Vault is
         _;
     }
 
-    constructor(address _usdc) {
-        if (_usdc == address(0)) revert ZeroAddress();
+    constructor(address _usdc, address _reservoir) {
+        if (_usdc == address(0) || _reservoir == address(0)) revert ZeroAddress();
         usdc = IERC20(_usdc);
+        reservoir = IReservoir(_reservoir);
         _disableInitializers();
     }
 
     /// @notice Initializer
-    /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
     /// @param pauseManager - pause manager address for category-based pauses
     /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
@@ -148,7 +148,6 @@ contract Vault is
     /// @param _protocolFeeBps - protocol fee in bps (can be zero)
     /// @param _protocolFeeReceiver - receiver for protocol fees
     function initialize(
-        address _reservoir,
         address accessManager,
         address pauseManager,
         uint16 _performanceFeeBps,
@@ -156,13 +155,12 @@ contract Vault is
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external initializer {
-        if (_reservoir == address(0) || accessManager == address(0)) revert ZeroAddress();
+        if (accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
-        reservoir = IReservoir(_reservoir);
         _setFees(
             _performanceFeeBps,
             _performanceFeeReceiver,
@@ -228,7 +226,7 @@ contract Vault is
 
         uint256 mintedGross = usdcReported * MZUSD_SCALE;
 
-        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _mintFees(mintedGross);
+        (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _handleFees(mintedGross);
         emit FeesPaid(perfFee, protFee, newEpochId);
 
         if (allocatableMZUSD == 0) {
@@ -243,16 +241,6 @@ contract Vault is
     }
 
     //SETTERS
-    /// @notice Update reservoir address
-    function setReservoir(
-        address _reservoir
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_reservoir == address(0)) revert ZeroAddress();
-        if (address(reservoir) == _reservoir) revert SameValue();
-        reservoir = IReservoir(_reservoir);
-        emit ReservoirUpdated(_reservoir);
-    }
-
     /// @notice Set MZUSD address (one-time).
     function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
@@ -455,7 +443,7 @@ contract Vault is
     /// @param _performanceFeeReceiver - receiver for performance/curators fees
     /// @param _protocolFeeBps - protocol fee in bps
     /// @param _protocolFeeReceiver - receiver for protocol fees
-    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed BPS
+    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
     /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero and different addresses
     function _setFees(
         uint16 _performanceFeeBps,
@@ -463,7 +451,7 @@ contract Vault is
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) internal {
-        if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
+        if (_performanceFeeBps + _protocolFeeBps > MAX_TOTAL_FEE_BPS) revert TooBigBps();
         if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
             revert ZeroAddress();
         }
@@ -496,24 +484,24 @@ contract Vault is
     /// @return mintedForAllocation - amount of MZUSD left for tranche allocation after fees
     /// @return performanceFeeMZUSD - amount of MZUSD minted as performance fee
     /// @return protocolFeeMZUSD - amount of MZUSD minted as protocol fee
-    function _mintFees(
+    function _handleFees(
         uint256 mintedGross
     )
         internal
         returns (uint256 mintedForAllocation, uint256 performanceFeeMZUSD, uint256 protocolFeeMZUSD)
     {
-        performanceFeeMZUSD = _handleFee(performanceFeeBps, performanceFeeReceiver, mintedGross);
-        protocolFeeMZUSD = _handleFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
+        performanceFeeMZUSD = _mintFee(performanceFeeBps, performanceFeeReceiver, mintedGross);
+        protocolFeeMZUSD = _mintFee(protocolFeeBps, protocolFeeReceiver, mintedGross);
 
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
 
-    /// @notice Handle fee minting
+    /// @notice Mint a fee in MZUSD
     /// @param bps - fee in basis points
     /// @param receiver - address to receive the fee
     /// @param mintedGross - gross amount of MZUSD minted for yield distribution
     /// @return feeAmount - amount of MZUSD minted as fee
-    function _handleFee(
+    function _mintFee(
         uint16 bps,
         address receiver,
         uint256 mintedGross

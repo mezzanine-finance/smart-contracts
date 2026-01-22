@@ -5,6 +5,11 @@
                 "internalType": "address",
                 "name": "_usdc",
                 "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "_reservoir",
+                "type": "address"
             }
         ],
         "stateMutability": "nonpayable",
@@ -479,19 +484,6 @@
             {
                 "indexed": false,
                 "internalType": "address",
-                "name": "newReservoir",
-                "type": "address"
-            }
-        ],
-        "name": "ReservoirUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
                 "name": "tranche",
                 "type": "address"
             },
@@ -614,6 +606,19 @@
                 "internalType": "uint64",
                 "name": "",
                 "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_TOTAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -918,11 +923,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "address",
-                "name": "_reservoir",
-                "type": "address"
-            },
             {
                 "internalType": "address",
                 "name": "accessManager",
@@ -1248,19 +1248,6 @@
             }
         ],
         "name": "setNavOracle",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_reservoir",
-                "type": "address"
-            }
-        ],
-        "name": "setReservoir",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

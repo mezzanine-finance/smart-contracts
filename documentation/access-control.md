@@ -62,8 +62,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `rebalance` → `ADMIN_ROLE`
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
 - `advanceEpoch` → `LOSS_MANAGER_ROLE`
-- `setReservoir`, `setMZUSD` (one-time), `setFees`, `setBuffer`, `setEpochConfig`,
-  `addTranche`, `updateTranche` → `ADMIN_ROLE`
+- `setMZUSD` (one-time), `setFees`, `setBuffer`, `setEpochConfig`, `addTranche`,
+  `updateTranche` → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### Tranche (UUPS)
