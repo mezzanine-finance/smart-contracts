@@ -24,6 +24,10 @@ interface IReservoir {
     function deposit(uint256 amount) external;
     function withdraw(uint256 amount, address to) external;
 }
+// NOTE: This Vault is not an ERC4626 vault. It does not mint user shares or represent deposits.
+// Tranches are the ERC4626-like vaults for users. This Vault acts as a protocol treasury:
+// it mints MZUSD, manages yield distribution, holds the USDC buffer for withdrawals/insurance,
+// and coordinates with the Reservoir where strategies live.
 
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
