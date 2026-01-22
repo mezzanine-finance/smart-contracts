@@ -10,12 +10,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IVault {
-    function currentEpochId() external view returns (uint64 epochId);
-    function epochDuration() external view returns (uint64 duration);
-}
+import "./interfaces/IVault.sol";
 
 // @title Tranche with epoch-based umbrella unstake
 // solhint-disable-next-line max-line-length

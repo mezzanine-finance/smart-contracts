@@ -2,21 +2,8 @@
 pragma solidity 0.8.30;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IVault {
-    function currentEpochId() external view returns (uint64 epochId);
-}
-
-// aderyn-fp-next-line(reused-contract-name)
-interface ITranche {
-    function vault() external view returns (address vaultAddress);
-    function umbrellaSharesByEpoch(uint256) external view returns (uint256 shares);
-    function finalizedEpochs(
-        uint256
-    ) external view returns (uint256 totalShares, uint256 totalAssets, bool isFinalized);
-    function finalizeEpoch(uint256) external;
-}
+import {ITranche} from "../interfaces/ITranche.sol";
+import {IVault} from "../interfaces/IVault.sol";
 
 /// @title Umbrella epoch finalizer
 /// @notice Chainlink Automation-style helper that finalizes the previous epoch on a tranche.

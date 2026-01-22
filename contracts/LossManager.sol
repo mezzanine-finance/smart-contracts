@@ -5,23 +5,11 @@ pragma solidity 0.8.30;
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PauseManagedUpgradeable} from "./pause/PauseManagedUpgradeable.sol";
 import {PauseCategory} from "./pause/PauseCategory.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IMZUSD is IERC20 {
-    function mint(address to, uint256 amount) external;
-    function burn(address from, uint256 amount) external;
-}
-// aderyn-fp-next-line(reused-contract-name)
-interface ITranche {
-    function totalAssets() external view returns (uint256 assets);
-}
-// aderyn-fp-next-line(reused-contract-name)
-interface IVaultEpoch {
-    function advanceEpoch() external returns (uint256 newEpochId);
-}
+import {IMZUSD} from "./interfaces/IMZUSD.sol";
+import {ITranche} from "./interfaces/ITranche.sol";
+import {IVault} from "./interfaces/IVault.sol";
 
 /// @title LossManager
 /// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
@@ -121,7 +109,7 @@ contract LossManager is
         address v = vault;
         if (v == address(0)) revert ZeroAddress();
         // Hard-fail if epoch cannot be advanced (e.g., too soon / missing permissions).
-        IVaultEpoch(v).advanceEpoch();
+        IVault(v).advanceEpoch();
 
         uint256 remainingMZ = _toMZ(usdcLoss);
         uint256 orderLen = trancheOrder.length;

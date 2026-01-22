@@ -7,23 +7,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IMZUSD is IERC20 {
-    function mint(address to, uint256 amount) external;
-    function usdc() external view returns (address);
-    function vault() external view returns (address);
-    function decimals() external view returns (uint8);
-}
-// aderyn-fp-next-line(reused-contract-name)
-interface ITranche {
-    function totalAssets() external view returns (uint256 assets);
-    function notifyYield(uint256 amount) external;
-}
-interface IReservoir {
-    function deposit(uint256 amount) external;
-    function withdraw(uint256 amount, address to) external;
-}
+import "./interfaces/IMZUSD.sol";
+import "./interfaces/IReservoir.sol";
+import "./interfaces/ITranche.sol";
 // NOTE: This Vault is not an ERC4626 vault. It does not mint user shares or represent deposits.
 // Tranches are the ERC4626-like vaults for users. This Vault acts as a protocol treasury:
 // it mints MZUSD, manages yield distribution, holds the USDC buffer for withdrawals/insurance,

@@ -4,15 +4,8 @@ pragma solidity 0.8.30;
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IVault {
-    function distributeYield(uint256 usdcReported) external;
-}
-
-interface ILossManager {
-    function applyLoss(uint256 usdcLoss) external;
-}
+import {ILossManager} from "../interfaces/ILossManager.sol";
+import {IVault} from "../interfaces/IVault.sol";
 
 /// @title NAV oracle automation
 /// @notice Stores oracle NAV snapshots with a veto window, then applies yield or loss via Automation.

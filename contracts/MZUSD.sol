@@ -6,11 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
-
-// aderyn-fp-next-line(reused-contract-name)
-interface IVault {
-    function withdraw(address to, uint256 amountUSDC) external;
-}
+import "./interfaces/IVault.sol";
 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
