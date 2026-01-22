@@ -87,20 +87,12 @@ describe("Vault Yield Distribution", () => {
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
-            [
-                reservoir.target,
-                accessManager.target,
-                pauseManager.target,
-                0,
-                bob.address,
-                0,
-                carol.address,
-            ],
+            [accessManager.target, pauseManager.target, 0, bob.address, 0, carol.address],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC],
+                constructorArgs: [MAINNET_USDC, reservoir.target],
             }
         )) as unknown as Vault;
 
@@ -340,29 +332,16 @@ describe("Vault Yield Distribution", () => {
             // Length unchanged
             expect(await vault.tranchesLength()).to.equal(3n);
         });
-
-        it("Updates reservoir address", async () => {
-            const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-            const setReservoirSel = vault.interface.getFunction("setReservoir").selector;
-            await accessManager.setTargetFunctionRole(vault.target, [setReservoirSel], ADMIN_ROLE);
-
-            await expect(vault.connect(deployer).setReservoir(bob.address))
-                .to.emit(vault, "ReservoirUpdated")
-                .withArgs(bob.address);
-
-            expect(await vault.reservoir()).to.equal(bob.address);
-        });
     });
 
     describe("Access control", () => {
         it("Pauses all guarded Vault functions", async () => {
             const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
             const rebalanceSel = vault.interface.getFunction("rebalance").selector;
-            const setReservoirSel = vault.interface.getFunction("setReservoir").selector;
             const setBufferSel = vault.interface.getFunction("setBuffer").selector;
             await accessManager.setTargetFunctionRole(
                 vault.target,
-                [rebalanceSel, setReservoirSel, setBufferSel],
+                [rebalanceSel, setBufferSel],
                 ADMIN_ROLE
             );
 
@@ -383,9 +362,6 @@ describe("Vault Yield Distribution", () => {
             await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
 
             await pauseManager.pauseGlobal(PauseCategory.ADMIN);
-            await expect(vault.connect(deployer).setReservoir(bob.address))
-                .to.be.revertedWithCustomError(vault, "CategoryPaused")
-                .withArgs(PauseCategory.ADMIN);
             await expect(vault.connect(deployer).setMZUSD(bob.address))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
@@ -429,7 +405,6 @@ describe("Vault Yield Distribution", () => {
                 upgrades.deployProxy(
                     VaultFactory,
                     [
-                        reservoir.target,
                         accessManager.target,
                         pauseManager.target,
                         0,
@@ -441,7 +416,7 @@ describe("Vault Yield Distribution", () => {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [MAINNET_USDC],
+                        constructorArgs: [MAINNET_USDC, reservoir.target],
                     }
                 )
             ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
@@ -450,7 +425,6 @@ describe("Vault Yield Distribution", () => {
                 upgrades.deployProxy(
                     VaultFactory,
                     [
-                        reservoir.target,
                         accessManager.target,
                         pauseManager.target,
                         10_000,
@@ -462,7 +436,7 @@ describe("Vault Yield Distribution", () => {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [MAINNET_USDC],
+                        constructorArgs: [MAINNET_USDC, reservoir.target],
                     }
                 )
             ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");

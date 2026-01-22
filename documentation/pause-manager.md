@@ -59,8 +59,7 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `PROTOCOL`: `notifyYield`, `finalizeEpoch`
 
 ### Vault
-- `ADMIN`: `setMZUSD`, `setReservoir`, `setFees`, `setBuffer`, `setEpochConfig`,
-  `addTranche`, `updateTranche`
+- `ADMIN`: `setMZUSD`, `setFees`, `setBuffer`, `setEpochConfig`, `addTranche`, `updateTranche`
 - `PROTOCOL`: `distributeYield`, `rebalance`, `withdraw`, `advanceEpoch`
 
 ### LossManager

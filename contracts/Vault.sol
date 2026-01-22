@@ -56,7 +56,7 @@ contract Vault is
 
     IERC20 public immutable usdc; // address of USDC token
     IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
-    IReservoir public reservoir; // address of reservoir contract for idle USDC
+    IReservoir public immutable reservoir; // address of reservoir contract for idle USDC
 
     address public performanceFeeReceiver; // receiver of performance/curators fees
     address public protocolFeeReceiver; // receiver of protocols fees
@@ -89,7 +89,6 @@ contract Vault is
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event MZUSDChanged(address newMZUSD);
-    event ReservoirUpdated(address newReservoir);
     event LossManagerUpdated(address newLossManager);
     event NavOracleUpdated(address newNavOracle);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
@@ -133,14 +132,14 @@ contract Vault is
         _;
     }
 
-    constructor(address _usdc) {
-        if (_usdc == address(0)) revert ZeroAddress();
+    constructor(address _usdc, address _reservoir) {
+        if (_usdc == address(0) || _reservoir == address(0)) revert ZeroAddress();
         usdc = IERC20(_usdc);
+        reservoir = IReservoir(_reservoir);
         _disableInitializers();
     }
 
     /// @notice Initializer
-    /// @param _reservoir - address of reservoir contract
     /// @param accessManager - access manager address for role control
     /// @param pauseManager - pause manager address for category-based pauses
     /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
@@ -148,7 +147,6 @@ contract Vault is
     /// @param _protocolFeeBps - protocol fee in bps (can be zero)
     /// @param _protocolFeeReceiver - receiver for protocol fees
     function initialize(
-        address _reservoir,
         address accessManager,
         address pauseManager,
         uint16 _performanceFeeBps,
@@ -156,13 +154,12 @@ contract Vault is
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external initializer {
-        if (_reservoir == address(0) || accessManager == address(0)) revert ZeroAddress();
+        if (accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager);
         __ReentrancyGuard_init();
 
-        reservoir = IReservoir(_reservoir);
         _setFees(
             _performanceFeeBps,
             _performanceFeeReceiver,
@@ -243,16 +240,6 @@ contract Vault is
     }
 
     //SETTERS
-    /// @notice Update reservoir address
-    function setReservoir(
-        address _reservoir
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_reservoir == address(0)) revert ZeroAddress();
-        if (address(reservoir) == _reservoir) revert SameValue();
-        reservoir = IReservoir(_reservoir);
-        emit ReservoirUpdated(_reservoir);
-    }
-
     /// @notice Set MZUSD address (one-time).
     function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_mzusd == address(0)) revert ZeroAddress();
@@ -463,6 +450,7 @@ contract Vault is
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) internal {
+        //todo - 100% nope, lower the bar to 60%
         if (_performanceFeeBps + _protocolFeeBps > BPS) revert TooBigBps();
         if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
             revert ZeroAddress();

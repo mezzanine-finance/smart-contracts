@@ -79,7 +79,6 @@ async function main() {
     const vault = await upgrades.deployProxy(
         VaultFactory,
         [
-            reservoirAddress,
             accessManagerAddress,
             pauseManagerAddress,
             performanceFeeBps,
@@ -91,7 +90,7 @@ async function main() {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [usdcAddress],
+            constructorArgs: [usdcAddress, reservoirAddress],
         }
     );
     const tx = vault.deploymentTransaction();
@@ -111,7 +110,7 @@ async function main() {
     });
 
     // Verify implementation
-    await verifyContract(vaultImpl, [usdcAddress]);
+    await verifyContract(vaultImpl, [usdcAddress, reservoirAddress]);
 
     // Summary block for easy copy-paste
     const rpcConfig = network.config as {url?: string | string[]; chainId?: number};
