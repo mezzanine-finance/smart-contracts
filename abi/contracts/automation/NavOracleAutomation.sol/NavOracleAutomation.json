@@ -70,6 +70,11 @@
     },
     {
         "inputs": [],
+        "name": "InvalidVetoPeriod",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NoPendingNav",
         "type": "error"
     },
@@ -212,6 +217,19 @@
         ],
         "name": "VetoPeriodUpdated",
         "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_VETO_PERIOD",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [],

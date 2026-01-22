@@ -20,6 +20,7 @@ interface ILossManager {
 ///      a role that can call Vault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
+    uint256 public constant MAX_VETO_PERIOD = 5 days;
 
     IERC20 public immutable mzusd;
     address public immutable vault;
@@ -48,6 +49,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error PendingNavExists();
     error NoPendingNav();
     error NotReady(uint256 readyAt);
+    error InvalidVetoPeriod();
     error ZeroAddress();
 
     constructor(
@@ -68,7 +70,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         mzusd = IERC20(mzusd_);
         vault = vault_;
         lossManager = lossManager_;
-        vetoPeriod = vetoPeriod_;
+        _setVetoPeriod(vetoPeriod_);
     }
 
     /// @notice Submits a NAV snapshot (USDC 6d) and records matching MZUSD total supply.
@@ -105,7 +107,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
 
     /// @notice Updates the veto period for future submissions.
     function setVetoPeriod(uint256 newPeriod) external restricted {
-        vetoPeriod = newPeriod;
+        _setVetoPeriod(newPeriod);
         emit VetoPeriodUpdated(newPeriod);
     }
 
@@ -158,5 +160,10 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         pendingTotalSupplyMZ = 0;
         pendingSubmittedAt = 0;
         pendingReadyAt = 0;
+    }
+
+    function _setVetoPeriod(uint256 newPeriod) internal {
+        if (newPeriod > MAX_VETO_PERIOD) revert InvalidVetoPeriod();
+        vetoPeriod = newPeriod;
     }
 }

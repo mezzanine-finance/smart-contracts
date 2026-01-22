@@ -401,4 +401,14 @@ describe("NavOracleAutomation", () => {
         expect(epochAfter).to.equal(epochBefore + 1n);
         expect(await navAutomation.hasPendingNav()).to.equal(false);
     });
+
+    it("enforces max veto period", async () => {
+        const max = BigInt(5 * DAY);
+        await navAutomation.connect(deployer).setVetoPeriod(max);
+        expect(await navAutomation.vetoPeriod()).to.equal(max);
+
+        await expect(
+            navAutomation.connect(deployer).setVetoPeriod(max + 1n)
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidVetoPeriod");
+    });
 });
