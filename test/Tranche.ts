@@ -578,6 +578,59 @@ describe("Tranche", () => {
             ).wait();
             expect(await directTranche.totalSupply()).to.equal(0n);
         });
+
+        it("Direct mode: donation inflation attack is not profitable", async () => {
+            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+            const directTranche = (await upgrades.deployProxy(
+                TrancheFactory,
+                [
+                    mzusd.target,
+                    vault.target,
+                    2,
+                    0,
+                    "Direct Tranche",
+                    "dMZUSD",
+                    accessManager.target,
+                    pauseManager.target,
+                ],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [true],
+                }
+            )) as unknown as Tranche;
+
+            const attackerDeposit = to18(1n);
+            const attackerDonation = to18(100n);
+            const attackerMinted = await mintMZUSDFor(alice, to6(101n));
+            expect(attackerMinted).to.equal(attackerDeposit + attackerDonation);
+
+            await mzusd.connect(alice).approve(directTranche.target, attackerDeposit);
+            await (
+                await directTranche.connect(alice).deposit(attackerDeposit, alice.address)
+            ).wait();
+
+            await mzusd.connect(alice).transfer(directTranche.target, attackerDonation);
+
+            const victimMinted = await mintMZUSDFor(bob, to6(10_000n));
+            await mzusd.connect(bob).approve(directTranche.target, victimMinted);
+            await (await directTranche.connect(bob).deposit(victimMinted, bob.address)).wait();
+
+            const victimShares = await directTranche.balanceOf(bob.address);
+            expect(victimShares).to.be.lt(victimMinted);
+
+            const attackerShares = await directTranche.balanceOf(alice.address);
+            await (
+                await directTranche
+                    .connect(alice)
+                    .redeem(attackerShares, alice.address, alice.address)
+            ).wait();
+
+            const attackerFinal = await mzusd.balanceOf(alice.address);
+            const profit = attackerFinal - attackerMinted;
+            expect(profit).to.be.lte(0n);
+        });
     });
     describe("Yield streaming", () => {
         it("Streams yield linearly and affects deposits & pricePerShare correctly", async () => {
