@@ -151,10 +151,18 @@ describe("UmbrellaEpochFinalizer", () => {
         const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
+        const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [setMZUSDSelector, distributeYieldSelector, addTrancheSelector],
+            [
+                setMZUSDSelector,
+                distributeYieldSelector,
+                addTrancheSelector,
+                setLossManagerSelector,
+                setNavOracleSelector,
+            ],
             ADMIN_ROLE
         );
 
@@ -179,6 +187,8 @@ describe("UmbrellaEpochFinalizer", () => {
 
         // Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
         await vault.setMZUSD(mzusd.target);
+        await vault.setLossManager(deployer.address);
+        await vault.setNavOracle(deployer.address);
 
         await vault.addTranche({
             tranche: tranche.target,

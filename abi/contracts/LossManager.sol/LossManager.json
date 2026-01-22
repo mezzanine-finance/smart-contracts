@@ -162,7 +162,17 @@
     },
     {
         "inputs": [],
+        "name": "NotNavOracle",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SameValue",
         "type": "error"
     },
     {
@@ -264,6 +274,19 @@
             }
         ],
         "name": "MaxLossPerTxUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "newNavOracle",
+                "type": "address"
+            }
+        ],
+        "name": "NavOracleUpdated",
         "type": "event"
     },
     {
@@ -536,6 +559,19 @@
     },
     {
         "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "pauseManager",
         "outputs": [
             {
@@ -582,6 +618,19 @@
             }
         ],
         "name": "setMaxLossPerTxUSDC",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_navOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setNavOracle",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

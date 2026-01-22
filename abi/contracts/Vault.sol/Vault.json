@@ -141,6 +141,11 @@
     },
     {
         "inputs": [],
+        "name": "LossManagerAlreadySet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "MZUSDAlreadySet",
         "type": "error"
     },
@@ -156,7 +161,17 @@
     },
     {
         "inputs": [],
+        "name": "NotLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NotMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotNavOracle",
         "type": "error"
     },
     {
@@ -374,11 +389,37 @@
             {
                 "indexed": false,
                 "internalType": "address",
+                "name": "newLossManager",
+                "type": "address"
+            }
+        ],
+        "name": "LossManagerUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
                 "name": "newMZUSD",
                 "type": "address"
             }
         ],
         "name": "MZUSDChanged",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "newNavOracle",
+                "type": "address"
+            }
+        ],
+        "name": "NavOracleUpdated",
         "type": "event"
     },
     {
@@ -939,10 +980,36 @@
     },
     {
         "inputs": [],
+        "name": "lossManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "mzusd",
         "outputs": [
             {
                 "internalType": "contract IMZUSD",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "address",
                 "name": "",
                 "type": "address"
             }
@@ -1129,11 +1196,37 @@
         "inputs": [
             {
                 "internalType": "address",
+                "name": "_lossManager",
+                "type": "address"
+            }
+        ],
+        "name": "setLossManager",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
                 "name": "_mzusd",
                 "type": "address"
             }
         ],
         "name": "setMZUSD",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_navOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setNavOracle",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

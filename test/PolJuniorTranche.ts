@@ -171,9 +171,19 @@ describe("PolJuniorTranche", () => {
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
+        const setLossManagerSel = vault.interface.getFunction("setLossManager").selector;
+        const setNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             vaultAddr,
-            [setMZUSDSel, distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
+            [
+                setMZUSDSel,
+                distributeSel,
+                addTrancheSel,
+                updateTrancheSel,
+                setEpochConfigSel,
+                setLossManagerSel,
+                setNavOracleSel,
+            ],
             ADMIN_ROLE
         );
 
@@ -185,6 +195,8 @@ describe("PolJuniorTranche", () => {
 
         // wire
         await vault.setMZUSD(mzusdAddr);
+        await vault.setLossManager(deployer.address);
+        await vault.setNavOracle(deployer.address);
 
         snapshot = await takeSnapshot();
     });

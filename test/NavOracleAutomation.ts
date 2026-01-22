@@ -192,9 +192,17 @@ describe("NavOracleAutomation", () => {
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
+        const setVaultLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
+        const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [setMZUSDSelector, distributeYieldSelector, addTrancheSelector],
+            [
+                setMZUSDSelector,
+                distributeYieldSelector,
+                addTrancheSelector,
+                setVaultLossManagerSelector,
+                setNavOracleSelector,
+            ],
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(
@@ -217,9 +225,10 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManager.target, 0);
 
         const applyLossSelector = lossManager.interface.getFunction("applyLoss").selector;
+        const setNavOracleLossSelector = lossManager.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             lossManager.target,
-            [applyLossSelector],
+            [applyLossSelector, setNavOracleLossSelector],
             ADMIN_ROLE
         );
 
@@ -242,6 +251,9 @@ describe("NavOracleAutomation", () => {
 
         // Wire Vault to MZUSD and register tranche in Vault
         await vault.setMZUSD(mzusd.target);
+        await vault.setLossManager(lossManager.target);
+        await vault.setNavOracle(navAutomation.target);
+        await lossManager.setNavOracle(navAutomation.target);
         await vault.addTranche({
             tranche: tranche.target,
             weight: 10_000,

@@ -191,6 +191,8 @@ describe("Vault Yield Distribution", () => {
         const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
+        const setLossManagerSel = vault.interface.getFunction("setLossManager").selector;
+        const setNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setFeesSel = vault.interface.getFunction("setFees").selector;
@@ -201,6 +203,8 @@ describe("Vault Yield Distribution", () => {
                 setMZUSDSel,
                 distributeSel,
                 advanceEpochSel,
+                setLossManagerSel,
+                setNavOracleSel,
                 addTrancheSel,
                 updateTrancheSel,
                 setFeesSel,
@@ -238,6 +242,8 @@ describe("Vault Yield Distribution", () => {
 
         // wire and register
         await vault.setMZUSD(mzusd.target);
+        await vault.setLossManager(deployer.address);
+        await vault.setNavOracle(deployer.address);
 
         await vault.addTranche({tranche: junior.target, weight: 2000, enabled: true});
         await vault.addTranche({tranche: mezzanine.target, weight: 3000, enabled: true});

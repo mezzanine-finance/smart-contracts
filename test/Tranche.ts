@@ -144,10 +144,19 @@ describe("Tranche", () => {
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
+        const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
         await accessManager.setTargetFunctionRole(
             vault.target,
-            [setMZUSDSelector, distributeYieldSelector, advanceEpochSelector, addTrancheSelector],
+            [
+                setMZUSDSelector,
+                distributeYieldSelector,
+                advanceEpochSelector,
+                addTrancheSelector,
+                setLossManagerSelector,
+                setNavOracleSelector,
+            ],
             ADMIN_ROLE
         );
 
@@ -163,6 +172,8 @@ describe("Tranche", () => {
 
         // 5) Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
         await vault.setMZUSD(mzusd.target);
+        await vault.setLossManager(deployer.address);
+        await vault.setNavOracle(deployer.address);
 
         await vault.addTranche({
             tranche: tranche.target,

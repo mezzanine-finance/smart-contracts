@@ -262,10 +262,20 @@ describe("LossManager", () => {
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
+        const setVaultLossManagerSel = vault.interface.getFunction("setLossManager").selector;
+        const setVaultNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
 
         await accessManager.setTargetFunctionRole(
             vaultAddr,
-            [setMZUSDSel, distributeSel, addTrancheSel, updateTrancheSel, setEpochConfigSel],
+            [
+                setMZUSDSel,
+                distributeSel,
+                addTrancheSel,
+                updateTrancheSel,
+                setEpochConfigSel,
+                setVaultLossManagerSel,
+                setVaultNavOracleSel,
+            ],
             ADMIN_ROLE
         );
 
@@ -295,9 +305,10 @@ describe("LossManager", () => {
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
         const setOrderSel = lossManager.interface.getFunction("setTrancheOrderAndGroups").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
+        const setNavOracleSel = lossManager.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setMaxSel],
+            [applyLossSel, setOrderSel, setMaxSel, setNavOracleSel],
             ADMIN_ROLE
         );
 
@@ -316,6 +327,9 @@ describe("LossManager", () => {
 
         // wire and register
         await vault.setMZUSD(mzusdAddr);
+        await vault.setLossManager(lossManagerAddr);
+        await vault.setNavOracle(deployer.address);
+        await lossManager.setNavOracle(deployer.address);
 
         await vault.addTranche({tranche: juniorAddr, weight: 2000, enabled: true});
         await vault.addTranche({tranche: mezzanineAddr, weight: 3000, enabled: true});

@@ -46,6 +46,7 @@ contract LossManager is
     /// @dev If trancheOrder[i] and trancheOrder[i+1] are contiguous and share the same non-zero group id,
     ///      then they form a pair and share losses proportionally by TVL (totalAssets).
     mapping(address => uint256) public trancheGroup;
+    address public navOracle; // canonical NAV automation address
 
     event TrancheGroupUpdated(
         address indexed trancheA,
@@ -55,10 +56,12 @@ contract LossManager is
     event LossApplied(uint256 usdcLoss, uint256 lossMZ, address[] tranches, uint256[] cutsMZ);
     event TrancheOrderUpdated(address[] newOrder);
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
+    event NavOracleUpdated(address newNavOracle);
 
     error ZeroAddress();
     error ZeroAmount();
     error ZeroLength();
+    error SameValue();
     error DuplicateTranche(address tranche);
     error InsufficientCover(uint256 remainingMZ);
     error LimitExceeded();
@@ -66,6 +69,7 @@ contract LossManager is
     error GroupNotContiguous(uint256 groupId);
     error LengthMismatch(uint256 orderLen, uint256 groupLen);
     event VaultUpdated(address indexed vault);
+    error NotNavOracle();
 
     constructor() {
         _disableInitializers();
@@ -100,8 +104,15 @@ contract LossManager is
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
+    modifier onlyNavOracle() {
+        if (msg.sender != navOracle) revert NotNavOracle();
+        _;
+    }
+
     // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
-    function applyLoss(uint256 usdcLoss) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    function applyLoss(
+        uint256 usdcLoss
+    ) external onlyNavOracle whenNotPaused(PauseCategory.PROTOCOL) {
         if (usdcLoss == 0) revert ZeroAmount();
         if (maxLossPerTxUSDC != 0 && usdcLoss > maxLossPerTxUSDC) revert LimitExceeded();
 
@@ -130,6 +141,16 @@ contract LossManager is
         uint256[] memory groupIds
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         _setTrancheOrderAndGroups(order, groupIds);
+    }
+
+    /// @notice Update NAV oracle automation address.
+    function setNavOracle(
+        address _navOracle
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_navOracle == address(0)) revert ZeroAddress();
+        if (navOracle == _navOracle) revert SameValue();
+        navOracle = _navOracle;
+        emit NavOracleUpdated(_navOracle);
     }
 
     // @notice sets max loss per tx in USDC 6d (0 = no limit)

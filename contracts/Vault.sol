@@ -71,6 +71,8 @@ contract Vault is
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
     uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
+    address public lossManager; // canonical loss manager (set once)
+    address public navOracle; // canonical NAV automation address
 
     event FeesUpdated(
         uint256 performanceBps,
@@ -87,6 +89,8 @@ contract Vault is
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event MZUSDChanged(address newMZUSD);
     event ReservoirUpdated(address newReservoir);
+    event LossManagerUpdated(address newLossManager);
+    event NavOracleUpdated(address newNavOracle);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
 
@@ -103,7 +107,10 @@ contract Vault is
     error TooManyTranches();
     error SameValue();
     error MZUSDAlreadySet();
+    error LossManagerAlreadySet();
     error NotMZUSD();
+    error NotLossManager();
+    error NotNavOracle();
     error InvalidMZUSDDecimals(uint8 actualDecimals);
     error InvalidMZUSDUSDC(address actualUSDC);
     error InvalidMZUSDVault(address actualVault);
@@ -111,6 +118,16 @@ contract Vault is
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
+        _;
+    }
+
+    modifier onlyLossManager() {
+        if (msg.sender != lossManager) revert NotLossManager();
+        _;
+    }
+
+    modifier onlyNavOracle() {
+        if (msg.sender != navOracle) revert NotNavOracle();
         _;
     }
 
@@ -194,7 +211,7 @@ contract Vault is
     /// @dev yield is allocated to tranches based on their weights and TVL
     function distributeYield(
         uint256 usdcReported
-    ) external nonReentrant restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external nonReentrant onlyNavOracle whenNotPaused(PauseCategory.PROTOCOL) {
         if (tranches.length == 0) revert NoTranchesAdded();
 
         // Always advance epoch on distribution call, even if yield is 0.
@@ -246,6 +263,26 @@ contract Vault is
         if (mzusdVault != address(this)) revert InvalidMZUSDVault(mzusdVault);
         mzusd = IMZUSD(_mzusd);
         emit MZUSDChanged(_mzusd);
+    }
+
+    /// @notice Set LossManager address (one-time).
+    function setLossManager(
+        address _lossManager
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_lossManager == address(0)) revert ZeroAddress();
+        if (lossManager != address(0)) revert LossManagerAlreadySet();
+        lossManager = _lossManager;
+        emit LossManagerUpdated(_lossManager);
+    }
+
+    /// @notice Update NAV oracle automation address.
+    function setNavOracle(
+        address _navOracle
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_navOracle == address(0)) revert ZeroAddress();
+        if (navOracle == _navOracle) revert SameValue();
+        navOracle = _navOracle;
+        emit NavOracleUpdated(_navOracle);
     }
 
     /// @notice Update fees configuration
@@ -341,7 +378,7 @@ contract Vault is
     /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
     function advanceEpoch()
         external
-        restricted
+        onlyLossManager
         whenNotPaused(PauseCategory.PROTOCOL)
         returns (uint256 newEpochId)
     {
