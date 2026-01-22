@@ -562,6 +562,9 @@ contract Vault is
             if (i == trancheCount - 1 && allocatableMZUSD - allocated != part) {
                 part = allocatableMZUSD - allocated;
             }
+            if (part == 0) {
+                continue;
+            }
             mzusdToken.transfer(t.tranche, part);
             ITranche(t.tranche).notifyYield(part);
             allocated += part;

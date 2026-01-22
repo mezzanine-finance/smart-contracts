@@ -851,6 +851,33 @@ describe("Vault Yield Distribution", () => {
 
         expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
     });
+
+    it("Skips zero allocation tranches without reverting", async () => {
+        await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6("0.000001")));
+        await depositMZIntoTranche(bob, senior, await mintMZUSDFor(bob, to6(1000n)));
+
+        await (await vault.connect(deployer).updateTranche(0, 1, true)).wait();
+        await (await vault.connect(deployer).updateTranche(1, 0, false)).wait();
+        await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
+
+        await time.increase(DAY);
+
+        const bJ0 = await mzusd.balanceOf(junior.target);
+        const bS0 = await mzusd.balanceOf(senior.target);
+
+        const reportedUSDC = to6("0.000001");
+        const expectedYield = to18("0.000001");
+
+        const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+        await tx.wait();
+
+        const bJ1 = await mzusd.balanceOf(junior.target);
+        const bS1 = await mzusd.balanceOf(senior.target);
+
+        expect(bJ1).to.equal(bJ0);
+        expect(bS1 - bS0).to.equal(expectedYield);
+        expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+    });
     it("Epoch advances, fees minted (fees = 100%), and no tranche notify/transfer happens", async () => {
         await time.increase(DAY);
 
