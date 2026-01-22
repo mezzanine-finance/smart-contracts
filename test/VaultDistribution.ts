@@ -1061,7 +1061,7 @@ describe("Vault Yield Distribution", () => {
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
 
-        it("Tiny tranche yield streams, but PPS moves only above the rounding threshold", async () => {
+        it("Tiny tranche yield streams, and PPS moves in tiny rounded steps", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(1000n)));
             await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(500_000n)));
             await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(500_000n)));
@@ -1070,8 +1070,9 @@ describe("Vault Yield Distribution", () => {
             await (await vault.connect(deployer).updateTranche(1, 10_000, true)).wait();
             await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
 
+            const feeBps = 5_000n;
             await (
-                await vault.connect(deployer).setFees(9999, bob.address, 0, carol.address)
+                await vault.connect(deployer).setFees(feeBps, bob.address, 0, carol.address)
             ).wait();
 
             const totalSupply = await junior.totalSupply();
@@ -1082,9 +1083,9 @@ describe("Vault Yield Distribution", () => {
             const [, wS] = await vault.tranches(2);
 
             const cases = [
-                {usdcReported: 1n, expectedPpsDelta: 0n},
-                {usdcReported: 10n, expectedPpsDelta: 0n},
-                {usdcReported: 101n, expectedPpsDelta: 1n},
+                {usdcReported: 1n, expectedPpsDelta: 49n},
+                {usdcReported: 10n, expectedPpsDelta: 500n},
+                {usdcReported: 101n, expectedPpsDelta: 5050n},
             ];
 
             for (const c of cases) {
@@ -1100,10 +1101,11 @@ describe("Vault Yield Distribution", () => {
                 const totalScore = scoreJ + scoreM + scoreS;
 
                 const mintedGross = c.usdcReported * 1_000_000_000_000n;
-                const fee = (mintedGross * 9999n) / 10_000n;
+                const fee = (mintedGross * feeBps) / 10_000n;
                 const allocatable = mintedGross - fee;
                 const partJ = (allocatable * scoreJ) / totalScore;
 
+                const totalAssetsBefore = await junior.totalAssets();
                 const ppsBefore = await junior.pricePerShare();
 
                 await (await vault.connect(deployer).distributeYield(c.usdcReported)).wait();
@@ -1111,7 +1113,9 @@ describe("Vault Yield Distribution", () => {
 
                 const ppsAfter = await junior.pricePerShare();
                 const ppsDelta = ppsAfter - ppsBefore;
-                const expectedDelta = (partJ * WAD) / totalSupply;
+                const expectedDelta =
+                    ((totalAssetsBefore + partJ) * WAD) / totalSupply -
+                    (totalAssetsBefore * WAD) / totalSupply;
 
                 expect(ppsDelta).to.equal(expectedDelta);
                 expect(ppsDelta).to.equal(c.expectedPpsDelta);
