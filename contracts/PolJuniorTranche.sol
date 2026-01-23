@@ -43,14 +43,14 @@ contract PolJuniorTranche is
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
-    /// @param _pauseManager - pause manager address for category-based pauses
+    /// @param pauseManager_ - pause manager address for category-based pauses
     /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
         string memory name_,
         string memory symbol_,
         address accessManager,
-        address _pauseManager,
+        address pauseManager_,
         address polPayoutAddress
     ) external initializer {
         if (accessManager == address(0) || address(assetToken) == address(0)) revert ZeroAddress();
@@ -59,7 +59,7 @@ contract PolJuniorTranche is
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(_pauseManager);
+        __PauseManaged_init(pauseManager_);
         __ReentrancyGuard_init();
 
         polPayout = polPayoutAddress;

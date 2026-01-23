@@ -718,7 +718,7 @@
             },
             {
                 "internalType": "address",
-                "name": "_pauseManager",
+                "name": "pauseManager_",
                 "type": "address"
             },
             {

@@ -11,6 +11,8 @@ import {PauseCategory} from "./PauseCategory.sol";
 /// @notice Centralized pause registry with per-category global and per-contract switches.
 /// @dev All categories are enabled by default and can be paused via AccessManager-controlled calls.
 ///      Pause and unpause are separate methods so AccessManager can enforce different delays.
+// @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
+// aderyn-fp-next-line(contract-locks-ether)
 contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManager {
     mapping(PauseCategory => bool) private _globalPaused;
     mapping(address => mapping(PauseCategory => bool)) private _contractPaused;

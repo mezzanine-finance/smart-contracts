@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -28,6 +29,7 @@ contract Tranche is
     PauseManagedUpgradeable
 {
     using SafeERC20 for IERC20;
+    using SafeCast for uint256;
 
     struct FinalizedEpoch {
         uint256 totalShares;
@@ -395,8 +397,8 @@ contract Tranche is
         uint256 endTs = startTs + duration;
 
         yieldStreamingAmount = yieldAmount;
-        yieldStreamStart = uint64(startTs);
-        yieldStreamEnd = uint64(endTs);
+        yieldStreamStart = SafeCast.toUint64(startTs);
+        yieldStreamEnd = SafeCast.toUint64(endTs);
 
         uint256 epochId = IVault(vault).currentEpochId();
         emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
