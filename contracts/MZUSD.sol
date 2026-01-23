@@ -88,11 +88,11 @@ contract MZUSD is
     }
 
     /// @param accessManager - address of AccessManager contract for role management
-    /// @param pauseManager - address of PauseManager contract for category-based pauses
+    /// @param pauseManager_ - address of PauseManager contract for category-based pauses
     /// @param _initialCapUSDC - initial global redemption cap in USDC (6 decimals)
     function initialize(
         address accessManager,
-        address pauseManager,
+        address pauseManager_,
         uint256 _initialCapUSDC
     ) external initializer {
         if (accessManager == address(0)) {
@@ -101,7 +101,7 @@ contract MZUSD is
 
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(pauseManager_);
 
         _setGlobalRedemptionCap(_initialCapUSDC);
         windowStartTimestamp = uint40(block.timestamp);

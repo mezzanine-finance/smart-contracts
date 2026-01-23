@@ -24,13 +24,13 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         _disableInitializers();
     }
 
-    function initialize(address accessManager, address pauseManager) external initializer {
+    function initialize(address accessManager, address pauseManager_) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(pauseManager_);
     }
 
     /// @notice Typically called by the Vault to move idle USDC into the Reservoir.

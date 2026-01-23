@@ -132,14 +132,14 @@ contract Vault is
 
     /// @notice Initializer
     /// @param accessManager - access manager address for role control
-    /// @param pauseManager - pause manager address for category-based pauses
+    /// @param pauseManager_ - pause manager address for category-based pauses
     /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
     /// @param _performanceFeeReceiver - receiver for performance/curators fees
     /// @param _protocolFeeBps - protocol fee in bps (can be zero)
     /// @param _protocolFeeReceiver - receiver for protocol fees
     function initialize(
         address accessManager,
-        address pauseManager,
+        address pauseManager_,
         uint16 _performanceFeeBps,
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
@@ -148,7 +148,7 @@ contract Vault is
         if (accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(pauseManager_);
         __ReentrancyGuard_init();
 
         _setFees(

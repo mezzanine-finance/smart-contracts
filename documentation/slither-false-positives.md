@@ -41,9 +41,6 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
   - Reason: return values are not required for correctness; used for calls
     where revert semantics are sufficient.
 
-- `shadowing-local` (Low)
-  - Status: addressed by renaming initializer parameters to `pauseManager_`.
-
 - `missing-zero-check` (Low)
   - File: `contracts/test/MockMZUSD.sol`.
   - Reason: test-only mock; zero-checks are unnecessary.

@@ -129,7 +129,7 @@ contract Tranche is
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
-    /// @param pauseManager - pause manager address for category-based pauses
+    /// @param pauseManager_ - pause manager address for category-based pauses
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -138,7 +138,7 @@ contract Tranche is
         string memory name_,
         string memory symbol_,
         address accessManager,
-        address pauseManager
+        address pauseManager_
     ) external initializer {
         if (
             vaultAddress == address(0) ||
@@ -149,7 +149,7 @@ contract Tranche is
         __ERC20_init(name_, symbol_);
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(pauseManager_);
         __ReentrancyGuard_init();
 
         vault = vaultAddress;

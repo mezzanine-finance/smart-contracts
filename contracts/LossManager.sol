@@ -64,7 +64,7 @@ contract LossManager is
     }
 
     /// @param accessManager controls access to restricted functions
-    /// @param pauseManager pause manager address for category-based pauses
+    /// @param pauseManager_ pause manager address for category-based pauses
     /// @param _mzusd protocol stablecoin contract
     /// @param _vault vault contract used to advance epochs
     /// @param order tranche burn order
@@ -72,7 +72,7 @@ contract LossManager is
     /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
     function initialize(
         address accessManager,
-        address pauseManager,
+        address pauseManager_,
         address _mzusd,
         address _vault,
         address[] memory order,
@@ -84,7 +84,7 @@ contract LossManager is
         }
 
         __AccessManaged_init(accessManager);
-        __PauseManaged_init(pauseManager);
+        __PauseManaged_init(pauseManager_);
         mzusd = IMZUSD(_mzusd);
         vault = _vault;
         emit VaultUpdated(_vault);
