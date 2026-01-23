@@ -16,9 +16,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-// Role for Vault to call MZUSD.mint + Tranche.notifyYield
-const VAULT_ROLE = 2n;
-
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
 
@@ -223,14 +220,6 @@ describe("Vault Yield Distribution", () => {
             [tSetUnstakeDelaySel, tSetDepositLimitsSel],
             ADMIN_ROLE
         );
-
-        await accessManager.grantRole(VAULT_ROLE, vault.target, 0);
-
-        // vault role: tranche.notifyYield (each tranche)
-        const notifySel = junior.interface.getFunction("notifyYield").selector;
-        await accessManager.setTargetFunctionRole(junior.target, [notifySel], VAULT_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanine.target, [notifySel], VAULT_ROLE);
-        await accessManager.setTargetFunctionRole(senior.target, [notifySel], VAULT_ROLE);
 
         // wire and register
         await vault.setMZUSD(mzusd.target);

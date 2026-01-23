@@ -25,7 +25,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-const VAULT_ROLE = 2n;
 const LOSS_MANAGER_ROLE = 3n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
@@ -204,6 +203,7 @@ describe("LossManager", () => {
             PolFactory,
             [
                 mzusd.target,
+                vault.target,
                 "POL Junior Tranche",
                 "pJLT",
                 accessManager.target,
@@ -304,18 +304,8 @@ describe("LossManager", () => {
             ADMIN_ROLE
         );
 
-        // vault role: tranche.notifyYield
-        await accessManager.grantRole(VAULT_ROLE, vaultAddr, 0);
-
         // loss manager role: Vault.advanceEpoch
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
-
-        // vault role: tranche.notifyYield
-        const notifySel = junior.interface.getFunction("notifyYield").selector;
-        await accessManager.setTargetFunctionRole(juniorAddr, [notifySel], VAULT_ROLE);
-        await accessManager.setTargetFunctionRole(mezzanineAddr, [notifySel], VAULT_ROLE);
-        await accessManager.setTargetFunctionRole(seniorAddr, [notifySel], VAULT_ROLE);
-        await accessManager.setTargetFunctionRole(polAddr, [notifySel], VAULT_ROLE);
 
         // wire and register
         await vault.setMZUSD(mzusdAddr);

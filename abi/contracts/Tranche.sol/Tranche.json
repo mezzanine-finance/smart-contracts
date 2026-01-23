@@ -334,6 +334,11 @@
     },
     {
         "inputs": [],
+        "name": "NotVault",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NothingToClaim",
         "type": "error"
     },
