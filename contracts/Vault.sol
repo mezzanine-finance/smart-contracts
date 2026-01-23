@@ -521,17 +521,12 @@ contract Vault is
         uint256 totalWeight;
         uint256[] memory scores = new uint256[](trancheCount);
 
-        address firstEnabledTranche;
         TrancheInfo memory t;
 
         // calculate scores for each tranche and total score
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
             if (!t.enabled || t.weight == 0) continue;
-
-            if (firstEnabledTranche == address(0)) {
-                firstEnabledTranche = t.tranche;
-            }
 
             // score = weight * TVL
             uint256 score = uint256(t.weight) * ITranche(t.tranche).totalAssets();
