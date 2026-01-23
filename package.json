@@ -8,7 +8,7 @@
         "gen:abi": "rm -rf abi && npx hardhat export-abi",
         "coverage": "npx hardhat coverage",
         "slither": "npm run clean:build && slither .",
-        "aderyn": "mkdir -p reports && aderyn --output reports/aderyn-report.md",
+        "aderyn": "bash scripts/commands/aderyn.sh",
         "slither:md": "npm run clean:build && bash scripts/commands/slither.sh",
         "size": "npm run compile:force && npx hardhat size-contracts",
         "format": "npx prettier --write .",
