@@ -1,4 +1,4 @@
-# Mezzanine Protocol - Smart Contracts
+# Mezzanine Protocol
 
 Smart contract repository for Mezzanine. This repo includes the core
 contracts, automation, tests, and helper scripts for development and deployment.
@@ -30,7 +30,7 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
 
  `contracts/phase2/` - next-phase drafts (`*.disabled`, excluded from builds).
 
-## Core flows (short)
+## Core flows
 
 **MZUSD mint/redemption:** `MZUSD.deposit` takes USDC and mints MZUSD;
   `MZUSD.requestWithdrawal` burns MZUSD and asks Vault to pay USDC.
