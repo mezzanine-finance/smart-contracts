@@ -32,10 +32,12 @@ From Tranche:
 - `directWithdrawEnabled()` (direct vs umbrella flow)
 - `totalAssets()` (TVL in MZUSD, 18d)
 - `pricePerShare()` (MZUSD per share, 18d)
+- `unaccruedYield()` (yield not yet reflected in NAV)
 - `totalSupply()` (shares)
 - `depositLimitEnabled()`
 - `maxDepositCap()`
 - `maxDepositTvlBps()`
+- `getDepositLimitInfo()` (enabled, limit, limitByTvl, cap)
 - `unstakeDelayEpochs()`
 - `pauseManager()` (read PauseManager for category pauses)
 
@@ -46,6 +48,9 @@ From PauseManager:
 From Vault:
 - `currentEpochId()`
 - `epochDuration()`
+- `getEpochConfig()` (epochId, start, duration)
+- `getBufferConfig()` (buffer, hysteresis, low, high)
+- `getTranches(start, count)` (addresses + weights + enabled flags)
 
 User-specific:
 - `balanceOf(user)` (share balance)
@@ -53,6 +58,10 @@ User-specific:
 
 Optional for UI lists:
 - `getEpochInfo(epochId)` (global umbrella totals for an epoch)
+
+Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
+- `getRemainingGlobalRedemptionCap()` (remainingUSDC, windowStart)
+- `getRedemptionWindow()` (capUSDC, usedUSDC, remainingUSDC, windowStart, windowEnd)
 
 ## Deposit flow (user deposit into a tranche)
 
@@ -187,14 +196,15 @@ Notes:
 ## UI checklist per tranche page
 
 1. Load tranche metadata: `name`, `symbol`, `decimals`, `directWithdrawEnabled`.
-2. Load state: `totalAssets`, `pricePerShare`, `totalSupply`.
+2. Load state: `totalAssets`, `pricePerShare`, `unaccruedYield`, `totalSupply`.
 3. Load limits: `depositLimitEnabled`, `maxDepositCap`, `maxDepositTvlBps`.
 4. Load epoch data: `currentEpochId`, `unstakeDelayEpochs`, `epochDuration`.
-5. User state: `balanceOf`, `getUserEpochInfo` for pending epochs.
-6. Read `PauseManager.isPaused` for deposits/withdrawals and disable buttons.
-7. Wire deposit flow with allowance check and limit enforcement.
-8. Wire request-withdrawal flow (shares-based).
-9. Wire cancel + claim actions with proper eligibility checks.
+5. Optional: `getDepositLimitInfo` to show remaining capacity.
+6. User state: `balanceOf`, `getUserEpochInfo` for pending epochs.
+7. Read `PauseManager.isPaused` for deposits/withdrawals and disable buttons.
+8. Wire deposit flow with allowance check and limit enforcement.
+9. Wire request-withdrawal flow (shares-based).
+10. Wire cancel + claim actions with proper eligibility checks.
 
 ## Common errors and what they mean
 
