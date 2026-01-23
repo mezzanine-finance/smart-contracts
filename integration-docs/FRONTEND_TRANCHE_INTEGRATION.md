@@ -6,20 +6,22 @@ This doc explains how to wire tranche pages (senior, mezzanine, junior) to the s
 
 - Each tranche is an ERC-4626 vault over **MZUSD (18 decimals)**.
 - Direct withdraw/redeem depends on `directWithdrawEnabled()`.
-  - If enabled: `requestWithdrawal(shares)` redeems immediately (same result as `redeem` to self).
-  - If disabled: `requestWithdrawal(shares)` enters the umbrella flow (wait + claim).
+    - If enabled: `requestWithdrawal(shares)` redeems immediately (same result as `redeem` to self).
+    - If disabled: `requestWithdrawal(shares)` enters the umbrella flow (wait + claim).
 - `PolJuniorTranche` is a separate contract for protocol-owned liquidity.
-  - `withdraw` and `redeem` are AccessManager-restricted.
-  - Do not expose it to users unless you control the admin flow.
+    - `withdraw` and `redeem` are AccessManager-restricted.
+    - Do not expose it to users unless you control the admin flow.
 
 ## Contracts you need per tranche page
 
 For standard tranches:
+
 - **Tranche** (ERC-4626 + custom withdrawal flow)
 - **MZUSD** (asset token for deposits)
 - **Vault** (for epoch timing and delay math)
 
 For POL tranches (if you expose them at all):
+
 - **PolJuniorTranche** (ERC-4626 with restricted withdraw/redeem)
 - **MZUSD** (asset token for deposits)
 
@@ -28,6 +30,7 @@ You should have ABI + address for each.
 ## Read-only data to load per tranche page
 
 From Tranche:
+
 - `name()` / `symbol()` / `decimals()` (share token display)
 - `directWithdrawEnabled()` (direct vs umbrella flow)
 - `totalAssets()` (TVL in MZUSD, 18d)
@@ -42,10 +45,12 @@ From Tranche:
 - `pauseManager()` (read PauseManager for category pauses)
 
 From PauseManager:
+
 - `isPaused(tranche, PauseCategory.DEPOSITS)`
 - `isPaused(tranche, PauseCategory.WITHDRAWALS)`
 
 From Vault:
+
 - `currentEpochId()`
 - `epochDuration()`
 - `getEpochConfig()` (epochId, start, duration)
@@ -53,19 +58,23 @@ From Vault:
 - `getTranches(start, count)` (addresses + weights + enabled flags)
 
 User-specific:
+
 - `balanceOf(user)` (share balance)
 - `getUserEpochInfo(user, epochId)` (pending/claimable info)
 
 Optional for UI lists:
+
 - `getEpochInfo(epochId)` (global umbrella totals for an epoch)
 
 Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
+
 - `getRemainingGlobalRedemptionCap()` (remainingUSDC, windowStart)
 - `getRedemptionWindow()` (capUSDC, usedUSDC, remainingUSDC, windowStart, windowEnd)
 
 ## Deposit flow (user deposit into a tranche)
 
 ### Pre-checks
+
 1. If this address is a `PolJuniorTranche`, disable user deposits.
 2. Deposits should be blocked when `PauseCategory.DEPOSITS` is paused.
 3. User must have enough **MZUSD** balance.
@@ -75,25 +84,28 @@ Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
 
 - If `depositLimitEnabled == false`: no limit.
 - Else:
-  - `tvl = totalAssets()` (18d)
-  - `supply = asset.totalSupply()` (18d)
-  - If `supply == 0`: deposit will revert with `ZeroAssetSupply`.
-  - `maxTotalByTvl = (supply * maxDepositTvlBps / 10_000)`
-  - `limitByTvl = (maxTotalByTvl <= tvl) ? 0 : (maxTotalByTvl - tvl)`
-  - `limitByCap = (maxDepositCap == 0) ? MAX_UINT : ((maxDepositCap <= tvl) ? 0 : (maxDepositCap - tvl))`
-  - `finalLimit = min(limitByTvl, limitByCap)`
-  - `finalLimit` is remaining capacity (global cap), not a per-transaction limit.
-  - If `amount > finalLimit`, deposit will revert.
+    - `tvl = totalAssets()` (18d)
+    - `supply = asset.totalSupply()` (18d)
+    - If `supply == 0`: deposit will revert with `ZeroAssetSupply`.
+    - `maxTotalByTvl = (supply * maxDepositTvlBps / 10_000)`
+    - `limitByTvl = (maxTotalByTvl <= tvl) ? 0 : (maxTotalByTvl - tvl)`
+    - `limitByCap = (maxDepositCap == 0) ? MAX_UINT : ((maxDepositCap <= tvl) ? 0 : (maxDepositCap - tvl))`
+    - `finalLimit = min(limitByTvl, limitByCap)`
+    - `finalLimit` is remaining capacity (global cap), not a per-transaction limit.
+    - If `amount > finalLimit`, deposit will revert.
 
 ### On user input
+
 - For expected shares: `previewDeposit(assets)` (ERC-4626).
 - Display expected shares and price-per-share.
 
 ### Transaction steps
+
 1. `MZUSD.approve(tranche, amount)` (if allowance is insufficient).
 2. `Tranche.deposit(assets, receiver)`
 
 ### Errors to handle
+
 - `DepositLimitExceeded(attempted, limit)` -> show limit.
 - `ZeroAssetSupply()` -> MZUSD total supply is zero and limits are enabled.
 - `InvalidAmount()` -> input zero or invalid.
@@ -105,24 +117,29 @@ Read `directWithdrawEnabled()` to pick the correct UX. `withdraw()` / `redeem()`
 withdraw is disabled.
 
 ### Step 1: Request withdrawal
+
 Users request in **shares**, not assets. Behavior depends on `directWithdrawEnabled()`:
 
 - **direct = true**: `requestWithdrawal(shares)` redeems immediately to the caller.
 - **direct = false**: `requestWithdrawal(shares)` creates a pending umbrella request.
 
 #### Pre-checks
+
 1. If this address is a `PolJuniorTranche`, disable user withdrawals.
 2. Withdrawals should be blocked when `PauseCategory.WITHDRAWALS` is paused.
 3. User has enough share balance (`balanceOf(user) >= shares`).
 
 #### Share calculation
+
 - If the user enters assets, convert to shares:
-  - `convertToShares(assets)` (ERC-4626)
+    - `convertToShares(assets)` (ERC-4626)
 
 #### Transaction
+
 - `Tranche.requestWithdrawal(shares)`
 
 #### Errors to handle
+
 - `ZeroPassedShares()`
 - `InvalidBalance()` (not enough shares)
 - `CategoryPaused(PauseCategory.WITHDRAWALS)` -> withdrawals paused.
@@ -130,6 +147,7 @@ Users request in **shares**, not assets. Behavior depends on `directWithdrawEnab
 ### Step 2: Wait for epoch finalization (umbrella mode only)
 
 The withdrawal request is tied to a target epoch:
+
 - `targetEpoch = Vault.currentEpochId() + Tranche.unstakeDelayEpochs()`
 
 An admin finalizes epochs by calling `Tranche.finalizeEpoch(epochId)` after the vault has advanced.
@@ -139,9 +157,11 @@ You can show a "pending" state until the target epoch is finalized.
 ### Step 3: Claim assets (umbrella mode only)
 
 Once finalized, the user claims actual MZUSD:
+
 - `Tranche.claim(epochId)`
 
 #### Errors to handle
+
 - `NothingToClaim()`
 - `NotFinalized()`
 - `DirectWithdrawModeEnabled()` -> claim not available in direct mode.
@@ -152,14 +172,17 @@ Once finalized, the user claims actual MZUSD:
 Users can cancel before the epoch is finalized and before the vault moves past that epoch.
 
 ### Pre-checks
+
 - `getUserEpochInfo(user, epochId).pendingShares > 0`
 - `getUserEpochInfo(user, epochId).isFinalized == false`
 - `Vault.currentEpochId() <= epochId`
 
 ### Transaction
+
 - `Tranche.cancelUnstake(epochId, shares)`
 
 ### Errors to handle
+
 - `NoPendingUnstake()`
 - `InvalidShares()`
 - `AlreadyFinalized()`
@@ -170,7 +193,9 @@ Users can cancel before the epoch is finalized and before the vault moves past t
 ## APR / APY / TVL
 
 ### Preferred source (current plan)
+
 Use the subgraph for:
+
 - TVL
 - Share price
 - APR / APY
@@ -179,10 +204,12 @@ Use the subgraph for:
 ### Contract fallback (if you need it)
 
 TVL and share price:
+
 - `totalAssets()` (TVL, 18d)
 - `pricePerShare()` (18d)
 
 APR/APY from on-chain data:
+
 - Listen to `YieldNotified(epochId, yieldAmount, streamStart, streamEnd)` on the Tranche.
 - At the notify block, fetch `totalAssets()`.
 - `duration = streamEnd - streamStart`
@@ -190,6 +217,7 @@ APR/APY from on-chain data:
 - `apy = (1 + apr / (SECONDS_PER_YEAR / duration))^(SECONDS_PER_YEAR / duration) - 1`
 
 Notes:
+
 - Yield is streamed linearly, so APR is effectively constant over the stream period.
 - `yieldStreamingAmount`, `yieldStreamStart`, `yieldStreamEnd` are readable if you want to reconstruct the stream state.
 

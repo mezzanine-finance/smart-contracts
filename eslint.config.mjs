@@ -1,18 +1,14 @@
-
-
 import path from "node:path";
 import globals from "globals";
 import eslintJS from "@eslint/js";
 import tseslint from "typescript-eslint";
 import eslintPrettierConfig from "eslint-config-prettier/flat";
-import { includeIgnoreFile } from "@eslint/compat";
+import {includeIgnoreFile} from "@eslint/compat";
 
 export default tseslint.config(
-
     {
         files: ["**/*.{ts,tsx,js,cjs}"],
     },
-
 
     {
         ignores: [
@@ -27,29 +23,23 @@ export default tseslint.config(
         ],
     },
 
-
     eslintJS.configs.recommended,
-
 
     ...tseslint.configs.recommendedTypeChecked,
 
     ...tseslint.configs.stylisticTypeChecked,
 
-
     {
         rules: {
-
             "no-unused-vars": "off",
-            "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+            "@typescript-eslint/no-unused-vars": ["warn", {argsIgnorePattern: "^_"}],
 
             "no-undef": "off",
 
-
-            quotes: ["error", "double", { avoidEscape: true }],
+            quotes: ["error", "double", {avoidEscape: true}],
             "eol-last": ["error", "always"],
-            "max-len": ["warn", { code: 120, ignoreUrls: true }],
+            "max-len": ["warn", {code: 120, ignoreUrls: true}],
             "no-trailing-spaces": ["error"],
-
 
             "@typescript-eslint/no-explicit-any": "off",
             "@typescript-eslint/no-unsafe-assignment": "off",
@@ -63,7 +53,6 @@ export default tseslint.config(
             "@typescript-eslint/unified-signatures": "off",
         },
     },
-
 
     {
         files: ["test/**/*.ts", "tests/**/*.ts"],
@@ -101,13 +90,12 @@ export default tseslint.config(
         },
     },
 
-
     {
         files: ["scripts/**/*.ts", "deploy/**/*.ts", "scripts/**/*.js", "deploy/**/*.js"],
         rules: {
             "no-console": "off",
 
-            "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+            "@typescript-eslint/no-unused-vars": ["warn", {argsIgnorePattern: "^_"}],
             "@typescript-eslint/no-explicit-any": "off",
             "@typescript-eslint/no-unsafe-assignment": "off",
             "@typescript-eslint/no-unsafe-argument": "off",
@@ -119,9 +107,7 @@ export default tseslint.config(
         },
     },
 
-
     eslintPrettierConfig,
-
 
     {
         languageOptions: {
@@ -142,7 +128,6 @@ export default tseslint.config(
             },
         },
     },
-
 
     includeIgnoreFile(path.resolve(import.meta.dirname, ".gitignore"))
 );
