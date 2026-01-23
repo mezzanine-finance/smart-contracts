@@ -189,9 +189,10 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Pauses all guarded MZUSD functions", async () => {
-            await setBalance(vault.target, to18(1));
-            await impersonateAccount(vault.target);
-            const vaultSigner = await ethers.getSigner(vault.target);
+            const vaultAddress = await vault.getAddress();
+            await setBalance(vaultAddress, to18(1));
+            await impersonateAccount(vaultAddress);
+            const vaultSigner = await ethers.getSigner(vaultAddress);
 
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(mzusd.deposit(to6(1n)))

@@ -78,7 +78,8 @@ describe("Vault setMZUSD validation", () => {
     }
 
     it("reverts when MZUSD decimals are not 18", async () => {
-        const mock = await deployMockMZUSD(MAINNET_USDC, vault.target, 6);
+        const vaultAddress = await vault.getAddress();
+        const mock = await deployMockMZUSD(MAINNET_USDC, vaultAddress, 6);
 
         await expect(vault.connect(deployer).setMZUSD(mock.target))
             .to.be.revertedWithCustomError(vault, "InvalidMZUSDDecimals")
@@ -86,7 +87,8 @@ describe("Vault setMZUSD validation", () => {
     });
 
     it("reverts when MZUSD usdc mismatches", async () => {
-        const mock = await deployMockMZUSD(bob.address, vault.target, 18);
+        const vaultAddress = await vault.getAddress();
+        const mock = await deployMockMZUSD(bob.address, vaultAddress, 18);
 
         await expect(vault.connect(deployer).setMZUSD(mock.target))
             .to.be.revertedWithCustomError(vault, "InvalidMZUSDUSDC")
