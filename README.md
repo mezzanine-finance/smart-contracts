@@ -86,7 +86,8 @@ Environment requirements: Node `>=24.11.1`, npm `>=11.6.2`.
 - `npm run coverage:4g` / `npm run coverage:8g` — coverage with memory presets (recommended)
 - `npm run coverage` — known to time out on `test/LossManager.ts` in this repo; avoid
 - `npm run size` — contract size report
-- `npm run slither` / `npm run slither:md` — run Slither (Markdown report)
+- `npm run slither` / `npm run slither:md` — run Slither (Markdown report; `slither:md` is non-strict)
+- `npm run slither:md:strict` — run Slither checklist and fail on findings (CI-style gate)
 - `aderyn` — Aderyn static analysis (uses `aderyn.toml`, outputs `report.md`)
 
 **Artifacts**

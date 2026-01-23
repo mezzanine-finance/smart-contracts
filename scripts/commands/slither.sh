@@ -17,7 +17,16 @@ TMP_OUTPUT_FILE="./reports/slither-cmd-output.txt"
 
 echo "Running Slither..."
 mkdir -p ./reports
-slither . --checklist > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE"
+SLITHER_STATUS=0
+slither . --checklist > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE" || SLITHER_STATUS=$?
+if [ "${SLITHER_STRICT:-false}" = "true" ] && [ "$SLITHER_STATUS" -ne 0 ]; then
+    echo "Slither strict mode: exiting with code $SLITHER_STATUS."
+    exit "$SLITHER_STATUS"
+fi
+if [ "$SLITHER_STATUS" -ne 0 ] && [ "$SLITHER_STATUS" -ne 255 ]; then
+    echo "Slither failed with exit code $SLITHER_STATUS."
+    exit "$SLITHER_STATUS"
+fi
 
 echo "Preparing the Slither report..."
 echo "* * *" >> "$REPORT_PATH"

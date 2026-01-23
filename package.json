@@ -10,6 +10,7 @@
         "slither": "npm run clean:build && slither .",
         "aderyn": "bash scripts/commands/aderyn.sh",
         "slither:md": "npm run clean:build && bash scripts/commands/slither.sh",
+        "slither:md:strict": "npm run clean:build && cross-env SLITHER_STRICT=true bash scripts/commands/slither.sh",
         "size": "npm run compile:force && npx hardhat size-contracts",
         "format": "npx prettier --write .",
         "lint": "npm run lint:ts && npm run lint:sol",
