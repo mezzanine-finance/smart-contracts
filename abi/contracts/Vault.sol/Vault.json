@@ -930,7 +930,7 @@
             },
             {
                 "internalType": "address",
-                "name": "pauseManager",
+                "name": "pauseManager_",
                 "type": "address"
             },
             {
