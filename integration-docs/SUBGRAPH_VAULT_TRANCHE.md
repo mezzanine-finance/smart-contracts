@@ -18,7 +18,8 @@ Use a static list of tranche addresses.
 
 Labeling can be derived from on-chain metadata:
 - Read `Tranche.name()` and `Tranche.symbol()` (ERC-20).
-- Optionally use `Tranche.trancheId()` and `isPolJunior()` as extra identifiers.
+- Optionally use `Tranche.trancheId()` and contract type (Tranche vs PolJuniorTranche).
+  - If you index PolJuniorTranche, tag `isPolTranche` from a static allowlist.
 
 If you still need to validate against Vault config, you can query:
 - `Vault.tranches(idx)` -> `(tranche, weight, enabled)`
@@ -35,7 +36,7 @@ All tranche-level metrics (TVL, share price, yield amounts) are in MZUSD (18 dec
 ## Key events to index
 
 Vault (`Vault.sol`):
-- `TrancheRegisterzed(tranche, weight, enabled)`
+- `TrancheRegistered(tranche, weight, enabled)`
 - `TrancheUpdated(idx, weight, enabled)`
 - `YieldDistributed(usdcUsed, mintedMZUSD, epochId)`
 - `EpochAdvanced(epochId, startTs)`
@@ -141,7 +142,6 @@ Vault:
 Tranche:
 - `trancheId()`
 - `name()` / `symbol()`
-- `isPolJunior()`
 - `totalAssets()`
 - `pricePerShare()`
 
@@ -150,7 +150,7 @@ Tranche:
 - `Vault`
   - `id`, `currentEpochId`, `epochDuration`
 - `Tranche`
-  - `id`, `vault`, `trancheId`, `name`, `symbol`, `weight`, `enabled`, `isPolJunior`
+  - `id`, `vault`, `trancheId`, `name`, `symbol`, `weight`, `enabled`, `isPolTranche`
 - `TrancheSnapshot`
   - `tranche`, `timestamp`, `tvl`, `sharePrice`, `apr`
 - `TrancheYield`

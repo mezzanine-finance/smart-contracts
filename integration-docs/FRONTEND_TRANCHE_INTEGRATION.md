@@ -8,13 +8,20 @@ This doc explains how to wire tranche pages (senior, mezzanine, junior) to the s
 - Direct withdraw/redeem depends on `directWithdrawEnabled()`.
   - If enabled: `requestWithdrawal(shares)` redeems immediately (same result as `redeem` to self).
   - If disabled: `requestWithdrawal(shares)` enters the umbrella flow (wait + claim).
-- Junior/POL tranche (`isPolJunior == true`) is **not user-depositable**.
+- `PolJuniorTranche` is a separate contract for protocol-owned liquidity.
+  - `withdraw` and `redeem` are AccessManager-restricted.
+  - Do not expose it to users unless you control the admin flow.
 
 ## Contracts you need per tranche page
 
+For standard tranches:
 - **Tranche** (ERC-4626 + custom withdrawal flow)
 - **MZUSD** (asset token for deposits)
 - **Vault** (for epoch timing and delay math)
+
+For POL tranches (if you expose them at all):
+- **PolJuniorTranche** (ERC-4626 with restricted withdraw/redeem)
+- **MZUSD** (asset token for deposits)
 
 You should have ABI + address for each.
 
@@ -22,8 +29,7 @@ You should have ABI + address for each.
 
 From Tranche:
 - `name()` / `symbol()` / `decimals()` (share token display)
-- `isPolJunior()` (disable UI if true)
-- `paused()` (from `PausableUpgradeable`)
+- `directWithdrawEnabled()` (direct vs umbrella flow)
 - `totalAssets()` (TVL in MZUSD, 18d)
 - `pricePerShare()` (MZUSD per share, 18d)
 - `totalSupply()` (shares)
@@ -31,6 +37,11 @@ From Tranche:
 - `maxDepositCap()`
 - `maxDepositTvlBps()`
 - `unstakeDelayEpochs()`
+- `pauseManager()` (read PauseManager for category pauses)
+
+From PauseManager:
+- `isPaused(tranche, PauseCategory.DEPOSITS)`
+- `isPaused(tranche, PauseCategory.WITHDRAWALS)`
 
 From Vault:
 - `currentEpochId()`
@@ -46,8 +57,8 @@ Optional for UI lists:
 ## Deposit flow (user deposit into a tranche)
 
 ### Pre-checks
-1. `isPolJunior()` must be false. If true, disable deposit and show a "not depositable" message.
-2. `paused()` must be false.
+1. If this address is a `PolJuniorTranche`, disable user deposits.
+2. Deposits should be blocked when `PauseCategory.DEPOSITS` is paused.
 3. User must have enough **MZUSD** balance.
 4. Check deposit limits (if enabled).
 
@@ -74,10 +85,10 @@ Optional for UI lists:
 2. `Tranche.deposit(assets, receiver)`
 
 ### Errors to handle
-- `InvalidMode()` -> this is a POL/junior tranche.
 - `DepositLimitExceeded(attempted, limit)` -> show limit.
+- `ZeroAssetSupply()` -> MZUSD total supply is zero and limits are enabled.
 - `InvalidAmount()` -> input zero or invalid.
-- `Pausable: paused` -> contract paused.
+- `CategoryPaused(PauseCategory.DEPOSITS)` -> deposits paused.
 
 ## Withdraw flow (request + claim or direct)
 
@@ -91,8 +102,8 @@ Users request in **shares**, not assets. Behavior depends on `directWithdrawEnab
 - **direct = false**: `requestWithdrawal(shares)` creates a pending umbrella request.
 
 #### Pre-checks
-1. `isPolJunior()` must be false.
-2. `paused()` must be false.
+1. If this address is a `PolJuniorTranche`, disable user withdrawals.
+2. Withdrawals should be blocked when `PauseCategory.WITHDRAWALS` is paused.
 3. User has enough share balance (`balanceOf(user) >= shares`).
 
 #### Share calculation
@@ -105,8 +116,7 @@ Users request in **shares**, not assets. Behavior depends on `directWithdrawEnab
 #### Errors to handle
 - `ZeroPassedShares()`
 - `InvalidBalance()` (not enough shares)
-- `InvalidMode()`
-- `Pausable: paused`
+- `CategoryPaused(PauseCategory.WITHDRAWALS)` -> withdrawals paused.
 
 ### Step 2: Wait for epoch finalization (umbrella mode only)
 
@@ -125,7 +135,8 @@ Once finalized, the user claims actual MZUSD:
 #### Errors to handle
 - `NothingToClaim()`
 - `NotFinalized()`
-- `Pausable: paused`
+- `DirectWithdrawModeEnabled()` -> claim not available in direct mode.
+- `CategoryPaused(PauseCategory.WITHDRAWALS)` -> withdrawals paused.
 
 ## Cancel flow (user cancels a pending unstake)
 
@@ -144,7 +155,8 @@ Users can cancel before the epoch is finalized and before the vault moves past t
 - `InvalidShares()`
 - `AlreadyFinalized()`
 - `TooLateToCancel()`
-- `Pausable: paused`
+- `DirectWithdrawModeEnabled()` -> cancel not available in direct mode.
+- `CategoryPaused(PauseCategory.WITHDRAWALS)` -> withdrawals paused.
 
 ## APR / APY / TVL
 
@@ -174,19 +186,20 @@ Notes:
 
 ## UI checklist per tranche page
 
-1. Load tranche metadata: `name`, `symbol`, `decimals`, `isPolJunior`.
-2. Load state: `paused`, `totalAssets`, `pricePerShare`, `totalSupply`.
+1. Load tranche metadata: `name`, `symbol`, `decimals`, `directWithdrawEnabled`.
+2. Load state: `totalAssets`, `pricePerShare`, `totalSupply`.
 3. Load limits: `depositLimitEnabled`, `maxDepositCap`, `maxDepositTvlBps`.
 4. Load epoch data: `currentEpochId`, `unstakeDelayEpochs`, `epochDuration`.
 5. User state: `balanceOf`, `getUserEpochInfo` for pending epochs.
-6. Wire deposit flow with allowance check and limit enforcement.
-7. Wire request-withdrawal flow (shares-based).
-8. Wire cancel + claim actions with proper eligibility checks.
+6. Read `PauseManager.isPaused` for deposits/withdrawals and disable buttons.
+7. Wire deposit flow with allowance check and limit enforcement.
+8. Wire request-withdrawal flow (shares-based).
+9. Wire cancel + claim actions with proper eligibility checks.
 
 ## Common errors and what they mean
 
-- `InvalidMode()` -> tranche is POL/junior; user actions are disabled.
 - `DepositLimitExceeded(attempted, limit)` -> input exceeds dynamic cap.
+- `ZeroAssetSupply()` -> MZUSD total supply is zero and limits are enabled.
 - `ZeroPassedShares()` / `InvalidAmount()` -> user entered 0.
 - `InvalidBalance()` -> insufficient shares to request withdrawal.
 - `NoPendingUnstake()` -> user tries to cancel without a request.
@@ -194,4 +207,6 @@ Notes:
 - `AlreadyFinalized()` -> epoch finalized; user must claim instead of cancel.
 - `NotFinalized()` -> epoch not finalized; claim not ready.
 - `NothingToClaim()` -> no pending shares for that epoch.
-- `Pausable: paused` -> contract paused; disable user actions.
+- `DirectWithdrawModeEnabled()` -> umbrella-only action called in direct mode.
+- `DirectWithdrawModeDisabled()` -> direct withdraw/redeem called in umbrella mode.
+- `CategoryPaused(PauseCategory.X)` -> action paused for that category.

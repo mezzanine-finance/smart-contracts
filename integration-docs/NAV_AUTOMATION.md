@@ -11,13 +11,14 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
   - Map `NavOracleAutomation.submitNav(uint256)` to ORACLE_ROLE.
 - ADMIN_ROLE:
   - Map `NavOracleAutomation.rejectPendingNav()` and `setVetoPeriod(uint256)` to ADMIN_ROLE.
-  - Grant ADMIN_ROLE (or equivalent) to the `NavOracleAutomation` contract so it can call:
+- AUTOMATION_ROLE:
+  - Grant AUTOMATION_ROLE (or equivalent) to the `NavOracleAutomation` contract so it can call:
     - `Vault.distributeYield(uint256)`
     - `LossManager.applyLoss(uint256)`
 
 ## Required target mappings
-- `Vault.distributeYield(uint256)` -> ADMIN_ROLE (or ProtocolAdmin role in your policy).
-- `LossManager.applyLoss(uint256)` -> ADMIN_ROLE (or ProtocolAdmin role in your policy).
+- `Vault.distributeYield(uint256)` -> AUTOMATION_ROLE (or ADMIN_ROLE in your policy).
+- `LossManager.applyLoss(uint256)` -> AUTOMATION_ROLE (or ADMIN_ROLE in your policy).
 - `MZUSD.burn(address,uint256)` -> LOSS_MANAGER_ROLE (LossManager must hold this role).
 - `MZUSD.mint(address,uint256)` + `Tranche.notifyYield(uint256)` -> VAULT_ROLE (Vault must hold this role).
 
@@ -29,4 +30,4 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
 - NAV is submitted in USDC (6 decimals); MZUSD total supply is 18 decimals and is scaled down by 1e12.
 - If `vetoPeriod` is `0`, `submitNav` applies immediately (no veto).
 - Zero-yield (`NAV == totalSupplyUSDC`) still calls `Vault.distributeYield(0)`.
-  - The current `Vault` reverts on zero; pending NAV will remain until `Vault` is updated.
+  - The current `Vault` accepts zero, advances the epoch, and emits events.
