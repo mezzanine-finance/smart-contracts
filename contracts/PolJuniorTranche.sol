@@ -25,6 +25,7 @@ contract PolJuniorTranche is
 {
     using SafeERC20 for IERC20;
 
+    address public vault;
     address public polPayout;
 
     event PolPayoutUpdated(address payout);
@@ -33,6 +34,7 @@ contract PolJuniorTranche is
     error PolPayoutNotSet();
     error ZeroAddress();
     error ZeroYieldPassed();
+    error NotVault();
 
     constructor() {
         _disableInitializers();
@@ -40,6 +42,7 @@ contract PolJuniorTranche is
 
     /// @notice Initializer
     /// @param assetToken - underlying asset token (MZUSD)
+    /// @param vaultAddress - address of the Vault
     /// @param name_ - tranche name
     /// @param symbol_ - tranche symbol
     /// @param accessManager - access manager address for role control
@@ -47,13 +50,20 @@ contract PolJuniorTranche is
     /// @param polPayoutAddress - address to forward yield to
     function initialize(
         IERC20 assetToken,
+        address vaultAddress,
         string memory name_,
         string memory symbol_,
         address accessManager,
         address pauseManager_,
         address polPayoutAddress
     ) external initializer {
-        if (accessManager == address(0) || address(assetToken) == address(0)) revert ZeroAddress();
+        if (
+            accessManager == address(0) ||
+            address(assetToken) == address(0) ||
+            vaultAddress == address(0)
+        ) {
+            revert ZeroAddress();
+        }
         if (polPayoutAddress == address(0)) revert ZeroAddress();
 
         __ERC20_init(name_, symbol_);
@@ -62,7 +72,13 @@ contract PolJuniorTranche is
         __PauseManaged_init(pauseManager_);
         __ReentrancyGuard_init();
 
+        vault = vaultAddress;
         polPayout = polPayoutAddress;
+    }
+
+    modifier onlyVault() {
+        if (msg.sender != vault) revert NotVault();
+        _;
     }
 
     function deposit(
@@ -150,7 +166,7 @@ contract PolJuniorTranche is
     /// @dev Forwards yield immediately to polPayout.
     function notifyYield(
         uint256 yieldAmount
-    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
 
         address payout = polPayout;

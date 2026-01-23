@@ -114,11 +114,17 @@ contract Tranche is
     error DirectWithdrawModeDisabled();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error ZeroAssetSupply();
+    error NotVault();
 
     /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
     constructor(bool _directWithdrawEnabled) {
         directWithdrawEnabled = _directWithdrawEnabled;
         _disableInitializers();
+    }
+
+    modifier onlyVault() {
+        if (msg.sender != vault) revert NotVault();
+        _;
     }
 
     /// @notice Initializer
@@ -381,7 +387,7 @@ contract Tranche is
     /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
     function notifyYield(
         uint256 yieldAmount
-    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
 
         // Do not allow overriding active stream

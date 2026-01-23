@@ -267,6 +267,11 @@
     },
     {
         "inputs": [],
+        "name": "NotVault",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "PauseManagerZeroAddress",
         "type": "error"
     },
@@ -699,6 +704,11 @@
             {
                 "internalType": "contract IERC20",
                 "name": "assetToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
                 "type": "address"
             },
             {
@@ -1149,6 +1159,19 @@
         "name": "upgradeToAndCall",
         "outputs": [],
         "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "vault",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

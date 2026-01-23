@@ -12,18 +12,14 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
     - Grant to the oracle caller.
     - Map `NavOracleAutomation.submitNav(uint256)` to ORACLE_ROLE.
 - ADMIN_ROLE:
-    - Map `NavOracleAutomation.rejectPendingNav()` and `setVetoPeriod(uint256)` to ADMIN_ROLE.
-- AUTOMATION_ROLE:
-    - Grant AUTOMATION_ROLE (or equivalent) to the `NavOracleAutomation` contract so it can call:
-        - `Vault.distributeYield(uint256)`
-        - `LossManager.applyLoss(uint256)`
+  - Map `NavOracleAutomation.rejectPendingNav()` and `setVetoPeriod(uint256)` to ADMIN_ROLE.
 
-## Required target mappings
-
-- `Vault.distributeYield(uint256)` -> AUTOMATION_ROLE (or ADMIN_ROLE in your policy).
-- `LossManager.applyLoss(uint256)` -> AUTOMATION_ROLE (or ADMIN_ROLE in your policy).
-- `MZUSD.burn(address,uint256)` -> LOSS_MANAGER_ROLE (LossManager must hold this role).
-- `MZUSD.mint(address,uint256)` + `Tranche.notifyYield(uint256)` -> VAULT_ROLE (Vault must hold this role).
+## Required wiring (direct checks)
+- `Vault.navOracle` must be set to the `NavOracleAutomation` address (gates `distributeYield`).
+- `LossManager.navOracle` must be set to the `NavOracleAutomation` address (gates `applyLoss`).
+- `MZUSD.lossManager` must be set to the `LossManager` address (gates `burn`).
+- `MZUSD.vault` is immutable (gates `mint`).
+- `Tranche.vault` is set at initialization (gates `notifyYield`).
 
 ## Chainlink Automation
 

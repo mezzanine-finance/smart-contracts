@@ -28,7 +28,6 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const DAY = 24 * 60 * 60;
 const SCALE = 10n ** 12n;
 
-const VAULT_ROLE = 2n;
 const LOSS_MANAGER_ROLE = 3n;
 const ORACLE_ROLE = 6n;
 
@@ -201,16 +200,6 @@ describe("NavOracleAutomation", () => {
             vault.target,
             [advanceEpochSelector],
             LOSS_MANAGER_ROLE
-        );
-
-        // Vault role allowed to push yield to tranches
-        const notifySelector = tranche.interface.getFunction("notifyYield").selector;
-        await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
-
-        await accessManager.grantRole(
-            VAULT_ROLE,
-            vault.target,
-            0 // executionDelay
         );
 
         // LossManager permissions

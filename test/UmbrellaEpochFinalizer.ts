@@ -23,8 +23,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
-const VAULT_ROLE = 2n;
-
 const DAY = 24 * 60 * 60;
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -165,16 +163,6 @@ describe("UmbrellaEpochFinalizer", () => {
             tranche.target,
             [trancheDelaySelector],
             ADMIN_ROLE
-        );
-
-        // Vault role allowed to push yield to tranches
-        const notifySelector = tranche.interface.getFunction("notifyYield").selector;
-        await accessManager.setTargetFunctionRole(tranche.target, [notifySelector], VAULT_ROLE);
-
-        await accessManager.grantRole(
-            VAULT_ROLE,
-            vault.target,
-            0 // executionDelay
         );
 
         // Wire Vault to MZUSD and register tranche in Vault (after roles are configured)

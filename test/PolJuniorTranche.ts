@@ -23,7 +23,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-const VAULT_ROLE = 2n;
 const LOSS_MANAGER_ROLE = 3n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
@@ -130,6 +129,7 @@ describe("PolJuniorTranche", () => {
             PolFactory,
             [
                 mzusd.target,
+                vault.target,
                 "POL Junior Tranche",
                 "pJLT",
                 accessManager.target,
@@ -179,12 +179,6 @@ describe("PolJuniorTranche", () => {
             ADMIN_ROLE
         );
 
-        await accessManager.grantRole(VAULT_ROLE, vaultAddr, 0);
-
-        // vault role: pol.notifyYield
-        const notifySel = pol.interface.getFunction("notifyYield").selector;
-        await accessManager.setTargetFunctionRole(polAddr, [notifySel], VAULT_ROLE);
-
         // wire
         await vault.setMZUSD(mzusdAddr);
         await vault.setLossManager(deployer.address);
@@ -233,7 +227,7 @@ describe("PolJuniorTranche", () => {
 
     describe("Pause guards", () => {
         it("Pauses all guarded PolJuniorTranche functions", async () => {
-            await accessManager.grantRole(VAULT_ROLE, deployer.address, 0);
+            const vaultSigner = await imp(vaultAddr);
 
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(pol.connect(alice).deposit(1n, alice.address))
@@ -266,7 +260,7 @@ describe("PolJuniorTranche", () => {
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
 
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-            await expect(pol.connect(deployer).notifyYield(1n))
+            await expect(pol.connect(vaultSigner).notifyYield(1n))
                 .to.be.revertedWithCustomError(pol, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
             await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
