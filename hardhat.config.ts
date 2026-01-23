@@ -99,6 +99,9 @@ const config: HardhatUserConfig = {
         except: ["interfaces/", "mocks/", "deprecated/", "test/", "@openzeppelin/"],
         spacing: 4,
     },
+    gasReporter: {
+        enabled: isOptionTrue(envs.REPORT_GAS) || envs.REPORT_GAS_TO_FILE !== undefined,
+    },
     mocha: {
         timeout: 400000,
         parallel: false,
@@ -112,14 +115,14 @@ if (envs.FORKING_BLOCK_NUMBER)
 // Extra settings for `hardhat-gas-reporter`.
 if (envs.COINMARKETCAP_API_KEY) config.gasReporter!.coinmarketcap = envs.COINMARKETCAP_API_KEY;
 if (envs.REPORT_GAS_TO_FILE === "md") {
-    config.gasReporter!.outputFile = "gas-report.md";
+    config.gasReporter!.outputFile = "reports/gas-report.md";
     config.gasReporter!.reportFormat = "markdown";
     config.gasReporter!.forceTerminalOutput = true;
     config.gasReporter!.forceTerminalOutputFormat = "terminal";
 }
 if (envs.REPORT_GAS_TO_FILE === "json") {
     config.gasReporter!.outputJSON = true;
-    config.gasReporter!.outputJSONFile = "gas-report.json";
+    config.gasReporter!.outputJSONFile = "reports/gas-report.json";
     config.gasReporter!.includeBytecodeInJSON = true;
 }
 

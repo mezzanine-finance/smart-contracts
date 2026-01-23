@@ -12,10 +12,11 @@ if ! command -v slither > /dev/null 2>&1; then
     exit 1
 fi
 
-REPORT_PATH="./SLITHER_REPORT.md"
-TMP_OUTPUT_FILE="./slither-cmd-output.txt"
+REPORT_PATH="./reports/SLITHER_REPORT.md"
+TMP_OUTPUT_FILE="./reports/slither-cmd-output.txt"
 
 echo "Running Slither..."
+mkdir -p ./reports
 slither . --checklist > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE"
 
 echo "Preparing the Slither report..."
