@@ -141,35 +141,19 @@ Environment requirements: Node `>=24.11.1`, npm `>=11.6.2`.
 
  `npm run prepare` - install Husky hooks
 
-**Deploy (testnet/buildbear)**
+**Deploy**
 
- `npm run deploy:access-manager:testnet` - deploy AccessManager to Sepolia
+ `npm run deploy:hardhat` - deploy full stack to Hardhat
 
- `npm run deploy:pause-manager:testnet` - deploy PauseManager to Sepolia
+ `npm run deploy:sepolia` - deploy full stack to Sepolia
 
- `npm run deploy:mzusd:testnet` - deploy MZUSD to Sepolia
+ `npm run deploy:mainnet` - deploy full stack to Mainnet
 
- `npm run deploy:reservoir:testnet` - deploy Reservoir to Sepolia
+ `npm run deploy:grant-roles -- --network <network>` - grant roles from config
 
- `npm run deploy:vault:testnet` - deploy Vault to Sepolia
+ `npm run deploy:renounce-roles -- --network <network>` - renounce deployer roles (safety checks)
 
- `npm run deploy:tranche:testnet` - deploy Tranche to Sepolia
-
- `npm run deploy:access-manager:buildbear` - deploy AccessManager to Buildbear
-
- `npm run deploy:pause-manager:buildbear` - deploy PauseManager to Buildbear
-
- `npm run deploy:mzusd:buildbear` - deploy MZUSD to Buildbear
-
- `npm run deploy:reservoir:buildbear` - deploy Reservoir to Buildbear
-
- `npm run deploy:vault:buildbear` - deploy Vault to Buildbear
-
- `npm run deploy:tranche:buildbear` - deploy Tranche to Buildbear
-
- `npm run deploy:summary:buildbear` - deploy summary helpers to Buildbear
-
- `npm run deploy:all:buildbear` - run the full Buildbear deploy sequence
+ `npm run deploy:handoff-roles -- --network <network>` - grant roles then renounce
 
 Scripts live in `scripts/deployment/` and `scripts/commands/`.
 

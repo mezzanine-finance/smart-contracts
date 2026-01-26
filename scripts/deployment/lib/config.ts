@@ -1,0 +1,317 @@
+import fs from "fs";
+import path from "path";
+import {ethers} from "hardhat";
+import {assert, parseBps, parseUSDC, requireAddress} from "./helpers";
+
+export interface RoleIdsConfig {
+    PAUSER_ROLE: number;
+    UNPAUSER_ROLE: number;
+    UPGRADER_ROLE: number;
+    RESERVOIR_WITHDRAW_ROLE: number;
+    ORACLE_ROLE: number;
+}
+
+export interface RolesConfig {
+    admin: string;
+    pauser: string;
+    unpauser: string;
+    upgrader: string;
+    reservoirWithdrawers: string[];
+    roleDelays?: {
+        unpauser?: number;
+        upgrader?: number;
+        pauser?: number;
+        reservoirWithdraw?: number;
+        oracle?: number;
+    };
+    oracles?: string[];
+}
+
+export interface DevConfig {
+    deployer: string;
+    grantRoles?: boolean;
+}
+
+export interface UsdcMockMint {
+    to: string;
+    amount: string;
+}
+
+export interface UsdcConfig {
+    address?: string;
+    deployMock?: boolean;
+    mock?: {
+        name: string;
+        symbol: string;
+        decimals: number;
+        initialMints: UsdcMockMint[];
+    };
+}
+
+export interface MZUSDConfig {
+    redemptionCapUSDC: string;
+    redemptionWindowDurationSec?: number;
+}
+
+export interface VaultConfig {
+    performanceFeeBps: number;
+    protocolFeeBps: number;
+    performanceFeeReceiver: string;
+    protocolFeeReceiver: string;
+    idleBufferUSDC?: string;
+    hysteresisBps?: number;
+    epochDurationSec?: number;
+}
+
+export interface TrancheConfig {
+    key: string;
+    id: number;
+    name: string;
+    symbol: string;
+    weight: number;
+    enabled: boolean;
+    directWithdrawEnabled: boolean;
+    unstakeDelayEpochs?: number;
+    depositLimits?: {
+        enabled: boolean;
+        capUSDC?: string;
+        tvlBps?: number;
+    };
+}
+
+export interface PolJuniorConfig {
+    enabled: boolean;
+    name: string;
+    symbol: string;
+    polPayout: string;
+    registerInVault?: boolean;
+    weight?: number;
+    enabledInVault?: boolean;
+}
+
+export interface LossManagerConfig {
+    order: string[];
+    groupIds: number[];
+    maxLossPerTxUSDC?: string;
+}
+
+export interface NavOracleConfig {
+    vetoPeriodSec: number;
+    oracles: string[];
+}
+
+export interface UmbrellaFinalizerConfig {
+    enabled: boolean;
+}
+
+export interface PostDeployConfig {
+    renounceDeployerRoles?: boolean;
+}
+
+export interface VerifyConfig {
+    enabled?: boolean;
+}
+
+export interface TrancheSeedConfig {
+    key: string;
+    amountUSDC: string;
+    receiver: string;
+}
+
+export interface SeedConfig {
+    mzusdDepositUSDC?: string;
+    vaultUSDC?: string;
+    reservoirUSDC?: string;
+    trancheDeposits?: TrancheSeedConfig[];
+}
+
+export interface DeployConfig {
+    version: number;
+    dev: DevConfig;
+    roleIds: RoleIdsConfig;
+    roles: RolesConfig;
+    usdc: UsdcConfig;
+    mzusd: MZUSDConfig;
+    vault: VaultConfig;
+    tranches: TrancheConfig[];
+    polJunior?: PolJuniorConfig;
+    lossManager: LossManagerConfig;
+    navOracle: NavOracleConfig;
+    umbrellaFinalizer?: UmbrellaFinalizerConfig;
+    postDeploy?: PostDeployConfig;
+    verify?: VerifyConfig;
+    seed?: SeedConfig;
+}
+
+const CONFIG_DIR = path.join(__dirname, "..", "config");
+
+export function resolveConfigPath(networkName: string, overridePath?: string): string {
+    if (overridePath) return path.resolve(overridePath);
+    return path.join(CONFIG_DIR, `${networkName}.json`);
+}
+
+export function loadConfig(networkName: string, overridePath?: string): DeployConfig {
+    const filePath = resolveConfigPath(networkName, overridePath);
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`Config file not found: ${filePath}`);
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    const config = JSON.parse(raw) as DeployConfig;
+    validateConfig(config, filePath);
+    return config;
+}
+
+function validateConfig(config: DeployConfig, filePath: string) {
+    assert(typeof config.version === "number", `Missing version in ${filePath}`);
+    const roleIds = config.roleIds;
+    assert(roleIds !== undefined, `Missing roleIds in ${filePath}`);
+    const seenRoleIds = new Set<number>();
+    for (const [name, value] of Object.entries(roleIds)) {
+        assert(Number.isSafeInteger(value), `roleIds.${name} must be a safe integer`);
+        assert(value > 0, `roleIds.${name} must be > 0`);
+        assert(!seenRoleIds.has(value), `roleIds.${name} duplicates role id ${value}`);
+        seenRoleIds.add(value);
+    }
+
+    requireAddress(config.dev.deployer, "dev.deployer");
+
+    const roles = config.roles;
+    requireAddress(roles.admin, "roles.admin");
+    requireAddress(roles.pauser, "roles.pauser");
+    requireAddress(roles.unpauser, "roles.unpauser");
+    requireAddress(roles.upgrader, "roles.upgrader");
+    for (const addr of roles.reservoirWithdrawers ?? []) {
+        requireAddress(addr, "roles.reservoirWithdrawers");
+    }
+    for (const addr of roles.oracles ?? []) {
+        requireAddress(addr, "roles.oracles");
+    }
+
+    const usdc = config.usdc;
+    if (usdc.deployMock) {
+        assert(usdc.mock !== undefined, "usdc.mock is required when deployMock = true");
+        assert(usdc.mock.decimals === 6, "mock USDC must use 6 decimals");
+        for (const mint of usdc.mock.initialMints ?? []) {
+            requireAddress(mint.to, "usdc.mock.initialMints.to");
+        }
+    } else {
+        requireAddress(usdc.address ?? "", "usdc.address");
+    }
+
+    const vault = config.vault;
+    parseBps(vault.performanceFeeBps);
+    parseBps(vault.protocolFeeBps);
+    if (vault.hysteresisBps !== undefined) {
+        parseBps(vault.hysteresisBps);
+    }
+    if (vault.performanceFeeBps + vault.protocolFeeBps > 5000) {
+        throw new Error("Vault fees exceed MAX_TOTAL_FEE_BPS (5000)");
+    }
+    requireAddress(vault.performanceFeeReceiver, "vault.performanceFeeReceiver");
+    requireAddress(vault.protocolFeeReceiver, "vault.protocolFeeReceiver");
+    assert(
+        vault.performanceFeeReceiver.toLowerCase() !== vault.protocolFeeReceiver.toLowerCase(),
+        "Vault fee receivers must be distinct"
+    );
+
+    const tranches = config.tranches ?? [];
+    assert(tranches.length > 0, "At least one tranche must be configured");
+    const keys = new Set<string>();
+    for (const tranche of tranches) {
+        assert(tranche.key, "Tranche key is required");
+        assert(!keys.has(tranche.key), `Duplicate tranche key: ${tranche.key}`);
+        keys.add(tranche.key);
+        assert(tranche.weight <= 10_000, `Tranche weight too large: ${tranche.key}`);
+        assert(tranche.id > 0, `Tranche id must be > 0: ${tranche.key}`);
+        if (tranche.depositLimits?.enabled) {
+            if (tranche.depositLimits.tvlBps !== undefined) {
+                parseBps(tranche.depositLimits.tvlBps);
+            }
+        }
+    }
+
+    if (config.polJunior?.enabled) {
+        requireAddress(config.polJunior.polPayout, "polJunior.polPayout");
+        if (config.polJunior.registerInVault) {
+            assert(
+                config.polJunior.weight !== undefined,
+                "polJunior.weight required when registerInVault = true"
+            );
+        }
+    }
+
+    const loss = config.lossManager;
+    assert(loss.order.length === loss.groupIds.length, "lossManager order/groupIds mismatch");
+    for (const key of loss.order) {
+        assert(
+            key === "polJunior" || keys.has(key),
+            `lossManager.order references unknown tranche key: ${key}`
+        );
+    }
+    const seenGroupIds = new Set<number>();
+    for (let i = 0; i < loss.groupIds.length; ) {
+        const gid = loss.groupIds[i];
+        if (gid === 0) {
+            i += 1;
+            continue;
+        }
+        if (i + 1 >= loss.groupIds.length || loss.groupIds[i + 1] !== gid) {
+            throw new Error(`lossManager.groupIds must use contiguous pairs (index ${i})`);
+        }
+        if (seenGroupIds.has(gid)) {
+            throw new Error(`lossManager.groupIds cannot reuse group id ${gid}`);
+        }
+        seenGroupIds.add(gid);
+        i += 2;
+    }
+
+    if (config.navOracle.oracles.length === 0) {
+        throw new Error("navOracle.oracles must include at least one address");
+    }
+
+    for (const addr of config.navOracle.oracles) {
+        requireAddress(addr, "navOracle.oracles");
+    }
+
+    if (roles.oracles && roles.oracles.length > 0) {
+        for (const addr of roles.oracles) {
+            requireAddress(addr, "roles.oracles");
+        }
+        const mismatch = roles.oracles.some(
+            (addr) =>
+                !config.navOracle.oracles.some(
+                    (oracle) => oracle.toLowerCase() === addr.toLowerCase()
+                )
+        );
+        if (mismatch) {
+            throw new Error("roles.oracles must match navOracle.oracles when provided");
+        }
+    }
+
+    assert(
+        ethers.isAddress(config.roles.admin),
+        `roles.admin must be a valid address in ${filePath}`
+    );
+
+    const seed = config.seed;
+    if (seed?.mzusdDepositUSDC) {
+        parseUSDC(seed.mzusdDepositUSDC);
+    }
+    if (seed?.vaultUSDC) {
+        parseUSDC(seed.vaultUSDC);
+    }
+    if (seed?.reservoirUSDC) {
+        parseUSDC(seed.reservoirUSDC);
+    }
+    if (seed?.trancheDeposits) {
+        for (const deposit of seed.trancheDeposits) {
+            assert(deposit.key, "seed.trancheDeposits.key is required");
+            assert(
+                keys.has(deposit.key),
+                `seed.trancheDeposits references unknown tranche: ${deposit.key}`
+            );
+            requireAddress(deposit.receiver, "seed.trancheDeposits.receiver");
+            parseUSDC(deposit.amountUSDC);
+        }
+    }
+}
