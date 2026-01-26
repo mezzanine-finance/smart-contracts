@@ -41,13 +41,13 @@ contract PolJuniorTranche is
     }
 
     /// @notice Initializer
-    /// @param assetToken - underlying asset token (MZUSD)
-    /// @param vaultAddress - address of the Vault
-    /// @param name_ - tranche name
-    /// @param symbol_ - tranche symbol
-    /// @param accessManager - access manager address for role control
-    /// @param pauseManager_ - pause manager address for category-based pauses
-    /// @param polPayoutAddress - address to forward yield to
+    /// @param assetToken Underlying asset token (MZUSD).
+    /// @param vaultAddress Vault address.
+    /// @param name_ Tranche name.
+    /// @param symbol_ Tranche symbol.
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param polPayoutAddress Yield payout recipient.
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -81,6 +81,8 @@ contract PolJuniorTranche is
         _;
     }
 
+    ///@notice Deposit assets
+    ///@dev Deposit is open to public
     function deposit(
         uint256 assets,
         address receiver
@@ -88,6 +90,8 @@ contract PolJuniorTranche is
         return super.deposit(assets, receiver);
     }
 
+    ///@notice Mint shares by depositing assets
+    ///@dev Mint is open to public
     function mint(
         uint256 shares,
         address receiver
@@ -95,6 +99,8 @@ contract PolJuniorTranche is
         return super.mint(shares, receiver);
     }
 
+    ///@notice Withdraw assets by burning shares
+    /// @dev Withdraw is NOT open to public
     function withdraw(
         uint256 assets,
         address receiver,

@@ -23,7 +23,7 @@ contract Vault is
     AccessManagedUpgradeable,
     PauseManagedUpgradeable
 {
-    /// @notice Info for each registered tranche
+    /// @notice Info for each registered tranche.
     struct TrancheInfo {
         address tranche;
         uint16 weight;
@@ -130,13 +130,13 @@ contract Vault is
         _disableInitializers();
     }
 
-    /// @notice Initializer
-    /// @param accessManager - access manager address for role control
-    /// @param pauseManager_ - pause manager address for category-based pauses
-    /// @param _performanceFeeBps - performance/curators fee in bps (can be zero)
-    /// @param _performanceFeeReceiver - receiver for performance/curators fees
-    /// @param _protocolFeeBps - protocol fee in bps (can be zero)
-    /// @param _protocolFeeReceiver - receiver for protocol fees
+    /// @notice Initialize the Vault.
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param _performanceFeeBps Performance/curator fee in bps (0 allowed).
+    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
+    /// @param _protocolFeeBps Protocol fee in bps (0 allowed).
+    /// @param _protocolFeeReceiver Recipient of protocol fees.
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -167,11 +167,10 @@ contract Vault is
         epochDuration = 1 days;
     }
 
-    /// @dev withdraw USDC from vault to specified address
-    /// @param to - address to receive withdrawn USDC
-    /// @param amount - amount of USDC to withdraw
-    /// @dev used for MZUSD redemptions
-    /// @dev callable only by the configured MZUSD contract
+    /// @notice Withdraw USDC to a recipient (used for MZUSD redemptions).
+    /// @param to USDC recipient.
+    /// @param amount USDC amount (6 decimals).
+    /// @dev Callable only by the configured MZUSD contract.
     function withdraw(
         address to,
         uint256 amount
@@ -188,17 +187,15 @@ contract Vault is
         emit WithdrawnUSDCFromVault(to, amount);
     }
 
-    //@dev using for rebalancing USDC between vault and reservoir
+    /// @notice Rebalance idle USDC between Vault and Reservoir.
     function rebalance() external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _rebalance();
     }
 
-    /// @dev distribute yield reported in USDC to tranches
-    /// @param usdcReported - amount of USDC yield to distribute
-    /// @dev mints MZUSD at 1:1 with USDC reported
-    /// @dev called once per epoch after yield is reported
-    /// @dev fees are minted in MZUSD and sent to fee receivers
-    /// @dev yield is allocated to tranches based on their weights and TVL
+    /// @notice Distribute yield (reported in USDC) to tranches.
+    /// @param usdcReported USDC yield to distribute (6 decimals).
+    /// @dev Mints MZUSD 1:1 with reported USDC, advances epoch, mints fees,
+    ///      and allocates by weight and TVL.
     function distributeYield(
         uint256 usdcReported
     ) external nonReentrant onlyNavOracle whenNotPaused(PauseCategory.PROTOCOL) {
@@ -270,7 +267,7 @@ contract Vault is
         emit NavOracleUpdated(_navOracle);
     }
 
-    /// @notice Update fees configuration
+    /// @notice Update fee configuration.
     /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed BPS
     function setFees(
         uint16 _performanceFeeBps,
@@ -293,7 +290,7 @@ contract Vault is
         );
     }
 
-    /// @notice Register a new tranche
+    /// @notice Register a new tranche.
     function addTranche(
         TrancheInfo calldata info
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -307,10 +304,10 @@ contract Vault is
         emit TrancheRegistered(info.tranche, info.weight, info.enabled);
     }
 
-    /// @notice Update tranche info
-    /// @param idx - index of tranche in tranches array
-    /// @param weight - new weight for yield allocation
-    /// @param enabled - whether tranche is enabled for yield allocation
+    /// @notice Update tranche info.
+    /// @param idx Tranche index in `tranches`.
+    /// @param weight New weight for yield allocation.
+    /// @param enabled Whether the tranche receives allocations.
     function updateTranche(
         uint256 idx,
         uint16 weight,
@@ -323,9 +320,9 @@ contract Vault is
         emit TrancheUpdated(idx, weight, enabled);
     }
 
-    /// @notice Update idle USDC buffer and hysteresis band
-    /// @param target - target idle USDC buffer
-    /// @param bandBps - hysteresis band in bps
+    /// @notice Update idle USDC buffer and hysteresis band.
+    /// @param target Target idle USDC buffer (6 decimals).
+    /// @param bandBps Hysteresis band in bps.
     function setBuffer(
         uint256 target,
         uint16 bandBps
@@ -340,7 +337,7 @@ contract Vault is
 
     /// @notice Queue epoch duration update for next epoch.
     /// @dev AccessManager should enforce an execution delay for this method.
-    /// @param _epochDuration - new epoch duration in seconds
+    /// @param _epochDuration New epoch duration in seconds.
     function setEpochConfig(
         uint64 _epochDuration
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -410,6 +407,10 @@ contract Vault is
         }
     }
 
+    ///@notice Get current epoch configuration.
+    ///@return epochId Current epoch ID.
+    ///@return start Current epoch start timestamp.
+    ///@return duration Current epoch duration in seconds.
     function getEpochConfig()
         external
         view
@@ -428,11 +429,11 @@ contract Vault is
     }
 
     //INTERNAL HELPERS
-    /// @notice Internal function to set fees
-    /// @param _performanceFeeBps - performance/curators fee in bps
-    /// @param _performanceFeeReceiver - receiver for performance/curators fees
-    /// @param _protocolFeeBps - protocol fee in bps
-    /// @param _protocolFeeReceiver - receiver for protocol fees
+    /// @notice Internal function to set fees.
+    /// @param _performanceFeeBps Performance/curator fee in bps.
+    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
+    /// @param _protocolFeeBps Protocol fee in bps.
+    /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
     /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero and different addresses
     function _setFees(
@@ -451,8 +452,8 @@ contract Vault is
         protocolFeeReceiver = _protocolFeeReceiver;
     }
 
-    /// @notice Advance epoch and validate that enough time has passed
-    /// @return newEpochId - new epoch ID after advancement
+    /// @notice Advance epoch and validate that enough time has passed.
+    /// @return newEpochId New epoch ID after advancement.
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         uint64 ts = uint64(block.timestamp);
         if (ts < epochStart + epochDuration) revert EpochTooSoon();
@@ -469,11 +470,11 @@ contract Vault is
         }
     }
 
-    /// @notice Mint fees in MZUSD based on minted gross amount
-    /// @param mintedGross - gross amount of MZUSD minted for yield distribution
-    /// @return mintedForAllocation - amount of MZUSD left for tranche allocation after fees
-    /// @return performanceFeeMZUSD - amount of MZUSD minted as performance fee
-    /// @return protocolFeeMZUSD - amount of MZUSD minted as protocol fee
+    /// @notice Mint fees in MZUSD based on the gross minted amount.
+    /// @param mintedGross Gross MZUSD minted for yield distribution (18 decimals).
+    /// @return mintedForAllocation MZUSD remaining for tranche allocation after fees.
+    /// @return performanceFeeMZUSD MZUSD minted as the performance fee.
+    /// @return protocolFeeMZUSD MZUSD minted as the protocol fee.
     function _handleFees(
         uint256 mintedGross
     )
@@ -486,11 +487,11 @@ contract Vault is
         mintedForAllocation = mintedGross - performanceFeeMZUSD - protocolFeeMZUSD;
     }
 
-    /// @notice Mint a fee in MZUSD
-    /// @param bps - fee in basis points
-    /// @param receiver - address to receive the fee
-    /// @param mintedGross - gross amount of MZUSD minted for yield distribution
-    /// @return feeAmount - amount of MZUSD minted as fee
+    /// @notice Mint a fee in MZUSD.
+    /// @param bps Fee in basis points.
+    /// @param receiver Recipient of the fee.
+    /// @param mintedGross Gross MZUSD minted for yield distribution (18 decimals).
+    /// @return feeAmount MZUSD minted as the fee.
     function _mintFee(
         uint16 bps,
         address receiver,
@@ -508,9 +509,9 @@ contract Vault is
         mzusd.mint(receiver, feeAmount);
     }
 
-    /// @notice Allocate yield to tranches based on weights and TVL
-    /// @param allocatableMZUSD - amount of MZUSD available for allocation to tranches
-    /// @return actuallyAllocated - amount of MZUSD actually allocated to tranches
+    /// @notice Allocate yield to tranches based on weights and TVL.
+    /// @param allocatableMZUSD MZUSD available for allocation (18 decimals).
+    /// @return actuallyAllocated MZUSD actually allocated to tranches.
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
@@ -560,7 +561,7 @@ contract Vault is
         return allocatableMZUSD;
     }
 
-    /// @notice Compute buffer bounds based on idle buffer and hysteresis
+    /// @notice Compute buffer bounds based on idle buffer and hysteresis.
     function _bufferBounds() internal view returns (uint256 low, uint256 high) {
         uint256 buffer = idleBufferUSDC;
         uint16 bandBps = hysteresisBps;
@@ -569,6 +570,10 @@ contract Vault is
         high = (buffer * (BPS + bandBps)) / BPS;
     }
 
+    /// @notice Rebalance idle USDC against the target buffer and hysteresis band.
+    /// @dev Sends excess to Reservoir or pulls when below the low bound.
+    /// @dev When there is no much money in Reservoir, it will pull whatever is available.
+    /// @dev If Reservoir is empty, it reverts.
     function _rebalance() internal {
         uint256 idle = usdc.balanceOf(address(this));
         (uint256 low, uint256 high) = _bufferBounds();

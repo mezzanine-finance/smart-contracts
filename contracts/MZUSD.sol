@@ -9,7 +9,7 @@ import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
 
 /// @title MZUSD stablecoin
-/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
+/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
 /// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
 /// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
@@ -30,18 +30,18 @@ contract MZUSD is
 
     IVault public immutable vault;
     address public lossManager;
-    /// @notice start timestamp of current redemption window
+    /// @notice Start timestamp of current redemption window.
     uint40 public windowStartTimestamp;
-    /// @notice duration of redemption window in seconds (e.g. 1 hours)
+    /// @notice Duration of redemption window in seconds (e.g. 1 hours).
     uint32 public redemptionWindowDuration;
-    /// @notice global redemption cap in USDC (6 decimals); must be > 0
+    /// @notice Global redemption cap in USDC (6 decimals); must be > 0.
     uint256 public globalRedemptionCapUSDC;
-    /// @notice amount of USDC redeemed in current window
+    /// @notice USDC redeemed in current window.
     uint256 public windowUsedUSDC;
 
-    /// @notice per-tx deposits for atomic netting
+    /// @notice Per-tx deposits for atomic netting.
     uint256 transient _txDepositedUSDC;
-    /// @notice next redemption window duration to apply when the window rolls
+    /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
 
     event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
@@ -87,9 +87,9 @@ contract MZUSD is
         _;
     }
 
-    /// @param accessManager - address of AccessManager contract for role management
-    /// @param pauseManager_ - address of PauseManager contract for category-based pauses
-    /// @param _initialCapUSDC - initial global redemption cap in USDC (6 decimals)
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals).
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -109,8 +109,8 @@ contract MZUSD is
         nextRedemptionWindowDuration = redemptionWindowDuration;
     }
 
-    /// @notice deposit USDC and mint MZUSD 1:1
-    /// @param amountUSDC - amount of USDC to deposit (6 decimals)
+    /// @notice Deposit USDC and mint MZUSD 1:1.
+    /// @param amountUSDC USDC amount (6 decimals).
     function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -125,10 +125,12 @@ contract MZUSD is
         emit Deposit(msg.sender, amountUSDC, mintAmount);
     }
 
-    /// @notice request withdrawal of MZUSD for USDC
-    /// @param amountMZ - amount of MZUSD to burn (18 decimals)
+    /// @notice Burn MZUSD and withdraw USDC.
+    /// @param amountMZ MZUSD amount to burn (18 decimals).
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
-    /// @dev v2: will be changed to enqueue
+    /// @dev v2: might be changed to enqueue
+    /// @dev Applies atomic netting of deposits vs withdrawals within the same tx
+    /// @dev Enforces global redemption cap per window
     function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
@@ -170,7 +172,7 @@ contract MZUSD is
 
     //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
 
-    /// @notice mint MZUSD to an address
+    /// @notice Mint MZUSD to an address.
     /// @dev Used by VAULT to mint MZUSD
     function mint(
         address to,
@@ -179,8 +181,8 @@ contract MZUSD is
         _mint(to, amount);
     }
 
-    /// @notice burn MZUSD from an address
-    /// @dev Used by authorized contracts to burn MZUSD
+    /// @notice Burn MZUSD from an address.
+    /// @dev Used by LossManager to burn MZUSD.
     function burn(
         address from,
         uint256 amount
@@ -190,8 +192,8 @@ contract MZUSD is
 
     //SETTERS
 
-    /// @notice set global redemption cap in USDC (6 decimals)
-    /// @param newCapUSDC - new cap value; must be > 0 and <= USDC total supply
+    /// @notice Set global redemption cap in USDC (6 decimals).
+    /// @param newCapUSDC New cap value; must be > 0 and <= USDC total supply.
     function setGlobalRedemptionCap(
         uint256 newCapUSDC
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -199,8 +201,9 @@ contract MZUSD is
         _setGlobalRedemptionCap(newCapUSDC);
     }
 
-    /// @notice set the duration of the redemption window
-    /// @param newDuration - new duration in seconds
+    /// @notice Set the duration of the redemption window (how long a window lasts).
+    /// @param newDuration New duration in seconds.
+    /// @dev Validations: non-zero, within min/max bounds, different from current or pending value.
     function setRedemptionWindowDuration(
         uint32 newDuration
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -232,9 +235,9 @@ contract MZUSD is
 
     //GETTERS
 
-    /// @notice view remaining USDC available for redemption in current window
-    /// @return remainingUSDC - amount of USDC left that can be redeemed in current window
-    /// @return windowStart - start timestamp of the current redemption window
+    /// @notice View remaining USDC available for redemption in the current window.
+    /// @return remainingUSDC USDC left redeemable in the current window.
+    /// @return windowStart Start timestamp of the current redemption window.
     function getRemainingGlobalRedemptionCap()
         public
         view
@@ -252,7 +255,12 @@ contract MZUSD is
         return (remainingUSDC, windowStartTimestamp);
     }
 
-    /// @notice Returns the current redemption window state derived from the cap and window settings.
+    /// @notice Returns the current redemption window state derived from cap and timing.
+    /// @return capUSDC Global redemption cap in USDC (6 decimals).
+    /// @return usedUSDC USDC redeemed in the current window.
+    /// @return remainingUSDC USDC still redeemable in the current window.
+    /// @return windowStart Start timestamp of the current window.
+    /// @return windowEnd End timestamp of the current window.
     function getRedemptionWindow()
         external
         view
@@ -292,9 +300,9 @@ contract MZUSD is
         minValue = a < b ? a : b;
     }
 
-    /// @notice apply atomic netting of deposits against withdrawals within the same tx
-    /// @param usdcOut - initial USDC amount to withdraw
-    /// @return adjustedUSDC adjusted USDC amount to withdraw after netting
+    /// @notice Apply atomic netting of deposits against withdrawals within the same tx.
+    /// @param usdcOut USDC amount to withdraw (6 decimals).
+    /// @return adjustedUSDC USDC amount to withdraw after netting.
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256 adjustedUSDC) {
         uint256 txDeposited = _txDepositedUSDC;
         uint256 coveredUSDC = _min(txDeposited, usdcOut);
@@ -302,7 +310,8 @@ contract MZUSD is
         adjustedUSDC = usdcOut - coveredUSDC;
     }
 
-    /// @notice check and consume from the global redemption cap
+    /// @notice Consume from the global redemption cap for the current window.
+    /// @dev Rolls the window forward and applies a queued duration if needed.
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
         uint256 cap = globalRedemptionCapUSDC;
         uint32 duration = redemptionWindowDuration;
@@ -324,6 +333,7 @@ contract MZUSD is
         windowUsedUSDC = newTotal;
     }
 
+    /// @notice Set the global redemption cap in USDC (6 decimals).
     function _setGlobalRedemptionCap(uint256 newCapUSDC) internal {
         if (newCapUSDC == 0) {
             revert ZeroCap();
