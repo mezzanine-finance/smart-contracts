@@ -39,7 +39,7 @@ contract MZUSD is
     /// @notice USDC redeemed in current window.
     uint256 public windowUsedUSDC;
 
-    /// @notice Per-tx deposits for atomic netting.
+    /// @notice Tracks USDC deposited in current tx; enables atomic netting so same-tx withdrawals bypass redemption cap for deposited amounts.
     uint256 transient _txDepositedUSDC;
     /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
@@ -114,6 +114,7 @@ contract MZUSD is
     function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
+        // Accumulate deposit for atomic netting; if user withdraws later in this tx, this amount won't count against redemption cap
         _txDepositedUSDC += amountUSDC;
 
         // USDC is a well-behaved ERC20; direct transferFrom is safe here.
@@ -304,9 +305,13 @@ contract MZUSD is
     /// @param usdcOut USDC amount to withdraw (6 decimals).
     /// @return adjustedUSDC USDC amount to withdraw after netting.
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256 adjustedUSDC) {
+        // Read tx-local deposit accumulator to offset withdrawal against redemption cap
         uint256 txDeposited = _txDepositedUSDC;
+        // Calculate how much of this withdrawal is covered by same-tx deposits (up to full withdrawal)
         uint256 coveredUSDC = _min(txDeposited, usdcOut);
+        // Decrease available deposit balance by consumed amount; remainder stays for potential subsequent withdrawals
         _txDepositedUSDC = txDeposited - coveredUSDC;
+        // Return the portion that actually counts against the global redemption cap
         adjustedUSDC = usdcOut - coveredUSDC;
     }
 
