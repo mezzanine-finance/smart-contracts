@@ -290,8 +290,8 @@ contract MZUSD is
         }
     }
 
-    function decimals() public pure override returns (uint8 decimals_) {
-        decimals_ = MZ_DECIMALS;
+    function decimals() public pure override returns (uint8) {
+        return MZ_DECIMALS;
     }
 
     ///INTERNAL HELPERS
