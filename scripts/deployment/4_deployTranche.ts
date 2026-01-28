@@ -72,6 +72,7 @@ async function main() {
     console.log("MZUSD:", mzusdAddress);
     console.log("Vault:", vaultAddress);
     console.log("Tranche:", trancheInfo.name, trancheInfo.symbol, "#", trancheInfo.id);
+    console.log("Direct deposit enabled: ", trancheInfo.directWithdrawalMode);
 
     upgrades.silenceWarnings();
 
@@ -91,7 +92,9 @@ async function main() {
         {
             kind: "uups",
             initializer: "initialize",
-            unsafeAllow: ["constructor"],
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [trancheInfo.directWithdrawalMode],
+            redeployImplementation: "always",
         }
     );
     const tx = tranche.deploymentTransaction();

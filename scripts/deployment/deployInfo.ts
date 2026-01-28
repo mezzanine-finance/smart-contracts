@@ -33,6 +33,7 @@ export interface DeployInfo {
         enabled: boolean;
         polJuniorMode: boolean;
         polPayout: string;
+        directWithdrawalMode: boolean;
     };
 }
 
@@ -54,16 +55,17 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
+            directWithdrawalMode: false,
         },
     },
 
     // example for testnet
     sepolia: {
-        usdc: "0xYourMockOrUSDCOnSepolia",
-        accessManagerAdmin: "0xYourSepoliaAdmin",
-        mzusdRedemptionCap: "0",
-        performanceFeeReceiver: "0xYourPerformanceFeeReceiver",
-        protocolFeeReceiver: "0xYourProtocolFeeReceiver",
+        usdc: "0x8721514c2d975e6e4366813AF44628E1B5FC06Cb",
+        accessManagerAdmin: "0x585B227672f6991D10cfe746c49147205b8a5ABc",
+        mzusdRedemptionCap: "1000000",
+        performanceFeeReceiver: "0x585B227672f6991D10cfe746c49147205b8a5ABc",
+        protocolFeeReceiver: "0x585B227672f6991D10cfe746c49147205b8a5ABc",
         performanceFeeBps: 0,
         protocolFeeBps: 0,
         tranche: {
@@ -75,6 +77,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
+            directWithdrawalMode: true,
         },
     },
 
@@ -100,6 +103,7 @@ export const DEPLOY_INFO: Record<string, DeployInfo> = {
             enabled: true,
             polJuniorMode: false,
             polPayout: "0x0000000000000000000000000000000000000000",
+            directWithdrawalMode: true,
         },
     },
 };
