@@ -279,19 +279,12 @@ contract MZUSD is
         return block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration;
     }
 
-    function _min(uint256 a, uint256 b) internal pure returns (uint256 minValue) {
-        minValue = a < b ? a : b;
-    }
-
     /// @notice Apply atomic netting of deposits against withdrawals within the same tx.
     /// @param usdcOut USDC amount to withdraw (6 decimals).
     /// @return adjustedUSDC USDC amount to withdraw after netting.
     function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256 adjustedUSDC) {
-        // Read tx-local deposit accumulator to offset withdrawal against redemption cap
         uint256 txDeposited = _txDepositedUSDC;
-        // Calculate how much of this withdrawal is covered by same-tx deposits (up to full withdrawal)
-        uint256 coveredUSDC = _min(txDeposited, usdcOut);
-        // Decrease available deposit balance by consumed amount; remainder stays for potential subsequent withdrawals
+        uint256 coveredUSDC = txDeposited < usdcOut ? txDeposited : usdcOut;
         _txDepositedUSDC = txDeposited - coveredUSDC;
         // Return the portion that actually counts against the global redemption cap
         adjustedUSDC = usdcOut - coveredUSDC;
