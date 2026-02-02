@@ -208,7 +208,6 @@ contract MZUSD is
     function setRedemptionWindowDuration(
         uint32 newDuration
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (newDuration == 0) revert ZeroDuration();
         if (
             newDuration < MIN_REDEMPTION_WINDOW_DURATION ||
             newDuration > MAX_REDEMPTION_WINDOW_DURATION
