@@ -531,10 +531,13 @@ contract Vault is
 
         uint256 trancheCount = tranches.length;
         uint256 totalScore;
-        uint256 totalWeight;
+        uint256 totalWeight; // keep separate from totalScore to preserve precise revert reason
         uint256[] memory scores = new uint256[](trancheCount);
 
         TrancheInfo memory t;
+
+        uint256 score;
+        uint256 part;
 
         // calculate scores for each tranche and total score
         for (uint256 i; i < trancheCount; ++i) {
@@ -542,7 +545,7 @@ contract Vault is
             if (!t.enabled || t.weight == 0) continue;
 
             // score = weight * TVL
-            uint256 score = uint256(t.weight) * ITranche(t.tranche).totalAssets();
+            score = uint256(t.weight) * ITranche(t.tranche).totalAssets();
             scores[i] = score;
             totalScore += score;
             totalWeight += t.weight;
@@ -554,11 +557,11 @@ contract Vault is
         // allocate yield based on scores
         uint256 allocated;
         for (uint256 i; i < trancheCount; ++i) {
-            uint256 score = scores[i];
+            score = scores[i];
             if (score == 0) continue;
 
             t = tranches[i];
-            uint256 part = (allocatableMZUSD * score) / totalScore;
+            part = (allocatableMZUSD * score) / totalScore;
             if (i == trancheCount - 1 && allocatableMZUSD - allocated != part) {
                 part = allocatableMZUSD - allocated;
             }
