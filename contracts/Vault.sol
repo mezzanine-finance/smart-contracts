@@ -45,13 +45,13 @@ contract Vault is
     // check if address is registered tranche
     mapping(address => bool) public isTranche;
 
+    //IMMUTABLE
     IERC20 public immutable usdc; // address of USDC token
-    IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
     IReservoir public immutable reservoir; // address of reservoir contract for idle USDC
 
+    IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
     address public performanceFeeReceiver; // receiver of performance/curators fees
     address public protocolFeeReceiver; // receiver of protocols fees
-
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
 
     // epochs + config
@@ -137,6 +137,7 @@ contract Vault is
     /// @param _performanceFeeReceiver Recipient of performance/curator fees.
     /// @param _protocolFeeBps Protocol fee in bps (0 allowed).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
+    /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -151,12 +152,8 @@ contract Vault is
         __PauseManaged_init(pauseManager_);
         __ReentrancyGuard_init();
 
-        _setFees(
-            _performanceFeeBps,
-            _performanceFeeReceiver,
-            _protocolFeeBps,
-            _protocolFeeReceiver
-        );
+        _setFeeRates(_performanceFeeBps, _protocolFeeBps);
+        _setFeeReceivers(_performanceFeeReceiver, _protocolFeeReceiver);
 
         // aderyn-ignore-next-line(large-numeric-literal)
         idleBufferUSDC = 1_000_000 * 1e6;
@@ -267,20 +264,28 @@ contract Vault is
         emit NavOracleUpdated(_navOracle);
     }
 
-    /// @notice Update fee configuration.
-    /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed BPS
-    function setFees(
+    /// @notice Update fee rates (bps).
+    /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
+    function setFeeRates(
         uint16 _performanceFeeBps,
+        uint16 _protocolFeeBps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        _setFeeRates(_performanceFeeBps, _protocolFeeBps);
+
+        emit FeesUpdated(
+            performanceFeeBps,
+            performanceFeeReceiver,
+            protocolFeeBps,
+            protocolFeeReceiver
+        );
+    }
+
+    /// @notice Update fee receivers.
+    function setFeeReceivers(
         address _performanceFeeReceiver,
-        uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        _setFees(
-            _performanceFeeBps,
-            _performanceFeeReceiver,
-            _protocolFeeBps,
-            _protocolFeeReceiver
-        );
+        _setFeeReceivers(_performanceFeeReceiver, _protocolFeeReceiver);
 
         emit FeesUpdated(
             performanceFeeBps,
@@ -429,26 +434,29 @@ contract Vault is
     }
 
     //INTERNAL HELPERS
-    /// @notice Internal function to set fees.
+    /// @notice Internal function to set fee rates.
     /// @param _performanceFeeBps Performance/curator fee in bps.
-    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
     /// @param _protocolFeeBps Protocol fee in bps.
-    /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
-    /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero and different addresses
-    function _setFees(
-        uint16 _performanceFeeBps,
+    function _setFeeRates(uint16 _performanceFeeBps, uint16 _protocolFeeBps) internal {
+        if (_performanceFeeBps + _protocolFeeBps > MAX_TOTAL_FEE_BPS) revert TooBigBps();
+        performanceFeeBps = _performanceFeeBps;
+        protocolFeeBps = _protocolFeeBps;
+    }
+
+    /// @notice Internal function to set fee receivers.
+    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
+    /// @param _protocolFeeReceiver Recipient of protocol fees.
+    /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero.
+    /// @dev _performanceFeeReceiver and _protocolFeeReceiver could be same addresses.
+    function _setFeeReceivers(
         address _performanceFeeReceiver,
-        uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) internal {
-        if (_performanceFeeBps + _protocolFeeBps > MAX_TOTAL_FEE_BPS) revert TooBigBps();
         if (_performanceFeeReceiver == address(0) || _protocolFeeReceiver == address(0)) {
             revert ZeroAddress();
         }
-        performanceFeeBps = _performanceFeeBps;
         performanceFeeReceiver = _performanceFeeReceiver;
-        protocolFeeBps = _protocolFeeBps;
         protocolFeeReceiver = _protocolFeeReceiver;
     }
 

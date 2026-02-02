@@ -39,7 +39,8 @@ Use this checklist in scripts after deploying all components.
 - `LossManager.setNavOracle(NavOracleAutomation)`.
 
 **Vault configuration**
-- `Vault.setFees(performanceFeeBps, performanceFeeReceiver, protocolFeeBps, protocolFeeReceiver)`.
+- `Vault.setFeeRates(performanceFeeBps, protocolFeeBps)`.
+- `Vault.setFeeReceivers(performanceFeeReceiver, protocolFeeReceiver)`.
 - `Vault.setBuffer(idleBufferUSDC, hysteresisBps)` (optional override of defaults).
 - `Vault.setEpochConfig(epochDuration)` (optional; queues for next epoch).
 - `Vault.addTranche(...)` for each tranche (Senior/Mezzanine/Junior, optionally PolJuniorTranche).

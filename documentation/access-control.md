@@ -63,7 +63,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
 - `advanceEpoch` → only the configured `lossManager` address
 - `setMZUSD` (one-time), `setLossManager` (one-time), `setNavOracle`,
-  `setFees`, `setBuffer`, `setEpochConfig`, `addTranche`, `updateTranche`
+  `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`, `addTranche`,
+  `updateTranche`
   → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 

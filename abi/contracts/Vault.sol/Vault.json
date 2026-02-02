@@ -1193,14 +1193,22 @@
                 "type": "uint16"
             },
             {
-                "internalType": "address",
-                "name": "_performanceFeeReceiver",
-                "type": "address"
-            },
-            {
                 "internalType": "uint16",
                 "name": "_protocolFeeBps",
                 "type": "uint16"
+            }
+        ],
+        "name": "setFeeRates",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_performanceFeeReceiver",
+                "type": "address"
             },
             {
                 "internalType": "address",
@@ -1208,7 +1216,7 @@
                 "type": "address"
             }
         ],
-        "name": "setFees",
+        "name": "setFeeReceivers",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

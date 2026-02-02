@@ -184,7 +184,8 @@ describe("Vault Yield Distribution", () => {
         const setNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
-        const setFeesSel = vault.interface.getFunction("setFees").selector;
+        const setFeeRatesSel = vault.interface.getFunction("setFeeRates").selector;
+        const setFeeReceiversSel = vault.interface.getFunction("setFeeReceivers").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         await accessManager.setTargetFunctionRole(
             vault.target,
@@ -196,7 +197,8 @@ describe("Vault Yield Distribution", () => {
                 setNavOracleSel,
                 addTrancheSel,
                 updateTrancheSel,
-                setFeesSel,
+                setFeeRatesSel,
+                setFeeReceiversSel,
                 setEpochConfigSel,
             ],
             ADMIN_ROLE
@@ -281,8 +283,9 @@ describe("Vault Yield Distribution", () => {
             expect(protReceiver0).to.equal(carol.address);
 
             // After setting fees, getter must reflect updates
+            await (await vault.connect(deployer).setFeeRates(1111, 2222)).wait();
             await (
-                await vault.connect(deployer).setFees(1111, bob.address, 2222, carol.address)
+                await vault.connect(deployer).setFeeReceivers(bob.address, carol.address)
             ).wait();
             const perfBps1 = await vault.performanceFeeBps();
             const perfReceiver1 = await vault.performanceFeeReceiver();
@@ -354,7 +357,10 @@ describe("Vault Yield Distribution", () => {
             await expect(vault.connect(deployer).setMZUSD(bob.address))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
-            await expect(vault.connect(deployer).setFees(1, bob.address, 1, carol.address))
+            await expect(vault.connect(deployer).setFeeRates(1, 1))
+                .to.be.revertedWithCustomError(vault, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
+            await expect(vault.connect(deployer).setFeeReceivers(bob.address, carol.address))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
             await expect(
@@ -432,12 +438,15 @@ describe("Vault Yield Distribution", () => {
             ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");
 
             await expect(
-                vault.connect(deployer).setFees(0, ethers.ZeroAddress, 0, carol.address)
+                vault.connect(deployer).setFeeReceivers(ethers.ZeroAddress, carol.address)
             ).to.be.revertedWithCustomError(vault, "ZeroAddress");
             await expect(
-                vault.connect(deployer).setFees(0, bob.address, 0, ethers.ZeroAddress)
+                vault.connect(deployer).setFeeReceivers(bob.address, ethers.ZeroAddress)
             ).to.be.revertedWithCustomError(vault, "ZeroAddress");
-            await vault.connect(deployer).setFees(0, bob.address, 0, bob.address);
+            await expect(
+                vault.connect(deployer).setFeeRates(overMax, 0)
+            ).to.be.revertedWithCustomError(vault, "TooBigBps");
+            await vault.connect(deployer).setFeeReceivers(bob.address, bob.address);
         });
 
         it("Enforces tranche weight limit for add/update", async () => {
@@ -1060,8 +1069,9 @@ describe("Vault Yield Distribution", () => {
             await (await vault.connect(deployer).updateTranche(2, 10_000, true)).wait();
 
             const feeBps = 5_000n;
+            await (await vault.connect(deployer).setFeeRates(feeBps, 0)).wait();
             await (
-                await vault.connect(deployer).setFees(feeBps, bob.address, 0, carol.address)
+                await vault.connect(deployer).setFeeReceivers(bob.address, carol.address)
             ).wait();
 
             const totalSupply = await junior.totalSupply();
@@ -1117,8 +1127,9 @@ describe("Vault Yield Distribution", () => {
 
             const perfReceiver = bob.address;
             const perfBps = 5_000;
+            await (await vault.connect(deployer).setFeeRates(perfBps, 0)).wait();
             await (
-                await vault.connect(deployer).setFees(perfBps, perfReceiver, 0, carol.address)
+                await vault.connect(deployer).setFeeReceivers(perfReceiver, carol.address)
             ).wait();
 
             const usdcReported = 77n; // 0.000077 USDC (still non-zero)
@@ -1153,9 +1164,8 @@ describe("Vault Yield Distribution", () => {
             const receiver = bob.address;
             const perfBps = 2000;
             const protBps = 3000; // total 50%
-            await (
-                await vault.connect(deployer).setFees(perfBps, receiver, protBps, receiver)
-            ).wait();
+            await (await vault.connect(deployer).setFeeRates(perfBps, protBps)).wait();
+            await (await vault.connect(deployer).setFeeReceivers(receiver, receiver)).wait();
 
             const usdcReported = 55n;
             const expectedGross = usdcReported * 1_000_000_000_000n; // * 1e12 -> 18d MZUSD
@@ -1189,8 +1199,9 @@ describe("Vault Yield Distribution", () => {
             const perfBps = 321n; // 3.21%
             const protBps = 123n; // 1.23%
 
+            await (await vault.connect(deployer).setFeeRates(perfBps, protBps)).wait();
             await (
-                await vault.connect(deployer).setFees(perfBps, perfReceiver, protBps, protReceiver)
+                await vault.connect(deployer).setFeeReceivers(perfReceiver, protReceiver)
             ).wait();
 
             await time.increase(DAY);
