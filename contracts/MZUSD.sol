@@ -246,8 +246,7 @@ contract MZUSD is
             return (cap, uint40(block.timestamp));
         }
 
-        uint256 spent = windowUsedUSDC;
-        remainingUSDC = cap - _min(spent, cap);
+        remainingUSDC = cap - _min(windowUsedUSDC, cap);
         return (remainingUSDC, windowStartTimestamp);
     }
 
