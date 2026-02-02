@@ -326,7 +326,7 @@ contract MZUSD is
             windowUsedUSDC = 0;
 
             uint32 pending = nextRedemptionWindowDuration;
-            if (pending != 0 && pending != duration) {
+            if (pending != 0) {
                 redemptionWindowDuration = pending;
                 emit RedemptionWindowDurationUpdated(pending);
             }
