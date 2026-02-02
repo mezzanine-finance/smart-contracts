@@ -199,9 +199,13 @@ contract Vault is
         if (tranches.length == 0) revert NoTranchesAdded();
 
         // Always advance epoch on distribution call, even if yield is 0.
-        // This prevents epoch-based withdrawal flows from getting stuck.
+        // This means yield can only be distributed once per epoch, and only at epoch start.
+        // Epochs are not necessarily contiguous; there can be an arbitrary pause between epochs
+        // until a distribution (or explicit advance) is triggered.
         uint256 newEpochId = _advanceEpochAndValidate();
 
+        // NAV reporter is trusted: no extra balance checks are performed here.
+        // usdcReported is assumed to be correct for the accounting flows that follow.
         if (usdcReported == 0) {
             emit FeesPaid(0, 0, newEpochId);
             emit YieldDistributed(0, 0, newEpochId);
