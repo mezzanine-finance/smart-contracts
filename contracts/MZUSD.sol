@@ -62,7 +62,7 @@ contract MZUSD is
     error InvalidRedemptionWindowDuration();
     error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
-    error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
+    error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
 
     constructor(address _usdc, address _vault) {
@@ -319,7 +319,7 @@ contract MZUSD is
         }
 
         uint256 newTotal = windowUsedUSDC + usdcAmount;
-        if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, windowUsedUSDC, usdcAmount);
+        if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, newTotal, usdcAmount);
 
         windowUsedUSDC = newTotal;
     }
