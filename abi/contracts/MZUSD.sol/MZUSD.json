@@ -207,7 +207,7 @@
             },
             {
                 "internalType": "uint256",
-                "name": "usedUSDC",
+                "name": "newTotal",
                 "type": "uint256"
             },
             {
