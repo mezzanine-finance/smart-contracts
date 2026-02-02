@@ -60,7 +60,6 @@ contract MZUSD is
     error NotVault();
     error NotLossManager();
     error InvalidRedemptionWindowDuration();
-    error CapExceedsTotalSupply(uint256 capUSDC, uint256 totalSupplyUSDC);
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
@@ -319,11 +318,7 @@ contract MZUSD is
             revert ZeroCap();
         }
 
-        uint256 totalSupplyUSDC = usdc.totalSupply();
-        if (newCapUSDC > totalSupplyUSDC) {
-            revert CapExceedsTotalSupply(newCapUSDC, totalSupplyUSDC);
-        }
-
+        // Cap can be any non-zero value; admin is trusted to set a sensible limit
         globalRedemptionCapUSDC = newCapUSDC;
         emit GlobalRedemptionCapUpdated(newCapUSDC);
     }

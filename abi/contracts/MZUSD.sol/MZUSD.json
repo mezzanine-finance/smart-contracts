@@ -67,22 +67,6 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
-                "name": "capUSDC",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "totalSupplyUSDC",
-                "type": "uint256"
-            }
-        ],
-        "name": "CapExceedsTotalSupply",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "enum PauseCategory",
                 "name": "category",
                 "type": "uint8"
