@@ -44,8 +44,8 @@ contract MZUSD is
     /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
 
-    event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
-    event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
+    event Deposit(address indexed user, uint256 usdcAmount);
+    event Withdrawal(address indexed user, uint256 usdcOut);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
@@ -123,7 +123,7 @@ contract MZUSD is
         uint256 mintAmount = amountUSDC * SCALE;
         _mint(msg.sender, mintAmount);
 
-        emit Deposit(msg.sender, amountUSDC, mintAmount);
+        emit Deposit(msg.sender, amountUSDC);
     }
 
     /// @notice Burn MZUSD and withdraw USDC.
@@ -146,7 +146,7 @@ contract MZUSD is
 
         vault.withdraw(msg.sender, usdcOut);
 
-        emit Withdrawal(msg.sender, burnAmount, usdcOut);
+        emit Withdrawal(msg.sender, usdcOut);
     }
 
     function transfer(
