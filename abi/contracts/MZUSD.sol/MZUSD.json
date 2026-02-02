@@ -708,6 +708,29 @@
         "name": "getRedemptionWindow",
         "outputs": [
             {
+                "internalType": "uint40",
+                "name": "windowStart",
+                "type": "uint40"
+            },
+            {
+                "internalType": "uint40",
+                "name": "windowEnd",
+                "type": "uint40"
+            },
+            {
+                "internalType": "uint32",
+                "name": "duration",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getRemainingRedemptionCap",
+        "outputs": [
+            {
                 "internalType": "uint256",
                 "name": "capUSDC",
                 "type": "uint256"
@@ -721,34 +744,6 @@
                 "internalType": "uint256",
                 "name": "remainingUSDC",
                 "type": "uint256"
-            },
-            {
-                "internalType": "uint40",
-                "name": "windowStart",
-                "type": "uint40"
-            },
-            {
-                "internalType": "uint40",
-                "name": "windowEnd",
-                "type": "uint40"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "getRemainingGlobalRedemptionCap",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "remainingUSDC",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint40",
-                "name": "windowStart",
-                "type": "uint40"
             }
         ],
         "stateMutability": "view",

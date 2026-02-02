@@ -235,58 +235,37 @@ contract MZUSD is
 
     //GETTERS
 
-    /// @notice View remaining USDC available for redemption in the current window.
-    /// @return remainingUSDC USDC left redeemable in the current window.
-    /// @return windowStart Start timestamp of the current redemption window.
-    function getRemainingGlobalRedemptionCap()
+    /// @notice View redemption cap usage for the current (or next) window
+    function getRemainingRedemptionCap()
         public
         view
-        returns (uint256 remainingUSDC, uint40 windowStart)
+        returns (uint256 capUSDC, uint256 usedUSDC, uint256 remainingUSDC)
     {
-        uint256 cap = globalRedemptionCapUSDC;
-
-        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
-            // New window would start on next withdrawal; expose full cap and current timestamp.
-            return (cap, uint40(block.timestamp));
+        capUSDC = globalRedemptionCapUSDC;
+        if (_isWindowExpired()) {
+            // Next withdrawal resets the window — full cap available
+            return (capUSDC, 0, capUSDC);
         }
-
-        remainingUSDC = cap - _min(windowUsedUSDC, cap);
-        return (remainingUSDC, windowStartTimestamp);
+        usedUSDC = windowUsedUSDC;
+        remainingUSDC = usedUSDC >= capUSDC ? 0 : capUSDC - usedUSDC;
     }
 
-    /// @notice Returns the current redemption window state derived from cap and timing.
-    /// @return capUSDC Global redemption cap in USDC (6 decimals).
-    /// @return usedUSDC USDC redeemed in the current window.
-    /// @return remainingUSDC USDC still redeemable in the current window.
-    /// @return windowStart Start timestamp of the current window.
-    /// @return windowEnd End timestamp of the current window.
+    /// @notice View the current redemption window timing
     function getRedemptionWindow()
         external
         view
-        returns (
-            uint256 capUSDC,
-            uint256 usedUSDC,
-            uint256 remainingUSDC,
-            uint40 windowStart,
-            uint40 windowEnd
-        )
+        returns (uint40 windowStart, uint40 windowEnd, uint32 duration)
     {
-        capUSDC = globalRedemptionCapUSDC;
-        (remainingUSDC, windowStart) = getRemainingGlobalRedemptionCap();
-        usedUSDC = capUSDC - remainingUSDC;
-
-        uint32 duration = redemptionWindowDuration;
-        if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
+        duration = redemptionWindowDuration;
+        if (_isWindowExpired()) {
+            // Next withdrawal would reset — show projected window
             uint32 pending = nextRedemptionWindowDuration;
-            if (pending != 0) {
-                duration = pending;
-            }
-        }
-        if (duration == 0) {
-            windowEnd = windowStart;
+            if (pending != 0) duration = pending;
+            windowStart = uint40(block.timestamp);
         } else {
-            windowEnd = windowStart + duration;
+            windowStart = windowStartTimestamp;
         }
+        windowEnd = windowStart + duration;
     }
 
     function decimals() public pure override returns (uint8) {
@@ -294,6 +273,11 @@ contract MZUSD is
     }
 
     ///INTERNAL HELPERS
+
+    /// @notice Whether the current redemption window has expired
+    function _isWindowExpired() private view returns (bool) {
+        return block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration;
+    }
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256 minValue) {
         minValue = a < b ? a : b;
