@@ -12,11 +12,19 @@ import "./pause/PauseCategory.sol";
 contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
     IERC20 public immutable usdc;
 
+    address public vault;
+    mapping(address => uint256) public depositedBy;
+    mapping(address => uint256) public withdrawnTo;
+    address[] public actors;
+    mapping(address => bool) private actorSeen;
+
     event Deposited(address indexed from, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
+    event VaultUpdated(address indexed vault);
 
     error ZeroAmount();
     error ZeroAddress();
+    error VaultAlreadySet();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -33,10 +41,22 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         __PauseManaged_init(pauseManager_);
     }
 
+    /// @notice Set Vault address for tracking (one-time).
+    function setVault(address _vault) external restricted {
+        if (_vault == address(0)) revert ZeroAddress();
+        if (vault != address(0)) revert VaultAlreadySet();
+        vault = _vault;
+        emit VaultUpdated(_vault);
+    }
+
     /// @notice Typically called by the Vault to move idle USDC into the Reservoir.
     function deposit(uint256 amount) external whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(msg.sender, address(this), amount);
+        if (!_isVault(msg.sender)) {
+            depositedBy[msg.sender] += amount;
+            _trackActor(msg.sender);
+        }
         emit Deposited(msg.sender, amount);
     }
 
@@ -50,12 +70,32 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
 
         // USDC will revert if balance is insufficient
         usdc.transfer(to, amount);
+        if (!_isVault(to)) {
+            withdrawnTo[to] += amount;
+            _trackActor(to);
+        }
         emit Withdrawn(to, amount);
     }
 
     /// @notice Helper to see how much USDC is on balance
     function totalUSDC() external view returns (uint256 balance) {
         balance = usdc.balanceOf(address(this));
+    }
+
+    /// @notice Return number of tracked non-vault actors.
+    function actorsLength() external view returns (uint256 length) {
+        length = actors.length;
+    }
+
+    function _trackActor(address actor) internal {
+        if (!actorSeen[actor]) {
+            actorSeen[actor] = true;
+            actors.push(actor);
+        }
+    }
+
+    function _isVault(address actor) internal view returns (bool) {
+        return vault != address(0) && actor == vault;
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
