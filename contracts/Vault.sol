@@ -86,6 +86,7 @@ contract Vault is
     event EpochDurationSet(uint256 epochDuration);
     event EpochDurationQueued(uint256 epochDuration);
 
+    error AllocationMismatch(uint256 allocated, uint256 expected);
     error ZeroAmount();
     error NoTranchesAdded();
     error TVLZero();
@@ -222,6 +223,8 @@ contract Vault is
             return;
         }
 
+        // Allocation model: mint allocatable MZUSD to the Vault, then transfer to tranches.
+        // Dust is assigned to the last non-zero tranche, so the Vault should end with no MZUSD.
         mzusd.mint(address(this), allocatableMZUSD);
         uint256 actuallyAllocated = _allocateYieldToTranches(allocatableMZUSD);
 
@@ -524,6 +527,9 @@ contract Vault is
     /// @notice Allocate yield to tranches based on weights and TVL.
     /// @param allocatableMZUSD MZUSD available for allocation (18 decimals).
     /// @return actuallyAllocated MZUSD actually allocated to tranches.
+    /// @dev Tranches are expected to be ERC4626 vaults over MZUSD (18 decimals),
+    ///      so totalAssets() is already in MZUSD units. If multi-asset tranches are
+    ///      introduced later, normalize units before scoring.
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
@@ -533,6 +539,8 @@ contract Vault is
         uint256 totalScore;
         uint256 totalWeight; // keep separate from totalScore to preserve precise revert reason
         uint256[] memory scores = new uint256[](trancheCount);
+        uint256 lastNonZeroIndex;
+        bool foundNonZero;
 
         TrancheInfo memory t;
 
@@ -549,10 +557,16 @@ contract Vault is
             scores[i] = score;
             totalScore += score;
             totalWeight += t.weight;
+            if (score != 0) {
+                // Track the last tranche that actually participates in allocation.
+                // Dust will be assigned there to avoid leftover MZUSD on the Vault.
+                lastNonZeroIndex = i;
+                foundNonZero = true;
+            }
         }
 
         if (totalWeight == 0) revert WeightsZero();
-        if (totalScore == 0) revert TVLZero();
+        if (totalScore == 0 || !foundNonZero) revert TVLZero();
 
         // allocate yield based on scores
         uint256 allocated;
@@ -562,7 +576,8 @@ contract Vault is
 
             t = tranches[i];
             part = (allocatableMZUSD * score) / totalScore;
-            if (i == trancheCount - 1 && allocatableMZUSD - allocated != part) {
+            if (i == lastNonZeroIndex) {
+                // Assign any rounding dust to the last participating tranche.
                 part = allocatableMZUSD - allocated;
             }
             if (part == 0) {
@@ -573,6 +588,11 @@ contract Vault is
             allocated += part;
         }
 
+        // Defensive check: allocation should consume the full allocatable amount.
+        // If this ever fails, it prevents silent leftover MZUSD on the Vault.
+        if (allocated != allocatableMZUSD) {
+            revert AllocationMismatch(allocated, allocatableMZUSD);
+        }
         return allocatableMZUSD;
     }
 

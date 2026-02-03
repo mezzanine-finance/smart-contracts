@@ -49,6 +49,7 @@ describe("Vault Yield Distribution", () => {
     let whale: any;
 
     const DAY = 24 * 60 * 60;
+    const MZUSD_SCALE = 1_000_000_000_000n;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
@@ -249,6 +250,18 @@ describe("Vault Yield Distribution", () => {
     async function depositMZIntoTranche(user: any, tranche: Tranche, mzAmount18: bigint) {
         await mzusd.connect(user).approve(tranche.target, mzAmount18);
         await (await tranche.connect(user).deposit(mzAmount18, user.address)).wait();
+    }
+
+    async function fundYieldUSDC(amountUSDC: bigint) {
+        await usdc.connect(whale).transfer(reservoir.target as string, amountUSDC);
+    }
+
+    async function expectSupplyMatchesBacking() {
+        const vaultUSDC = await usdc.balanceOf(vault.target);
+        const reservoirUSDC = await usdc.balanceOf(reservoir.target);
+        const totalUSDC = vaultUSDC + reservoirUSDC;
+        const totalSupply = await mzusd.totalSupply();
+        expect(totalSupply).to.equal(totalUSDC * MZUSD_SCALE);
     }
 
     describe("Getters and admin", () => {
@@ -469,6 +482,25 @@ describe("Vault Yield Distribution", () => {
         });
     });
 
+    describe("Invariants", () => {
+        it("MZUSD supply tracks backing USDC across yield distribution", async () => {
+            const depositAmountUSDC = to6(100n);
+            await mintMZUSDFor(alice, depositAmountUSDC);
+            await expectSupplyMatchesBacking();
+
+            const aliceMZ = await mzusd.balanceOf(alice.address);
+            await depositMZIntoTranche(alice, junior, aliceMZ);
+            await expectSupplyMatchesBacking();
+
+            const yieldUSDC = to6(10n);
+            await usdc.connect(whale).transfer(reservoir.target as string, yieldUSDC);
+            await time.increase(DAY);
+
+            await (await vault.connect(deployer).distributeYield(yieldUSDC)).wait();
+            await expectSupplyMatchesBacking();
+        });
+    });
+
     describe("Yield distribution", () => {
         it("Distributes yield by weight*TVL and sends dust (as yield part) to last tranche", async () => {
             const tvlJ = to18(101n);
@@ -493,6 +525,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
+            await fundYieldUSDC(reportedUSDC);
             const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
@@ -525,6 +558,8 @@ describe("Vault Yield Distribution", () => {
             await expect(tx)
                 .to.emit(vault, "YieldDistributed")
                 .withArgs(reportedUSDC, expectedYield, newEpochId);
+
+            await expectSupplyMatchesBacking();
 
             expect(await junior.yieldStreamingAmount()).to.equal(partJ);
             expect(await mezzanine.yieldStreamingAmount()).to.equal(partM);
@@ -635,6 +670,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
+            await fundYieldUSDC(reportedUSDC);
             const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
@@ -666,6 +702,8 @@ describe("Vault Yield Distribution", () => {
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
                 .withArgs(newEpochId, partSWithDust, startTs, endTs);
+
+            await expectSupplyMatchesBacking();
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1141,6 +1179,7 @@ describe("Vault Yield Distribution", () => {
             const feeBalBefore = await mzusd.balanceOf(perfReceiver);
             const juniorBalBefore = await mzusd.balanceOf(junior.target);
 
+            await fundYieldUSDC(usdcReported);
             const tx = await vault.connect(deployer).distributeYield(usdcReported);
             await tx.wait();
 
@@ -1155,6 +1194,7 @@ describe("Vault Yield Distribution", () => {
 
             // No allocation mint should remain on Vault
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+            await expectSupplyMatchesBacking();
         });
 
         it("Fees can be paid to the same receiver for both fee types", async () => {
@@ -1219,6 +1259,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
+            await fundYieldUSDC(usdcReported);
             const tx = await vault.connect(deployer).distributeYield(usdcReported);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
@@ -1278,6 +1319,7 @@ describe("Vault Yield Distribution", () => {
 
             // Vault should have no leftover MZUSD after distributing
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+            await expectSupplyMatchesBacking();
         });
 
         it("Change tranche config mid-flight (disable first tranche + change weights)", async () => {
@@ -1287,7 +1329,9 @@ describe("Vault Yield Distribution", () => {
 
             // First distribution (starts stream)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(10n))).wait();
+            const firstReported = to6(10n);
+            await fundYieldUSDC(firstReported);
+            await (await vault.connect(deployer).distributeYield(firstReported)).wait();
 
             // Disable junior and change weights
             await (await vault.connect(deployer).updateTranche(0, 2000, false)).wait();
@@ -1319,6 +1363,7 @@ describe("Vault Yield Distribution", () => {
             const epochBefore = await vault.currentEpochId();
             const newEpochId = epochBefore + 1n;
 
+            await fundYieldUSDC(usdcReported);
             const tx = await vault.connect(deployer).distributeYield(usdcReported);
 
             // Junior should not be notified at all
@@ -1347,6 +1392,7 @@ describe("Vault Yield Distribution", () => {
             expect(bM1 - bM0).to.equal(partM);
 
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+            await expectSupplyMatchesBacking();
         });
 
         it("Weight = 0 (tranches are ignored)", async () => {
