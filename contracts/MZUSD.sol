@@ -43,6 +43,8 @@ contract MZUSD is
     uint256 transient _txDepositedUSDC;
     /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
+    /// @notice Addresses allowed to burn their MZUSD balances.
+    mapping(address => bool) public trancheBurner;
 
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
@@ -50,6 +52,7 @@ contract MZUSD is
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
     event LossManagerUpdated(address indexed lossManager);
+    event TrancheBurnerUpdated(address indexed tranche, bool allowed);
 
     error ZeroAmount();
     error ZeroAddress();
@@ -59,6 +62,7 @@ contract MZUSD is
     error LossManagerAlreadySet();
     error NotVault();
     error NotLossManager();
+    error NotTrancheBurner();
     error InvalidRedemptionWindowDuration();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
@@ -83,6 +87,11 @@ contract MZUSD is
 
     modifier onlyLossManager() {
         if (msg.sender != lossManager) revert NotLossManager();
+        _;
+    }
+
+    modifier onlyTrancheBurner() {
+        if (!trancheBurner[msg.sender]) revert NotTrancheBurner();
         _;
     }
 
@@ -182,12 +191,9 @@ contract MZUSD is
     }
 
     /// @notice Burn MZUSD from an address.
-    /// @dev Used by LossManager to burn MZUSD.
-    function burn(
-        address from,
-        uint256 amount
-    ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
-        _burn(from, amount);
+    /// @dev Used by tranche contracts to burn their own MZUSD balances.
+    function burn(uint256 amount) external onlyTrancheBurner whenNotPaused(PauseCategory.PROTOCOL) {
+        _burn(msg.sender, amount);
     }
 
     //SETTERS
@@ -230,6 +236,13 @@ contract MZUSD is
         if (lossManager != address(0)) revert LossManagerAlreadySet();
         lossManager = _lossManager;
         emit LossManagerUpdated(_lossManager);
+    }
+
+    /// @notice Allow or disallow a tranche to burn its own balance.
+    function setTrancheBurner(address tranche, bool allowed) external restricted {
+        if (tranche == address(0)) revert ZeroAddress();
+        trancheBurner[tranche] = allowed;
+        emit TrancheBurnerUpdated(tranche, allowed);
     }
 
     //GETTERS

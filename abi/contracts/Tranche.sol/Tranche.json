@@ -334,6 +334,11 @@
     },
     {
         "inputs": [],
+        "name": "NotLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NotVault",
         "type": "error"
     },
@@ -926,6 +931,19 @@
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "burn",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

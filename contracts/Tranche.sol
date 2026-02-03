@@ -12,6 +12,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
+import "./interfaces/IMZUSD.sol";
 
 // @title Tranche with epoch-based umbrella unstake
 // solhint-disable-next-line max-line-length
@@ -115,6 +116,7 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error ZeroAssetSupply();
     error NotVault();
+    error NotLossManager();
 
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
     constructor(bool _directWithdrawEnabled) {
@@ -124,6 +126,11 @@ contract Tranche is
 
     modifier onlyVault() {
         if (msg.sender != vault) revert NotVault();
+        _;
+    }
+
+    modifier onlyLossManager() {
+        if (msg.sender != IVault(vault).lossManager()) revert NotLossManager();
         _;
     }
 
@@ -405,6 +412,11 @@ contract Tranche is
 
         uint256 epochId = IVault(vault).currentEpochId();
         emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
+    }
+
+    /// @notice Burn MZUSD from this tranche (used by LossManager).
+    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+        IMZUSD(asset()).burn(amount);
     }
 
     // SETTERS

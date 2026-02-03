@@ -378,7 +378,7 @@ contract LossManager is
         uint256 idx
     ) internal {
         if (amount == 0) return;
-        mzusd.burn(tranche, amount);
+        ITranche(tranche).burn(amount);
         cuts[idx] = amount;
     }
 

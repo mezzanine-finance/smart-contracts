@@ -9,6 +9,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import "./interfaces/IVault.sol";
+import "./interfaces/IMZUSD.sol";
 
 /// @title POL Junior Tranche
 /// @notice Protocol-owned-liquidity tranche: deposits mint shares, withdrawals are instant (ERC4626),
@@ -35,6 +37,7 @@ contract PolJuniorTranche is
     error ZeroAddress();
     error ZeroYieldPassed();
     error NotVault();
+    error NotLossManager();
 
     constructor() {
         _disableInitializers();
@@ -78,6 +81,11 @@ contract PolJuniorTranche is
 
     modifier onlyVault() {
         if (msg.sender != vault) revert NotVault();
+        _;
+    }
+
+    modifier onlyLossManager() {
+        if (msg.sender != IVault(vault).lossManager()) revert NotLossManager();
         _;
     }
 
@@ -180,6 +188,11 @@ contract PolJuniorTranche is
 
         IERC20(asset()).safeTransfer(payout, yieldAmount);
         emit PolPayoutNotified(yieldAmount);
+    }
+
+    /// @notice Burn MZUSD from this tranche (used by LossManager).
+    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+        IMZUSD(asset()).burn(amount);
     }
 
     /// @notice Update polPayout address

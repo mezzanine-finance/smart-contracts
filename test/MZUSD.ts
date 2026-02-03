@@ -139,12 +139,14 @@ describe("MZUSD <-> USDC conversion", () => {
         await nettingHelper.waitForDeployment();
 
         const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
+        const setTrancheBurnerSelector = mzusd.interface.getFunction("setTrancheBurner").selector;
         await accessManager.setTargetFunctionRole(
             mzusd.target,
-            [setLossManagerSelector],
+            [setLossManagerSelector, setTrancheBurnerSelector],
             ADMIN_ROLE
         );
         await mzusd.setLossManager(deployer.address);
+        await mzusd.setTrancheBurner(deployer.address, true);
 
         await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalRedemptionCapUpdated")
@@ -222,7 +224,7 @@ describe("MZUSD <-> USDC conversion", () => {
             await expect(mzusd.connect(vaultSigner).mint(deployer.address, 1n))
                 .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
-            await expect(mzusd.connect(deployer).burn(deployer.address, 1n))
+            await expect(mzusd.connect(deployer).burn(1n))
                 .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
             await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
@@ -236,6 +238,32 @@ describe("MZUSD <-> USDC conversion", () => {
             await expect(mzusd.setRedemptionWindowDuration(duration + 1n))
                 .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
+        });
+    });
+
+    describe("Burn access", () => {
+        it("Requires tranche burner and burns caller balance", async () => {
+            await mzusd.setTrancheBurner(deployer.address, false);
+            await expect(mzusd.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
+                mzusd,
+                "NotTrancheBurner"
+            );
+
+            await mzusd.setTrancheBurner(deployer.address, true);
+
+            const depositAmountUSDC = to6(5n);
+            await usdc.connect(whale).transfer(deployer.address, depositAmountUSDC);
+            await usdc.connect(deployer).approve(mzusd.target, depositAmountUSDC);
+            await mzusd.connect(deployer).deposit(depositAmountUSDC);
+
+            const burnAmount = await mzusd.balanceOf(deployer.address);
+            const supplyBefore = await mzusd.totalSupply();
+
+            await mzusd.connect(deployer).burn(burnAmount);
+
+            const supplyAfter = await mzusd.totalSupply();
+            expect(supplyBefore - supplyAfter).to.equal(burnAmount);
+            expect(await mzusd.balanceOf(deployer.address)).to.equal(0n);
         });
     });
 
