@@ -9,6 +9,7 @@
     "UNPAUSER_ROLE": 2,
     "UPGRADER_ROLE": 3,
     "RESERVOIR_WITHDRAW_ROLE": 4,
+    "BURNER_ROLE": 5,
     "ORACLE_ROLE": 6
   },
   "roles": {
