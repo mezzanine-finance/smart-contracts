@@ -118,6 +118,14 @@ export async function grantRoles() {
         );
     }
 
+    const keepers = uniqueAddresses([
+        ...(config.roles.keepers ?? []),
+        ...(includeDev ? [config.dev.deployer] : []),
+    ]);
+    for (const addr of keepers) {
+        await ensureRoleMember(accessManager, config.roleIds.KEEPER_ROLE, addr, delays.keeper ?? 0);
+    }
+
     const oracles = uniqueAddresses([
         ...config.navOracle.oracles,
         ...(includeDev ? [config.dev.deployer] : []),
@@ -173,6 +181,11 @@ export async function renounceRoles() {
                 ...(config.roles.reservoirWithdrawers ?? []),
                 vaultDeployment.address,
             ],
+        },
+        {
+            name: "KEEPER_ROLE",
+            roleId: roleIds.KEEPER_ROLE,
+            members: config.roles.keepers ?? [],
         },
         {
             name: "ORACLE_ROLE",

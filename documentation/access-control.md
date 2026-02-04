@@ -38,6 +38,9 @@ Role IDs can be any `uint64`; names below are logical groupings.
     - Restricts `upgradeToAndCall` on UUPS contracts.
     - Recommended: execution delay enforced via AccessManager.
 
+- `KEEPER_ROLE` (keeper / automation bot)
+    - Calls `Vault.rebalance()` to move idle USDC between Vault and Reservoir.
+
 - `RESERVOIR_WITHDRAW_ROLE` (Vault + curators addresses)
     - Lets Vault and designated protocol operators call `ReservoirUSDC.withdraw`.
 
@@ -59,7 +62,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 
 ### Vault (UUPS)
 - `distributeYield` → only the configured `navOracle` address
-- `rebalance` → `ADMIN_ROLE` (or a dedicated operator role)
+- `rebalance` → `KEEPER_ROLE`
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
 - `advanceEpoch` → only the configured `lossManager` address
 - `setMZUSD` (one-time), `setLossManager` (one-time), `setNavOracle`,
@@ -98,6 +101,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 ## Cross-contract grants (must exist)
 - Vault + designated operators must hold `RESERVOIR_WITHDRAW_ROLE` to call:
   - `ReservoirUSDC.withdraw`
+- Keeper / automation bots must hold `KEEPER_ROLE` to call:
+  - `Vault.rebalance`
 
 ## Direct address checks (must be wired)
 - `Vault.mzusd` is set once via `setMZUSD` and gates `Vault.withdraw`.

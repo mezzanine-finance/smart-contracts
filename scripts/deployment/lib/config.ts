@@ -8,6 +8,7 @@ export interface RoleIdsConfig {
     UNPAUSER_ROLE: number;
     UPGRADER_ROLE: number;
     RESERVOIR_WITHDRAW_ROLE: number;
+    KEEPER_ROLE: number;
     ORACLE_ROLE: number;
 }
 
@@ -17,11 +18,13 @@ export interface RolesConfig {
     unpauser: string;
     upgrader: string;
     reservoirWithdrawers: string[];
+    keepers?: string[];
     roleDelays?: {
         unpauser?: number;
         upgrader?: number;
         pauser?: number;
         reservoirWithdraw?: number;
+        keeper?: number;
         oracle?: number;
     };
     oracles?: string[];
@@ -182,6 +185,9 @@ function validateConfig(config: DeployConfig, filePath: string) {
     requireAddress(roles.upgrader, "roles.upgrader");
     for (const addr of roles.reservoirWithdrawers ?? []) {
         requireAddress(addr, "roles.reservoirWithdrawers");
+    }
+    for (const addr of roles.keepers ?? []) {
+        requireAddress(addr, "roles.keepers");
     }
     for (const addr of roles.oracles ?? []) {
         requireAddress(addr, "roles.oracles");

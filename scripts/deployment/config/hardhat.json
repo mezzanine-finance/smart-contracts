@@ -9,6 +9,7 @@
     "UNPAUSER_ROLE": 2,
     "UPGRADER_ROLE": 3,
     "RESERVOIR_WITHDRAW_ROLE": 4,
+    "KEEPER_ROLE": 5,
     "ORACLE_ROLE": 6
   },
   "roles": {
@@ -17,10 +18,12 @@
     "unpauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     "upgrader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     "reservoirWithdrawers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
+    "keepers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
     "oracles": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
     "roleDelays": {
       "unpauser": 0,
-      "upgrader": 0
+      "upgrader": 0,
+      "keeper": 0
     }
   },
   "usdc": {
