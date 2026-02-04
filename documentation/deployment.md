@@ -1,4 +1,4 @@
-# WIP Deployment Guide (Phase 1)
+# Deployment Guide (Phase 1)
 
 This document defines the intended deployment flow and configuration for the current
 codebase. It is meant to pair with `documentation/access-control.md` and
@@ -19,14 +19,15 @@ constructor flags and config. **PolJuniorTranche** is a separate contract.
 ## Deployment order (recommended)
 1. **AccessManager** (openzeppelin `AccessManager`).
 2. **PauseManager** (UUPS proxy).
-3. **ReservoirUSDC** (UUPS proxy).
-4. **Vault** (UUPS proxy).
-5. **MZUSD** (UUPS proxy).
-6. **LossManager** (UUPS proxy).
+3. **USDC** (real address or `MockUSDC` if configured).
+4. **ReservoirUSDC** (UUPS proxy).
+5. **Vault** (UUPS proxy).
+6. **MZUSD** (UUPS proxy).
 7. **Tranches** (UUPS proxies, one per tranche).
 8. **PolJuniorTranche** (UUPS proxy).
-9. **NavOracleAutomation** (non-upgradeable).
-10. **UmbrellaEpochFinalizer** (optional; one per umbrella tranche).
+9. **LossManager** (UUPS proxy).
+10. **NavOracleAutomation** (non-upgradeable).
+11. **UmbrellaEpochFinalizer** (optional; one per umbrella tranche).
 
 ## Wiring and configuration checklist
 Use this checklist in scripts after deploying all components.
@@ -40,9 +41,10 @@ Use this checklist in scripts after deploying all components.
 - `LossManager.setNavOracle(NavOracleAutomation)`.
 
 **Vault configuration**
-- `Vault.setFeeRates(performanceFeeBps, protocolFeeBps)`.
-- `Vault.setFeeReceivers(performanceFeeReceiver, protocolFeeReceiver)`.
-- `Vault.setBuffer(idleBufferUSDC, hysteresisBps)` (optional override of defaults).
+- `Vault` fees are set during initialization from config.
+- `Vault.setBuffer(idleBufferUSDC, hysteresisBps)` (required if configured).
+  - This calls `_rebalance` and will revert if Vault+Reservoir are empty.
+  - Seed USDC before calling (see **Seeding**).
 - `Vault.setEpochConfig(epochDuration)` (optional; queues for next epoch).
 - `Vault.addTranche(...)` for each tranche (Senior/Mezzanine/Junior, optionally PolJuniorTranche).
 
@@ -58,6 +60,12 @@ Use this checklist in scripts after deploying all components.
   - `groupIds` allow proportional splitting between *contiguous pairs* only.
 - `LossManager.setMaxLossPerTxUSDC()` (optional).
 
+**Seeding**
+- `MZUSD.deposit(amountUSDC)` to mint MZUSD and fund the Vault (recommended for buffer funding).
+- Optional direct USDC transfer to `Vault` or `ReservoirUSDC.deposit`.
+- Optional tranche deposits (MZUSD → `Tranche.deposit`) for initial TVL.
+  - Deposit limits apply; if enabled, ensure MZUSD total supply and limits allow the seed.
+
 **Automation**
 - Deploy `NavOracleAutomation` and set `vetoPeriod`.
 - Deploy `UmbrellaEpochFinalizer` for each umbrella tranche if using Chainlink Automation.
@@ -66,6 +74,24 @@ Use this checklist in scripts after deploying all components.
 - Configure function roles as described in `documentation/access-control.md`.
 - Ensure `RESERVOIR_WITHDRAW_ROLE` (Vault + operators → Reservoir withdraw) is granted
   to the correct addresses.
+- If you plan to renounce deployer roles, ensure all roles have non-deployer members.
+
+## Scripts
+- Orchestrator: `scripts/deployment/deploy.ts`
+  - Reads a network-specific JSON config and deploys + wires everything in order.
+  - Skips verification automatically on `hardhat`/`localhost`.
+- Role grants: `scripts/deployment/grantRoles.ts`
+  - Grants roles from config (optionally include dev via `--include-dev`).
+- Role cleanup: `scripts/deployment/renounceRoles.ts`
+  - Renounces deployer roles only if another member already holds each role.
+- Handoff: `scripts/deployment/handoffRoles.ts`
+  - Runs grant + renounce in sequence.
+
+## Config files
+Network configs live in `scripts/deployment/config/<network>.json` and are loaded based on
+the `--network` flag. You can override with `--config <path>`.
+Each config includes the deployment signer (`dev.deployer`), final role owners (`roles.*`),
+and optional seed amounts for initial liquidity.
 
 ## Configuration schema (per network)
 Deployment scripts should read a JSON config per network. Below is the minimum set of
@@ -75,27 +101,44 @@ avoid “magic defaults” in scripts.
 ### Global config
 | Key | Type | Required | Meaning / Impact |
 | --- | --- | --- | --- |
-| `usdc` | address | yes | USDC token address (6 decimals). |
-| `accessManager.admin` | address | yes | Admin/multisig for AccessManager. |
-| `roles.guardian` | address | no | Address for PAUSER role (defaults to admin). |
-| `roles.unpauser` | address | no | Address for UNPAUSER role (defaults to admin). |
-| `roles.upgrader` | address | no | Address for UPGRADER role (defaults to admin). |
-| `mzusd.redemptionCapUSDC` | uint (6d) | yes | Global redemption cap (must be `> 0` and `<= USDC.totalSupply`). Set to a very large value if you want “effectively unlimited” behavior. |
+| `dev.deployer` | address | yes | Deployment signer; used as initial AccessManager admin. Must match the deployer key. |
+| `dev.grantRoles` | bool | no | If `true`, deploy script also grants all roles to dev for initial ops. |
+| `roleIds.*` | uint64 | yes | Custom AccessManager role ids (`PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`, `RESERVOIR_WITHDRAW_ROLE`, `ORACLE_ROLE`). |
+| `roles.admin` | address | yes | Final admin/multisig for AccessManager (client). |
+| `roles.pauser` | address | yes | Address for PAUSER role. |
+| `roles.unpauser` | address | yes | Address for UNPAUSER role. |
+| `roles.upgrader` | address | yes | Address for UPGRADER role. |
+| `roles.reservoirWithdrawers` | address[] | no | Additional withdrawers for Reservoir (Vault is auto-added). |
+| `roles.roleDelays.unpauser` | uint | no | Execution delay for UNPAUSER role. |
+| `roles.roleDelays.upgrader` | uint | no | Execution delay for UPGRADER role. |
+| `usdc.deployMock` | bool | yes | If `true`, deploy `MockUSDC`. |
+| `usdc.address` | address | required if `deployMock=false` | Real USDC address. |
+| `usdc.mock.*` | object | required if `deployMock=true` | Mock USDC metadata + initial mints. |
+| `mzusd.redemptionCapUSDC` | uint (6d) | yes | Global redemption cap (must be `> 0` and `<= USDC.totalSupply`). |
 | `mzusd.redemptionWindowDurationSec` | uint | no | Overrides default redemption window duration. |
 | `vault.performanceFeeBps` | uint16 | yes | Performance fee in bps. |
 | `vault.protocolFeeBps` | uint16 | yes | Protocol fee in bps. |
 | `vault.performanceFeeReceiver` | address | yes | Fee receiver (non-zero). |
 | `vault.protocolFeeReceiver` | address | yes | Fee receiver (non-zero, distinct). |
-| `vault.idleBufferUSDC` | uint (6d) | no | Idle buffer target. |
-| `vault.hysteresisBps` | uint16 | no | Idle buffer hysteresis. |
+| `vault.idleBufferUSDC` | uint (6d) | no | Idle buffer target (set together with `vault.hysteresisBps`). |
+| `vault.hysteresisBps` | uint16 | no | Idle buffer hysteresis (set together with `vault.idleBufferUSDC`). |
 | `vault.epochDurationSec` | uint | no | Epoch duration for tranche streaming/umbrella. |
 | `lossManager.maxLossPerTxUSDC` | uint (6d) | no | 0 disables the limit. |
 | `navOracle.vetoPeriodSec` | uint | yes | Veto window for NAV snapshots. |
 | `navOracle.oracles` | address[] | yes | ORACLE_ROLE addresses. |
+| `seed.mzusdDepositUSDC` | uint (6d) | no | USDC amount to deposit into MZUSD (funds Vault + mints MZUSD). |
+| `seed.vaultUSDC` | uint (6d) | no | Direct USDC transfer to Vault. |
+| `seed.reservoirUSDC` | uint (6d) | no | USDC deposit into Reservoir. |
+| `seed.trancheDeposits[].key` | string | no | Tranche key to seed. |
+| `seed.trancheDeposits[].amountUSDC` | uint (6d) | no | MZUSD amount (expressed in USDC units) to deposit into tranche. |
+| `seed.trancheDeposits[].receiver` | address | no | Receiver of tranche shares. |
+| `postDeploy.renounceDeployerRoles` | bool | no | If `true`, run renounce workflow after deployment. |
+| `verify.enabled` | bool | no | Enable Etherscan verification (auto-skipped locally). |
 
 ### Tranche config (array)
 | Key | Type | Required | Meaning / Impact |
 | --- | --- | --- | --- |
+| `key` | string | yes | Unique tranche key used in `lossManager.order`. |
 | `id` | uint | yes | Tranche id for Vault registration. |
 | `name` | string | yes | ERC20 name. |
 | `symbol` | string | yes | ERC20 symbol. |
@@ -110,7 +153,7 @@ avoid “magic defaults” in scripts.
 ### LossManager tranche order config
 | Key | Type | Required | Meaning / Impact |
 | --- | --- | --- | --- |
-| `lossManager.order` | address[] | yes | Burn order for losses (usually Junior → Mezz → Senior). |
+| `lossManager.order` | string[] | yes | Burn order by tranche key (e.g. `polJunior`, `junior`, `mezzanine`, `senior`). |
 | `lossManager.groupIds` | uint[] | yes | Parallel array; non-zero ids create proportional loss sharing for contiguous pairs only. |
 
 ### PolJuniorTranche config
@@ -120,11 +163,16 @@ avoid “magic defaults” in scripts.
 | `polJunior.symbol` | string | yes | ERC20 symbol. |
 | `polJunior.polPayout` | address | yes | Address that receives all yield immediately. |
 | `polJunior.registerInVault` | bool | no | If `true`, add as tranche to Vault distribution. Decide whether POL should share yield and/or losses. |
+| `polJunior.weight` | uint16 | required if `registerInVault=true` | Weight used in Vault distribution. |
 
 ## Notes and decisions
 - The repo’s tests deploy **three** `Tranche` contracts (Junior/Mezzanine/Senior) and a
   **PolJuniorTranche**. That is the intended baseline.
 - `directWithdrawEnabled` is immutable and must be set at deploy time.
-- If you want PolJuniorTranche to receive yield from Vault, register it with `Vault.addTranche`.
-  Decide whether it should be in LossManager’s burn order (tests currently exclude it).
+- PolJuniorTranche can be registered in Vault distribution via `polJunior.registerInVault`.
+- LossManager order is defined by `lossManager.order` and can include `polJunior` as a grouped pair.
 - Access control roles and delays are documented in `documentation/access-control.md`.
+- Vault requires **distinct** performance/protocol fee receivers.
+- The deploy scripts assume `dev.deployer` is the deploying signer and initial admin.
+- Default configs use higher `weight` for Junior and lower for Senior to match risk.
+- The JSON configs include default fees, veto periods, buffer sizes, and seed amounts; review before mainnet.

@@ -10,15 +10,12 @@ export interface DeploymentRecord {
 }
 
 export type NetworkDeployments = Record<string, DeploymentRecord[]>;
-
 export type DeploymentsFile = Record<string, NetworkDeployments>;
 
 const DEPLOYMENTS_PATH = path.join(__dirname, "..", "..", "..", "reports", "deployments.json");
 
 export function loadDeployments(): DeploymentsFile {
-    if (!fs.existsSync(DEPLOYMENTS_PATH)) {
-        return {};
-    }
+    if (!fs.existsSync(DEPLOYMENTS_PATH)) return {};
     const raw = fs.readFileSync(DEPLOYMENTS_PATH, "utf8");
     return raw ? JSON.parse(raw) : {};
 }

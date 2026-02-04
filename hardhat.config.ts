@@ -58,6 +58,15 @@ const config: HardhatUserConfig = {
                 enabled: enableForking,
             },
         },
+        mainnet: {
+            url: envs.MAINNET_RPC ?? envs.FORKING_URL ?? "",
+            chainId: 1,
+            accounts: envs.DEPLOYER_PK
+                ? [envs.DEPLOYER_PK]
+                : envs.DEV_ACCOUNT
+                  ? [envs.DEV_ACCOUNT]
+                  : [],
+        },
         buildbear: {
             url: "https://rpc.buildbear.io/mezzanine-dev",
             chainId: 1,
@@ -66,7 +75,11 @@ const config: HardhatUserConfig = {
         sepolia: {
             url: envs.SEPOLIA_RPC ?? "",
             chainId: 11155111,
-            accounts: envs.DEPLOYER_PK ? [envs.DEPLOYER_PK] : [],
+            accounts: envs.DEPLOYER_PK
+                ? [envs.DEPLOYER_PK]
+                : envs.DEV_ACCOUNT
+                  ? [envs.DEV_ACCOUNT]
+                  : [],
         },
     },
     etherscan: {
