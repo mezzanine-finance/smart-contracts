@@ -86,6 +86,7 @@ contract Vault is
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
     event EpochDurationQueued(uint256 epochDuration);
+    event YieldDistributionUpdated(uint16 baseRewardBps, uint16[] riskPremiumsBps, bool[] enabled);
 
     error AllocationMismatch(uint256 allocated, uint256 expected);
     error ZeroAmount();
@@ -109,6 +110,8 @@ contract Vault is
     error InvalidMZUSDUSDC(address actualUSDC);
     error InvalidMZUSDVault(address actualVault);
     error ReservoirEmpty();
+    error InvalidYieldDistribution();
+    error LengthMismatch();
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -316,19 +319,45 @@ contract Vault is
         emit TrancheRegistered(info.tranche, info.riskPremiumBps, info.enabled);
     }
 
-    /// @notice Update tranche info.
-    /// @param idx Tranche index in `tranches`.
-    /// @param riskPremiumBps New riskPremiumBps for yield allocation.
-    /// @param enabled Whether the tranche receives allocations.
-    function updateTranche(
-        uint256 idx,
-        uint16 riskPremiumBps,
-        bool enabled
+    // /// @notice Update tranche info.
+    // /// @param idx Tranche index in `tranches`.
+    // /// @param riskPremiumBps New riskPremiumBps for yield allocation.
+    // /// @param enabled Whether the tranche receives allocations.
+    // function updateTranche(
+    //     uint256 idx,
+    //     uint16 riskPremiumBps,
+    //     bool enabled
+    // ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+    //     if (idx >= tranches.length) revert TrancheIndexOOB();
+    //     tranches[idx].riskPremiumBps = riskPremiumBps;
+    //     tranches[idx].enabled = enabled;
+    //     emit TrancheUpdated(idx, riskPremiumBps, enabled);
+    // }
+
+    /// @notice Update base reward and risk premium distribution across all tranches.
+    /// @param _baseRewardBps Base reward pool share in bps.
+    /// @param _riskPremiumsBps Risk premium in bps for each tranche (length must match tranches array).
+    /// @param _enabled Whether each tranche receives allocations (length must match tranches array).
+    /// @dev Enforces invariant: _baseRewardBps + sum(_riskPremiumsBps) == BPS (10_000).
+    function setYieldDistribution(
+        uint16 _baseRewardBps,
+        uint16[] calldata _riskPremiumsBps,
+        bool[] calldata _enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (idx >= tranches.length) revert TrancheIndexOOB();
-        tranches[idx].riskPremiumBps = riskPremiumBps;
-        tranches[idx].enabled = enabled;
-        emit TrancheUpdated(idx, riskPremiumBps, enabled);
+        uint256 len = tranches.length;
+        if (_riskPremiumsBps.length != len || _enabled.length != len) revert LengthMismatch();
+
+        uint256 total = _baseRewardBps;
+        for (uint256 i; i < len; ++i) {
+            tranches[i].riskPremiumBps = _riskPremiumsBps[i];
+            tranches[i].enabled = _enabled[i];
+            total += _riskPremiumsBps[i];
+        }
+        if (total != BPS) revert InvalidYieldDistribution();
+
+        baseRewardBps = _baseRewardBps;
+
+        emit YieldDistributionUpdated(_baseRewardBps, _riskPremiumsBps, _enabled);
     }
 
     /// @notice Update idle USDC buffer and hysteresis band.

@@ -162,6 +162,16 @@
     },
     {
         "inputs": [],
+        "name": "InvalidYieldDistribution",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LengthMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "LossManagerAlreadySet",
         "type": "error"
     },
@@ -599,6 +609,31 @@
             }
         ],
         "name": "YieldDistributed",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint16",
+                "name": "baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint16[]",
+                "name": "riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "YieldDistributionUpdated",
         "type": "event"
     },
     {
@@ -1292,6 +1327,29 @@
     {
         "inputs": [
             {
+                "internalType": "uint16",
+                "name": "_baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint16[]",
+                "name": "_riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "_enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "setYieldDistribution",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
@@ -1329,29 +1387,6 @@
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "idx",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint16",
-                "name": "riskPremiumBps",
-                "type": "uint16"
-            },
-            {
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            }
-        ],
-        "name": "updateTranche",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
