@@ -12,6 +12,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
+import "./interfaces/IMZUSD.sol";
 
 // @title Tranche with epoch-based umbrella unstake
 // solhint-disable-next-line max-line-length
@@ -115,8 +116,9 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error ZeroAssetSupply();
     error NotVault();
+    error NotLossManager();
 
-    /// @param _directWithdrawEnabled - if true, enables direct withdraw/redeem and disables umbrella unstake flow
+    /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
     constructor(bool _directWithdrawEnabled) {
         directWithdrawEnabled = _directWithdrawEnabled;
         _disableInitializers();
@@ -127,15 +129,20 @@ contract Tranche is
         _;
     }
 
-    /// @notice Initializer
-    /// @param assetToken - underlying asset token (MZUSD)
-    /// @param vaultAddress - address of the Vault
-    /// @param trancheIdentifier - tranche identifier within the vault
-    /// @param initialUnstakeDelayEpochs - initial unstake delay in epochs
-    /// @param name_ - tranche name
-    /// @param symbol_ - tranche symbol
-    /// @param accessManager - access manager address for role control
-    /// @param pauseManager_ - pause manager address for category-based pauses
+    modifier onlyLossManager() {
+        if (msg.sender != IVault(vault).lossManager()) revert NotLossManager();
+        _;
+    }
+
+    /// @notice Initialize the tranche.
+    /// @param assetToken Underlying asset token (MZUSD).
+    /// @param vaultAddress Vault address.
+    /// @param trancheIdentifier Tranche identifier within the vault.
+    /// @param initialUnstakeDelayEpochs Initial unstake delay in epochs.
+    /// @param name_ Tranche name.
+    /// @param symbol_ Tranche symbol.
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -204,7 +211,7 @@ contract Tranche is
 
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
-    /// @param shares - amount of tranche shares to withdraw
+    /// @param shares Tranche shares to withdraw.
     function requestWithdrawal(
         uint256 shares
     ) external nonReentrant whenNotPaused(PauseCategory.WITHDRAWALS) {
@@ -269,9 +276,6 @@ contract Tranche is
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
         if (!finalizedData.isFinalized) revert NotFinalized();
-
-        // user keeps tranche exposure until this moment because shares stayed on tranche
-        // assets are stored on this contract and only transferred out on claim
         uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
         userSharesByEpoch[msg.sender][epochId] = 0;
@@ -410,16 +414,21 @@ contract Tranche is
         emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
     }
 
+    /// @notice Burn MZUSD from this tranche (used by LossManager).
+    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+        IMZUSD(asset()).burn(amount);
+    }
+
     // SETTERS
 
-    /// @notice Update unstake delay in epochs
+    /// @notice Update unstake delay in epochs.
     function setUnstakeDelayEpochs(
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
-    /// @notice Update deposit limits
+    /// @notice Update deposit limits.
     function setDepositLimits(
         bool enabled,
         uint256 cap,
@@ -449,7 +458,7 @@ contract Tranche is
         totalAssets_ = balance - unaccrued - reserved;
     }
 
-    /// @notice Convenience view - price per share using virtual NAV
+    /// @notice Convenience view: price per share using virtual NAV.
     function pricePerShare() external view returns (uint256 pricePerShare_) {
         pricePerShare_ = convertToAssets(10 ** decimals());
     }
@@ -460,6 +469,10 @@ contract Tranche is
     }
 
     /// @notice Returns the current deposit limit parameters and computed limit.
+    /// @return enabled Whether deposit limits are enabled.
+    /// @return limit Effective deposit limit.
+    /// @return limitByTvl Limit derived from TVL bps.
+    /// @return cap Absolute deposit cap.
     function getDepositLimitInfo()
         external
         view
@@ -470,13 +483,13 @@ contract Tranche is
     }
 
     /// @notice Get user's pending shares and claimable assets for a given epoch.
-    /// @param user - user address
-    /// @param epochId - epoch to query
-    /// @return pendingShares - shares user has pending under umbrella for that epoch
-    /// @return isFinalized - whether the epoch has been finalized by admin
-    /// @return totalShares - total shares under umbrella for that epoch
-    /// @return totalAssets_ - total assets credited to that epoch upon finalization
-    /// @return claimableAssets - assets user can claim for that epoch (0 if not finalized)
+    /// @param user User address.
+    /// @param epochId Epoch to query.
+    /// @return pendingShares Shares pending under umbrella for that epoch.
+    /// @return isFinalized Whether the epoch has been finalized.
+    /// @return totalShares Total shares under umbrella for that epoch.
+    /// @return totalAssets_ Total assets credited on finalization.
+    /// @return claimableAssets Assets user can claim (0 if not finalized).
     function getUserEpochInfo(
         address user,
         uint256 epochId
@@ -503,11 +516,11 @@ contract Tranche is
     }
 
     /// @notice Get global epoch info for umbrella unstake.
-    /// @param epochId - epoch to query
-    /// @return umbrellaShares - total shares under umbrella for that epoch
-    /// @return isFinalized - whether the epoch has been finalized by admin
-    /// @return totalShares - total shares burned upon finalization
-    /// @return totalAssets_ - total assets credited to that epoch upon finalization
+    /// @param epochId Epoch to query.
+    /// @return umbrellaShares Total shares under umbrella for that epoch.
+    /// @return isFinalized Whether the epoch has been finalized.
+    /// @return totalShares Total shares burned on finalization.
+    /// @return totalAssets_ Total assets credited on finalization.
     function getEpochInfo(
         uint256 epochId
     )
@@ -564,6 +577,10 @@ contract Tranche is
         if (amount > limit) revert DepositLimitExceeded(amount, limit);
     }
 
+    /// @notice Computes the effective deposit limit from cap and TVL constraints.
+    /// @return limit Effective deposit limit.
+    /// @return limitByTvl Limit derived from TVL bps.
+    /// @return cap Absolute deposit cap.
     function _computeDepositLimit()
         internal
         view

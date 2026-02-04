@@ -170,12 +170,14 @@ describe("NavOracleAutomation", () => {
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
+        const setTrancheBurnerSelector = mzusd.interface.getFunction("setTrancheBurner").selector;
         await accessManager.setTargetFunctionRole(
             mzusd.target,
-            [setLossManagerSelector],
+            [setLossManagerSelector, setTrancheBurnerSelector],
             ADMIN_ROLE
         );
         await mzusd.setLossManager(lossManager.target);
+        await mzusd.setTrancheBurner(tranche.target as string, true);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault

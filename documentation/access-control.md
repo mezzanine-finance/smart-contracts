@@ -53,7 +53,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 
 - `mint` → only the configured Vault address
 - `burn` → only the configured LossManager address
-- `setGlobalRedemptionCap`, `setRedemptionWindowDuration` → `ADMIN_ROLE`
+- `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setTrancheBurner` → `ADMIN_ROLE`
 - `setLossManager` (one-time, not pausable) → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
@@ -63,7 +63,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
 - `advanceEpoch` → only the configured `lossManager` address
 - `setMZUSD` (one-time), `setLossManager` (one-time), `setNavOracle`,
-  `setFees`, `setBuffer`, `setEpochConfig`, `addTranche`, `updateTranche`
+  `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`, `addTranche`,
+  `updateTranche`
   → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 

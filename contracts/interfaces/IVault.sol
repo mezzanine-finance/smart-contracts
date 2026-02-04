@@ -7,4 +7,5 @@ interface IVault {
     function advanceEpoch() external returns (uint256 newEpochId);
     function currentEpochId() external view returns (uint64 epochId);
     function epochDuration() external view returns (uint64 duration);
+    function lossManager() external view returns (address lossManager);
 }

@@ -1,24 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/// @notice Minimal mintable USDC-like token for testnets/local dev.
-contract MockUSDC is ERC20, Ownable {
-    uint8 private constant USDC_DECIMALS = 6;
-
-    constructor(
-        string memory name_,
-        string memory symbol_,
-        address owner_
-    ) ERC20(name_, symbol_) Ownable(owner_) {}
+/// @title MockUSDC - A mock USDC token for testnet deployments.
+/// @notice Mimics mainnet USDC (6 decimals, same name/symbol). Anyone can mint.
+contract MockUSDC is ERC20 {
+    constructor() ERC20("USD Coin", "USDC") {}
 
     function decimals() public pure override returns (uint8) {
-        return USDC_DECIMALS;
+        return 6;
     }
 
-    function mint(address to, uint256 amount) external onlyOwner {
+    /// @notice Public mint function for testnet use.
+    function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 }

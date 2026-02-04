@@ -234,8 +234,14 @@ describe("LossManager", () => {
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         const setLossManagerSel = mzusd.interface.getFunction("setLossManager").selector;
+        const setTrancheBurnerSel = mzusd.interface.getFunction("setTrancheBurner").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [setLossManagerSel], ADMIN_ROLE);
         await mzusd.setLossManager(lossManagerAddr);
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setTrancheBurnerSel], ADMIN_ROLE);
+        await mzusd.setTrancheBurner(juniorAddr, true);
+        await mzusd.setTrancheBurner(mezzanineAddr, true);
+        await mzusd.setTrancheBurner(seniorAddr, true);
+        await mzusd.setTrancheBurner(polAddr, true);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
@@ -439,7 +445,32 @@ describe("LossManager", () => {
         });
     });
 
+    describe("Burn access", () => {
+        it("Only LossManager can call tranche burn", async () => {
+            await expect(junior.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
+                junior,
+                "NotLossManager"
+            );
+            await expect(pol.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
+                pol,
+                "NotLossManager"
+            );
+        });
+    });
+
     describe("Loss application flows", () => {
+        it("applyLoss burns MZUSD supply via tranche burn", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+
+            await time.increase(DAY);
+            const supplyBefore = await mzusd.totalSupply();
+
+            await (await lossManager.connect(deployer).applyLoss(to6(1n))).wait();
+
+            const supplyAfter = await mzusd.totalSupply();
+            expect(supplyBefore - supplyAfter).to.equal(to18(1n));
+        });
+
         it("Reorder tranches repeatedly (applyLoss always burns correctly in the specified order)", async () => {
             // Big buffers so we can burn many times
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5000n)));

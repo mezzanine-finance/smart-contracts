@@ -57,7 +57,7 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `DEPOSITS`: `deposit`
 - `WITHDRAWALS`: `requestWithdrawal`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`
+- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setTrancheBurner`
 - `PROTOCOL`: `mint`, `burn`
 
 ### Tranche
@@ -70,7 +70,8 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 
 ### Vault
 
-- `ADMIN`: `setMZUSD`, `setFees`, `setBuffer`, `setEpochConfig`, `addTranche`, `updateTranche`
+- `ADMIN`: `setMZUSD`, `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`,
+  `addTranche`, `updateTranche`
 - `PROTOCOL`: `distributeYield`, `rebalance`, `withdraw`, `advanceEpoch`
 
 ### LossManager

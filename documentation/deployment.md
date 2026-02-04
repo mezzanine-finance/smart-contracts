@@ -35,6 +35,7 @@ Use this checklist in scripts after deploying all components.
 **Core wiring**
 - `Vault.setMZUSD(MZUSD)` (one-time).
 - `MZUSD.setLossManager(LossManager)` (one-time).
+- `MZUSD.setTrancheBurner(tranche, true)` for each tranche that can be burned by LossManager.
 - `Vault.setLossManager(LossManager)` (one-time).
 - `Vault.setNavOracle(NavOracleAutomation)` (one-time).
 - `LossManager.setNavOracle(NavOracleAutomation)`.

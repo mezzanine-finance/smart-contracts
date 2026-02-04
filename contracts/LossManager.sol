@@ -12,7 +12,7 @@ import {ITranche} from "./interfaces/ITranche.sol";
 import {IVault} from "./interfaces/IVault.sol";
 
 /// @title LossManager
-/// @notice Burns mzUSD from tranches in predefined order to materialize protocol losses
+/// @notice Burn MZUSD from tranches in predefined order to materialize protocol losses.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract LossManager is
@@ -63,13 +63,14 @@ contract LossManager is
         _disableInitializers();
     }
 
-    /// @param accessManager controls access to restricted functions
-    /// @param pauseManager_ pause manager address for category-based pauses
-    /// @param _mzusd protocol stablecoin contract
-    /// @param _vault vault contract used to advance epochs
-    /// @param order tranche burn order
-    /// @param groupIds group ids aligned with order
-    /// @param _maxLossPerTxUSDC - max loss per tx in USDC 6d (0 = no limit)
+    /// @notice Initialize LossManager with tranche order and group configuration.
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param _mzusd MZUSD contract address.
+    /// @param _vault Vault address used to advance epochs.
+    /// @param order Tranche burn order.
+    /// @param groupIds Group ids aligned with `order`.
+    /// @param _maxLossPerTxUSDC Max loss per tx in USDC (6 decimals); 0 disables the limit.
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -97,7 +98,9 @@ contract LossManager is
         _;
     }
 
-    // @notice applies loss denominated in USDC 6d, burns mzUSD 18d from tranches in order
+    /// @notice Apply loss in USDC and burn MZUSD from tranches in order.
+    /// @dev Advances the vault epoch to keep withdrawal flows progressing.
+    /// @param usdcLoss Loss amount in USDC (6 decimals).
     function applyLoss(
         uint256 usdcLoss
     ) external onlyNavOracle whenNotPaused(PauseCategory.PROTOCOL) {
@@ -123,7 +126,11 @@ contract LossManager is
 
     //SETTERS
 
-    // @notice sets tranche burn order and group pairing in one call
+    /// @notice Set tranche burn order and group pairing in one call.
+    /// @param order Tranche burn order.
+    /// @param groupIds Group ids aligned with `order`.
+    /// @dev Pairs are contiguous tranches with the same non-zero group id.
+    /// @dev Groups share losses proportionally by TVL within each pair.
     function setTrancheOrderAndGroups(
         address[] memory order,
         uint256[] memory groupIds
@@ -132,6 +139,7 @@ contract LossManager is
     }
 
     /// @notice Update NAV oracle automation address.
+    /// @param _navOracle NAV oracle automation address.
     function setNavOracle(
         address _navOracle
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -141,7 +149,8 @@ contract LossManager is
         emit NavOracleUpdated(_navOracle);
     }
 
-    // @notice sets max loss per tx in USDC 6d (0 = no limit)
+    /// @notice Set max loss per tx in USDC (6 decimals); 0 disables the limit.
+    /// @param maxLossValue Max loss per tx in USDC (6 decimals).
     function setMaxLossPerTxUSDC(
         uint256 maxLossValue
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -200,6 +209,9 @@ contract LossManager is
         _emitGroupUpdates(order, groupIds);
     }
 
+    /// @notice Emit TrancheGroupUpdated events for tranche pairs.
+    /// @param order tranche burn order
+    /// @param groupIds group ids aligned with order
     function _emitGroupUpdates(address[] memory order, uint256[] memory groupIds) internal {
         uint256 orderLen = order.length;
         for (uint256 i; i < orderLen; ) {
@@ -217,6 +229,11 @@ contract LossManager is
         mzAmount = usdcAmount * SCALE;
     }
 
+    /// @notice Validate tranche order and group ids.
+    /// @param order tranche burn order
+    /// @param groupIds group ids aligned with order
+    /// @dev Validation checks: non-zero length, matching lengths, no zero addresses,
+    ///      no duplicate tranches, group ids are contiguous and unique
     function _validateTrancheConfig(
         address[] memory order,
         uint256[] memory groupIds
@@ -255,7 +272,10 @@ contract LossManager is
         }
     }
 
-    // @notice burns up to remainingMZ from tranches in order, returns any leftover amount
+    /// @notice Burn up to `remainingMZ` from tranches in order.
+    /// @param remainingMZ Remaining MZUSD to burn.
+    /// @param cuts Output array to record per-tranche burns.
+    /// @return remainingMZOut Remaining MZUSD after processing.
     function _applyLossAcrossOrder(
         uint256 remainingMZ,
         uint256[] memory cuts
@@ -272,7 +292,12 @@ contract LossManager is
         remainingMZOut = remainingMZ;
     }
 
-    // @notice applies loss step at index i, returns next index and amount burned
+    /// @notice Apply one loss step at index `i`.
+    /// @param i Current tranche index.
+    /// @param remainingMZ Remaining MZUSD to burn.
+    /// @param cuts Output array to record per-tranche burns.
+    /// @return nextI Next tranche index to process.
+    /// @return burned MZUSD burned in this step.
     function _applyLossStep(
         uint256 i,
         uint256 remainingMZ,
@@ -287,7 +312,7 @@ contract LossManager is
         return _burnPair(i, remainingMZ, cuts, t0, t1);
     }
 
-    // @notice checks if trancheOrder[i] and trancheOrder[i+1] form a pair, returns info
+    /// @notice Check if trancheOrder[i] and trancheOrder[i+1] form a pair.
     function _pairAt(uint256 i, address t0) internal view returns (bool isPair, address t1) {
         uint256 orderLen = trancheOrder.length;
         uint256 gid = trancheGroup[t0];
@@ -299,12 +324,12 @@ contract LossManager is
         return (true, t1);
     }
 
-    // @notice gets totalAssets (TVL) of a tranche
+    /// @notice Get totalAssets (TVL) of a tranche.
     function _tvl(address tranche) internal view returns (uint256 tvl) {
         tvl = ITranche(tranche).totalAssets();
     }
 
-    // @notice burns from a single tranche at index i, returns next index and amount burned
+    /// @notice Burn from a single tranche at index i.
     function _burnSequential(
         uint256 i,
         address t0,
@@ -319,7 +344,7 @@ contract LossManager is
         return (i + 1, toBurn0);
     }
 
-    // @notice burns from a pair of tranches at index i and i+1, returns next index and amount burned
+    /// @notice Burn from a pair of tranches at index i and i+1.
     function _burnPair(
         uint256 i,
         uint256 remainingMZ,
@@ -353,10 +378,11 @@ contract LossManager is
         uint256 idx
     ) internal {
         if (amount == 0) return;
-        mzusd.burn(tranche, amount);
+        ITranche(tranche).burn(amount);
         cuts[idx] = amount;
     }
 
+    /// @notice Split lossForPair proportionally by TVL between two tranches.
     function _splitPair(
         uint256 lossForPair,
         uint256 tvl0,
@@ -384,7 +410,7 @@ contract LossManager is
         if (rem != 0) revert InsufficientCover(rem);
     }
 
-    // @notice creates a copy of the current tranche order for event emission
+    /// @notice Create a copy of the current tranche order for event emission.
     function _copyOrder(uint256 orderLen) internal view returns (address[] memory orderCopy) {
         orderCopy = new address[](orderLen);
         for (uint256 j = 0; j < orderLen; ++j) {

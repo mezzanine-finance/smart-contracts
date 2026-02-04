@@ -66,8 +66,9 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         _setVetoPeriod(vetoPeriod_);
     }
 
-    /// @notice Submits a NAV snapshot (USDC 6d) and records matching MZUSD total supply.
+    /// @notice Submit a NAV snapshot (USDC 6 decimals) and record total supply.
     /// @dev Reverts if a pending NAV exists. If vetoPeriod is 0, applies immediately.
+    /// @param navUSDC NAV snapshot in USDC (6 decimals).
     function submitNav(uint256 navUSDC) external restricted {
         if (hasPendingNav) revert PendingNavExists();
 
@@ -98,7 +99,8 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         _clearPending();
     }
 
-    /// @notice Updates the veto period for future submissions.
+    /// @notice Update the veto period for future submissions.
+    /// @param newPeriod New veto period in seconds.
     function setVetoPeriod(uint256 newPeriod) external restricted {
         _setVetoPeriod(newPeriod);
         emit VetoPeriodUpdated(newPeriod);
@@ -120,6 +122,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         _applyPending();
     }
 
+    /// @dev External calls to Vault/LossManager; pending state cleared afterward.
     function _applyPending() internal {
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(pendingNavUSDC, pendingTotalSupplyMZ);
 

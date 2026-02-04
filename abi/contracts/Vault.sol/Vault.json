@@ -67,6 +67,22 @@
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "allocated",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "expected",
+                "type": "uint256"
+            }
+        ],
+        "name": "AllocationMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "enum PauseCategory",
                 "name": "category",
                 "type": "uint8"
@@ -1193,14 +1209,22 @@
                 "type": "uint16"
             },
             {
-                "internalType": "address",
-                "name": "_performanceFeeReceiver",
-                "type": "address"
-            },
-            {
                 "internalType": "uint16",
                 "name": "_protocolFeeBps",
                 "type": "uint16"
+            }
+        ],
+        "name": "setFeeRates",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_performanceFeeReceiver",
+                "type": "address"
             },
             {
                 "internalType": "address",
@@ -1208,7 +1232,7 @@
                 "type": "address"
             }
         ],
-        "name": "setFees",
+        "name": "setFeeReceivers",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

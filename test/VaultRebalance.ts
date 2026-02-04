@@ -32,6 +32,7 @@ describe("Vault <-> Reservoir", () => {
 
     let deployer: any;
     let alice: any;
+    let bob: any;
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -44,7 +45,7 @@ describe("Vault <-> Reservoir", () => {
     let whale: any;
 
     before(async () => {
-        [deployer, alice] = await ethers.getSigners();
+        [deployer, alice, bob] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -120,6 +121,7 @@ describe("Vault <-> Reservoir", () => {
         );
 
         const reservoirWithdrawSelector = reservoir.interface.getFunction("withdraw").selector;
+        const reservoirSetVaultSelector = reservoir.interface.getFunction("setVault").selector;
 
         await accessManager.setTargetFunctionRole(
             reservoir.target,
@@ -132,6 +134,13 @@ describe("Vault <-> Reservoir", () => {
             vault.target,
             0 // executionDelay
         );
+
+        await accessManager.setTargetFunctionRole(
+            reservoir.target,
+            [reservoirSetVaultSelector],
+            ADMIN_ROLE
+        );
+        await reservoir.setVault(vault.target);
 
         snapshot = await takeSnapshot();
     });
@@ -322,6 +331,69 @@ describe("Vault <-> Reservoir", () => {
 
         it("Reverts for non-authorized caller (restricted)", async () => {
             await expect(vault.connect(alice).rebalance()).to.be.reverted;
+        });
+    });
+
+    describe("Tracking", () => {
+        it("Tracks deposits/withdrawals and excludes the Vault address", async () => {
+            await accessManager.grantRole(RESERVOIR_WITHDRAW_ROLE, deployer.address, 0);
+
+            const aliceDepositA = to6(10n);
+            const aliceDepositB = to6(5n);
+            const bobDeposit = to6(7n);
+
+            await usdc.connect(whale).transfer(alice.address, aliceDepositA + aliceDepositB);
+            await usdc.connect(whale).transfer(bob.address, bobDeposit);
+
+            await usdc.connect(alice).approve(reservoir.target, aliceDepositA + aliceDepositB);
+            await reservoir.connect(alice).deposit(aliceDepositA);
+            await reservoir.connect(alice).deposit(aliceDepositB);
+
+            await usdc.connect(bob).approve(reservoir.target, bobDeposit);
+            await reservoir.connect(bob).deposit(bobDeposit);
+
+            expect(await reservoir.depositedBy(alice.address)).to.equal(
+                aliceDepositA + aliceDepositB
+            );
+            expect(await reservoir.depositedBy(bob.address)).to.equal(bobDeposit);
+
+            expect(await reservoir.actorsLength()).to.equal(2n);
+            expect(await reservoir.actors(0)).to.equal(alice.address);
+            expect(await reservoir.actors(1)).to.equal(bob.address);
+
+            const rebalanceTarget = to6(100n);
+            const rebalanceBand = 1000;
+            await vault.connect(deployer).setBuffer(rebalanceTarget, rebalanceBand);
+            await usdc.connect(whale).transfer(vault.target as string, to6(200n));
+
+            const vaultBefore = await usdc.balanceOf(vault.target);
+            const resBefore = await usdc.balanceOf(reservoir.target);
+            await vault.connect(deployer).rebalance();
+            const vaultAfter = await usdc.balanceOf(vault.target);
+            const resAfter = await usdc.balanceOf(reservoir.target);
+            expect(vaultAfter).to.equal(rebalanceTarget);
+            expect(vaultBefore - vaultAfter).to.equal(resAfter - resBefore);
+            expect(await reservoir.actorsLength()).to.equal(2n);
+
+            const toVault = to6(3n);
+            await reservoir.connect(deployer).withdraw(toVault, vault.target);
+            expect(await reservoir.withdrawnTo(vault.target)).to.equal(0n);
+            expect(await reservoir.actorsLength()).to.equal(2n);
+
+            const toAliceA = to6(2n);
+            const toAliceB = to6(1n);
+            const toBob = to6(1n);
+            await reservoir.connect(deployer).withdraw(toAliceA, alice.address);
+            await reservoir.connect(deployer).withdraw(toAliceB, alice.address);
+            await reservoir.connect(deployer).withdraw(toBob, bob.address);
+            expect(await reservoir.withdrawnTo(alice.address)).to.equal(toAliceA + toAliceB);
+            expect(await reservoir.withdrawnTo(bob.address)).to.equal(toBob);
+            expect(await reservoir.actorsLength()).to.equal(2n);
+
+            // trigger rebalances; Vault should not be tracked
+            await usdc.connect(whale).transfer(vault.target as string, to6(200n));
+            await vault.connect(deployer).rebalance();
+            expect(await reservoir.actorsLength()).to.equal(2n);
         });
     });
 });

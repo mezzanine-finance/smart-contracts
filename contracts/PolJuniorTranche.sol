@@ -9,6 +9,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import "./interfaces/IVault.sol";
+import "./interfaces/IMZUSD.sol";
 
 /// @title POL Junior Tranche
 /// @notice Protocol-owned-liquidity tranche: deposits mint shares, withdrawals are instant (ERC4626),
@@ -35,19 +37,20 @@ contract PolJuniorTranche is
     error ZeroAddress();
     error ZeroYieldPassed();
     error NotVault();
+    error NotLossManager();
 
     constructor() {
         _disableInitializers();
     }
 
     /// @notice Initializer
-    /// @param assetToken - underlying asset token (MZUSD)
-    /// @param vaultAddress - address of the Vault
-    /// @param name_ - tranche name
-    /// @param symbol_ - tranche symbol
-    /// @param accessManager - access manager address for role control
-    /// @param pauseManager_ - pause manager address for category-based pauses
-    /// @param polPayoutAddress - address to forward yield to
+    /// @param assetToken Underlying asset token (MZUSD).
+    /// @param vaultAddress Vault address.
+    /// @param name_ Tranche name.
+    /// @param symbol_ Tranche symbol.
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param polPayoutAddress Yield payout recipient.
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -81,6 +84,13 @@ contract PolJuniorTranche is
         _;
     }
 
+    modifier onlyLossManager() {
+        if (msg.sender != IVault(vault).lossManager()) revert NotLossManager();
+        _;
+    }
+
+    ///@notice Deposit assets
+    ///@dev Deposit is open to public
     function deposit(
         uint256 assets,
         address receiver
@@ -88,6 +98,8 @@ contract PolJuniorTranche is
         return super.deposit(assets, receiver);
     }
 
+    ///@notice Mint shares by depositing assets
+    ///@dev Mint is open to public
     function mint(
         uint256 shares,
         address receiver
@@ -95,6 +107,8 @@ contract PolJuniorTranche is
         return super.mint(shares, receiver);
     }
 
+    ///@notice Withdraw assets by burning shares
+    /// @dev Withdraw is NOT open to public
     function withdraw(
         uint256 assets,
         address receiver,
@@ -174,6 +188,11 @@ contract PolJuniorTranche is
 
         IERC20(asset()).safeTransfer(payout, yieldAmount);
         emit PolPayoutNotified(yieldAmount);
+    }
+
+    /// @notice Burn MZUSD from this tranche (used by LossManager).
+    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+        IMZUSD(asset()).burn(amount);
     }
 
     /// @notice Update polPayout address
