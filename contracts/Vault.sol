@@ -172,7 +172,7 @@ contract Vault is
     function withdraw(
         address to,
         uint256 amount
-    ) external onlyMZUSD whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external onlyMZUSD whenNotPaused(PauseCategory.WITHDRAWALS) {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
