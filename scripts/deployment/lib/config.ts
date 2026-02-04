@@ -9,6 +9,7 @@ export interface RoleIdsConfig {
     UPGRADER_ROLE: number;
     RESERVOIR_WITHDRAW_ROLE: number;
     ORACLE_ROLE: number;
+    BURNER_ROLE: number;
 }
 
 export interface RolesConfig {
@@ -23,6 +24,7 @@ export interface RolesConfig {
         pauser?: number;
         reservoirWithdraw?: number;
         oracle?: number;
+        burner?: number;
     };
     oracles?: string[];
 }

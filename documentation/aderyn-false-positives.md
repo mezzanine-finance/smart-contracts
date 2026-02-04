@@ -19,14 +19,6 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
     contract declaration (see `contracts/pause/PauseManager.sol` and other
     UUPS contracts).
 
-- `reentrancy-state-change` in `Vault.setMZUSD` (H-3)
-  - Files: `contracts/Vault.sol` (external view calls to `_mzusd` before state
-    assignment).
-  - Reason: the function is `restricted` by AccessManager; `_mzusd` is not yet
-    stored, and reentrancy from a malicious `_mzusd` would not have permissions
-    to call restricted Vault methods. The calls are view-only validations.
-  - Action: documented here to avoid multiple inline suppressions.
-
 - `unsafe-erc20-operation` / `unchecked-return` (L-1, L-8)
   - Files: `contracts/MZUSD.sol`, `contracts/ReservoirUSDC.sol`,
     `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.

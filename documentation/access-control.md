@@ -52,9 +52,9 @@ Role IDs can be any `uint64`; names below are logical groupings.
 ### MZUSD (UUPS)
 
 - `mint` → only the configured Vault address
-- `burn` → only the configured LossManager address
-- `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setTrancheBurner` → `ADMIN_ROLE`
-- `setLossManager` (one-time, not pausable) → `ADMIN_ROLE`
+- `burn` → `BURNER_ROLE` (typically tranche contracts that LossManager burns through)
+- `setGlobalRedemptionCap`, `setRedemptionWindowDuration` → `ADMIN_ROLE`
+- `setVault` (one-time, not pausable), `setLossManager` (one-time, not pausable) → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### Vault (UUPS)
@@ -62,7 +62,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `rebalance` → `ADMIN_ROLE` (or a dedicated operator role)
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
 - `advanceEpoch` → only the configured `lossManager` address
-- `setMZUSD` (one-time), `setLossManager` (one-time), `setNavOracle`,
+- `setLossManager` (one-time), `setNavOracle` (updatable),
   `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`, `addTranche`,
   `updateTranche`
   → `ADMIN_ROLE`
@@ -100,12 +100,14 @@ Role IDs can be any `uint64`; names below are logical groupings.
   - `ReservoirUSDC.withdraw`
 
 ## Direct address checks (must be wired)
-- `Vault.mzusd` is set once via `setMZUSD` and gates `Vault.withdraw`.
+- `Vault.mzusd` is immutable (constructor param) and gates `Vault.withdraw`.
+- `Vault.reservoir` is immutable (constructor param) and used for rebalance/withdraw liquidity pulls.
 - `Vault.lossManager` is set once via `setLossManager` and gates `Vault.advanceEpoch`.
-- `Vault.navOracle` is set via `setNavOracle` and gates `Vault.distributeYield`.
+- `Vault.navOracle` is updatable via `setNavOracle` and gates `Vault.distributeYield`.
+  Update requires the new oracle to reference the same `vault`, `lossManager`, and `mzusd`.
 - `LossManager.navOracle` is set via `setNavOracle` and gates `LossManager.applyLoss`.
 - `MZUSD.lossManager` is set once via `setLossManager` and gates `MZUSD.burn`.
-- `MZUSD.vault` is immutable and gates `MZUSD.mint`.
+- `MZUSD.vault` is set once via `setVault` and gates `MZUSD.mint`.
 - `Tranche.vault` is set on initialization and gates `Tranche.notifyYield`.
 - `PolJuniorTranche.vault` is set on initialization and gates `PolJuniorTranche.notifyYield`.
 
@@ -121,5 +123,5 @@ If possible, separate `PAUSER_ROLE` to a faster-acting guardian.
   but are protected by PauseManager categories.
 - AccessManager configuration is the source of truth for `restricted` functions; avoid
   granting `ADMIN_ROLE` to automation or oracle actors unless strictly necessary.
-- Core wiring is fixed: `Vault.mzusd`, `Vault.lossManager`, and `MZUSD.lossManager` are
-  one-time assignments; updates require an upgrade.
+- Core wiring is fixed: `Vault.mzusd`/`Vault.reservoir` are immutable and
+  `Vault.lossManager`/`MZUSD.lossManager` are one-time assignments; updates require an upgrade.
