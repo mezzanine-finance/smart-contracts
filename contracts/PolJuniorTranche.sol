@@ -13,8 +13,13 @@ import "./interfaces/IVault.sol";
 import "./interfaces/IMZUSD.sol";
 
 /// @title POL Junior Tranche
-/// @notice Protocol-owned-liquidity tranche: deposits mint shares, withdrawals are instant (ERC4626),
-///         and yield is forwarded immediately to polPayout (no yield streaming, no umbrella).
+/// @notice Admin-managed protocol-owned-liquidity tranche for treasury/POL operations.
+/// @notice This is NOT a standard public user investment tranche:
+///         withdrawals/redeems are `restricted` and controlled by AccessManager policy.
+/// @notice Yield sent by Vault is forwarded immediately to `polPayout` (no streaming, no umbrella queue).
+/// @notice Despite governance/ops control, this tranche still participates in loss realization via LossManager `applyLoss`.
+/// @notice When configured in the same LossManager group as the regular Junior tranche, losses are split proportionally by TVL within that group.
+/// @dev Intended usage is protocol treasury liquidity management; governance/ops roles decide who can exit.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract PolJuniorTranche is
@@ -43,14 +48,14 @@ contract PolJuniorTranche is
         _disableInitializers();
     }
 
-    /// @notice Initializer
+    /// @notice Initializer.
     /// @param assetToken Underlying asset token (MZUSD).
-    /// @param vaultAddress Vault address.
+    /// @param vaultAddress Canonical Vault address allowed to notify yield.
     /// @param name_ Tranche name.
     /// @param symbol_ Tranche symbol.
     /// @param accessManager AccessManager address.
     /// @param pauseManager_ PauseManager address for category-based pauses.
-    /// @param polPayoutAddress Yield payout recipient.
+    /// @param polPayoutAddress Yield payout recipient controlled by protocol governance/ops.
     function initialize(
         IERC20 assetToken,
         address vaultAddress,
@@ -89,8 +94,8 @@ contract PolJuniorTranche is
         _;
     }
 
-    ///@notice Deposit assets
-    ///@dev Deposit is open to public
+    /// @notice Deposit assets and mint shares.
+    /// @dev Deposit is open, but this tranche is intended for protocol-controlled liquidity management.
     function deposit(
         uint256 assets,
         address receiver
@@ -98,8 +103,8 @@ contract PolJuniorTranche is
         return super.deposit(assets, receiver);
     }
 
-    ///@notice Mint shares by depositing assets
-    ///@dev Mint is open to public
+    /// @notice Mint shares by depositing assets.
+    /// @dev Mint is open, but this tranche is intended for protocol-controlled liquidity management.
     function mint(
         uint256 shares,
         address receiver
@@ -107,8 +112,8 @@ contract PolJuniorTranche is
         return super.mint(shares, receiver);
     }
 
-    ///@notice Withdraw assets by burning shares
-    /// @dev Withdraw is NOT open to public
+    /// @notice Withdraw assets by burning shares.
+    /// @dev Restricted admin flow: not a permissionless user exit path.
     function withdraw(
         uint256 assets,
         address receiver,
@@ -124,6 +129,8 @@ contract PolJuniorTranche is
         return super.withdraw(assets, receiver, owner);
     }
 
+    /// @notice Redeem shares for assets.
+    /// @dev Restricted admin flow: not a permissionless user exit path.
     function redeem(
         uint256 shares,
         address receiver,
@@ -176,8 +183,8 @@ contract PolJuniorTranche is
         return super.transferFrom(from, to, value);
     }
 
-    /// @notice Vault calls this after transferring yieldAmount of MZUSD to this contract.
-    /// @dev Forwards yield immediately to polPayout.
+    /// @notice Vault calls this after transferring `yieldAmount` of MZUSD to this contract.
+    /// @dev Forwards yield immediately to `polPayout`; POL tranche does not stream yield over epochs.
     function notifyYield(
         uint256 yieldAmount
     ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
@@ -191,11 +198,14 @@ contract PolJuniorTranche is
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).
+    /// @dev Burns only this contract's own asset balance via MZUSD burn access controls.
+    /// @dev For grouped loss application (with Junior tranche), the burned amount is this tranche's proportional share computed by LossManager.
     function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
         IMZUSD(asset()).burn(amount);
     }
 
-    /// @notice Update polPayout address
+    /// @notice Update POL yield payout address.
+    /// @dev Restricted admin operation.
     function setPolPayout(address payout) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (payout == address(0)) revert ZeroAddress();
         polPayout = payout;
