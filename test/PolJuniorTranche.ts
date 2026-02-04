@@ -60,6 +60,9 @@ describe("PolJuniorTranche", () => {
     let vaultAddr: string;
     let mzusdAddr: string;
     let polAddr: string;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let navOracleSigner: any;
 
     before(async () => {
         const signers = await ethers.getSigners();
@@ -97,19 +100,6 @@ describe("PolJuniorTranche", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, alice.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-        vaultAddr = await vault.getAddress();
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -118,10 +108,19 @@ describe("PolJuniorTranche", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusdAddr, reservoir.target],
+        })) as unknown as Vault;
+        vaultAddr = await vault.getAddress();
 
         // Deploy POL tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
@@ -139,6 +138,24 @@ describe("PolJuniorTranche", () => {
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
+
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vaultAddr, mzusdAddr);
+        await lossManagerRef.waitForDeployment();
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vaultAddr,
+            lossManagerRef.target,
+            mzusdAddr
+        );
+        await navOracleRef.waitForDeployment();
+        navOracleSigner = await imp(navOracleRef.target as string);
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
@@ -158,7 +175,7 @@ describe("PolJuniorTranche", () => {
         await accessManager.setTargetFunctionRole(polAddr, [polSetPayoutSel], ADMIN_ROLE);
 
         // admin: vault distribute + tranche management + epoch config
-        const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
@@ -168,7 +185,6 @@ describe("PolJuniorTranche", () => {
         await accessManager.setTargetFunctionRole(
             vaultAddr,
             [
-                setMZUSDSel,
                 distributeSel,
                 addTrancheSel,
                 updateTrancheSel,
@@ -178,11 +194,12 @@ describe("PolJuniorTranche", () => {
             ],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
 
         // wire
-        await vault.setMZUSD(mzusdAddr);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        await mzusd.setVault(vaultAddr);
+        await vault.setLossManager(lossManagerRef.target);
+        await vault.setNavOracle(navOracleRef.target);
 
         snapshot = await takeSnapshot();
     });
@@ -305,7 +322,7 @@ describe("PolJuniorTranche", () => {
 
             await time.increase(DAY);
             const reported = to6(20n); // 20 USDC -> 20e18 MZUSD
-            await (await vault.connect(deployer).distributeYield(reported)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(reported)).wait();
 
             const payoutAfter = await mzusd.balanceOf(bob.address);
             expect(payoutAfter - payoutBefore).to.equal(to18(20n));
@@ -400,11 +417,11 @@ describe("PolJuniorTranche", () => {
             // Distribute yield multiple times: payout increases, tranche accounting stays on principal only
             const payoutBefore = await mzusd.balanceOf(bob.address);
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(7n))).wait();
 
             // Vault enforces one distribution per epoch window.
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(13n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(13n))).wait();
             const payoutAfter = await mzusd.balanceOf(bob.address);
             expect(payoutAfter - payoutBefore).to.equal(to18(20n));
 

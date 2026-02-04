@@ -30,6 +30,7 @@ const SCALE = 10n ** 12n;
 
 const LOSS_MANAGER_ROLE = 3n;
 const ORACLE_ROLE = 6n;
+const BURNER_ROLE = 5n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -91,18 +92,6 @@ describe("NavOracleAutomation", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, oracle.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -115,9 +104,17 @@ describe("NavOracleAutomation", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, oracle.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        })) as unknown as Vault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -170,18 +167,20 @@ describe("NavOracleAutomation", () => {
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
-        const setTrancheBurnerSelector = mzusd.interface.getFunction("setTrancheBurner").selector;
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const burnSelector = mzusd.interface.getFunction("burn").selector;
         await accessManager.setTargetFunctionRole(
             mzusd.target,
-            [setLossManagerSelector, setTrancheBurnerSelector],
+            [setLossManagerSelector, setVaultSelector],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusd.target, [burnSelector], BURNER_ROLE);
+        await mzusd.setVault(vault.target);
         await mzusd.setLossManager(lossManager.target);
-        await mzusd.setTrancheBurner(tranche.target as string, true);
+        await accessManager.grantRole(BURNER_ROLE, tranche.target as string, 0);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault
-        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
@@ -190,7 +189,6 @@ describe("NavOracleAutomation", () => {
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
-                setMZUSDSelector,
                 distributeYieldSelector,
                 addTrancheSelector,
                 setVaultLossManagerSelector,
@@ -232,8 +230,7 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(ORACLE_ROLE, oracle.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target, 0);
 
-        // Wire Vault to MZUSD and register tranche in Vault
-        await vault.setMZUSD(mzusd.target);
+        // Wire protocol and register tranche in Vault
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
         await lossManager.setNavOracle(navAutomation.target);

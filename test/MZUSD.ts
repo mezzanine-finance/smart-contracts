@@ -21,6 +21,7 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
+const BURNER_ROLE = 5n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -103,18 +104,6 @@ describe("MZUSD <-> USDC conversion", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, charlie.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        );
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = await upgrades.deployProxy(
             MZUSDFactory,
@@ -127,9 +116,17 @@ describe("MZUSD <-> USDC conversion", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         );
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, charlie.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        });
 
         const NettingHelperFactory = await ethers.getContractFactory(
             "MZUSDNettingHelper",
@@ -139,23 +136,21 @@ describe("MZUSD <-> USDC conversion", () => {
         await nettingHelper.waitForDeployment();
 
         const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
-        const setTrancheBurnerSelector = mzusd.interface.getFunction("setTrancheBurner").selector;
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
+        const burnSelector = mzusd.interface.getFunction("burn").selector;
         await accessManager.setTargetFunctionRole(
             mzusd.target,
-            [setLossManagerSelector, setTrancheBurnerSelector],
+            [setLossManagerSelector, setVaultSelector],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusd.target, [burnSelector], BURNER_ROLE);
+        await accessManager.grantRole(BURNER_ROLE, deployer.address, 0);
+        await mzusd.setVault(vault.target);
         await mzusd.setLossManager(deployer.address);
-        await mzusd.setTrancheBurner(deployer.address, true);
 
         await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalRedemptionCapUpdated")
             .withArgs(to6(1_000_000n)); // 1 million USDC per hour
-
-        // Wire Vault -> MZUSD (one-time setter)
-        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
-        await accessManager.setTargetFunctionRole(vault.target, [setMZUSDSelector], ADMIN_ROLE);
-        await vault.setMZUSD(mzusd.target);
 
         snapshot = await takeSnapshot();
     });
@@ -175,7 +170,7 @@ describe("MZUSD <-> USDC conversion", () => {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [MAINNET_USDC, vault.target],
+                        constructorArgs: [MAINNET_USDC],
                     }
                 )
             ).to.be.revertedWithCustomError(MZUSDFactory, "ZeroAddress");
@@ -242,14 +237,10 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     describe("Burn access", () => {
-        it("Requires tranche burner and burns caller balance", async () => {
-            await mzusd.setTrancheBurner(deployer.address, false);
-            await expect(mzusd.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
-                mzusd,
-                "NotTrancheBurner"
-            );
-
-            await mzusd.setTrancheBurner(deployer.address, true);
+        it("Requires burner role and burns caller balance", async () => {
+            await accessManager.revokeRole(BURNER_ROLE, deployer.address);
+            await expect(mzusd.connect(deployer).burn(1n)).to.be.reverted;
+            await accessManager.grantRole(BURNER_ROLE, deployer.address, 0);
 
             const depositAmountUSDC = to6(5n);
             await usdc.connect(whale).transfer(deployer.address, depositAmountUSDC);

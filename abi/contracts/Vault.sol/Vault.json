@@ -163,12 +163,34 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint8",
                 "name": "actualDecimals",
                 "type": "uint8"
             }
         ],
         "name": "InvalidMZUSDDecimals",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
         "type": "error"
     },
     {
@@ -213,6 +235,28 @@
             }
         ],
         "name": "InvalidNavOracleVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirPauseManager",
         "type": "error"
     },
     {
@@ -992,16 +1036,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "pauseManager_",
-                "type": "address"
-            },
             {
                 "internalType": "uint16",
                 "name": "_performanceFeeBps",

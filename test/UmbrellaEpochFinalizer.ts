@@ -50,6 +50,9 @@ describe("UmbrellaEpochFinalizer", () => {
     let vault: Vault;
     let tranche: Tranche;
     let whale: any;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let navOracleSigner: any;
 
     let ADMIN_ROLE: bigint;
 
@@ -85,18 +88,6 @@ describe("UmbrellaEpochFinalizer", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, alice.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -109,9 +100,17 @@ describe("UmbrellaEpochFinalizer", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        })) as unknown as Vault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -134,11 +133,29 @@ describe("UmbrellaEpochFinalizer", () => {
             }
         )) as unknown as Tranche;
 
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vault.target, mzusd.target);
+        await lossManagerRef.waitForDeployment();
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vault.target,
+            lossManagerRef.target,
+            mzusd.target
+        );
+        await navOracleRef.waitForDeployment();
+        navOracleSigner = await imp(navOracleRef.target as string);
+
         ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Admin-only functions on MZUSD & Vault
-        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
@@ -147,7 +164,6 @@ describe("UmbrellaEpochFinalizer", () => {
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
-                setMZUSDSelector,
                 distributeYieldSelector,
                 addTrancheSelector,
                 setLossManagerSelector,
@@ -155,6 +171,7 @@ describe("UmbrellaEpochFinalizer", () => {
             ],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
         // Admin-only tranche functions used in tests
         const trancheDelaySelector =
@@ -165,10 +182,10 @@ describe("UmbrellaEpochFinalizer", () => {
             ADMIN_ROLE
         );
 
-        // Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
-        await vault.setMZUSD(mzusd.target);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        // Wire Vault and register tranche (after roles are configured)
+        await mzusd.setVault(vault.target);
+        await vault.setLossManager(lossManagerRef.target);
+        await vault.setNavOracle(navOracleRef.target);
 
         await vault.addTranche({
             tranche: tranche.target,
@@ -200,7 +217,7 @@ describe("UmbrellaEpochFinalizer", () => {
 
     async function advanceEpoch(usdcReported: bigint = to6(1n)) {
         await time.increase(DAY);
-        await (await vault.connect(deployer).distributeYield(usdcReported)).wait();
+        await (await vault.connect(navOracleSigner).distributeYield(usdcReported)).wait();
     }
 
     async function preparePendingEpoch(user: any) {

@@ -9,5 +9,7 @@ interface IMZUSD is IERC20 {
     function setVault(address vault) external;
     function usdc() external view returns (address);
     function vault() external view returns (address);
+    function authority() external view returns (address);
+    function pauseManager() external view returns (address);
     function decimals() external view returns (uint8);
 }

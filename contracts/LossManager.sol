@@ -159,7 +159,6 @@ contract LossManager is
     }
 
     //GETTERS
-
     function trancheOrderLength() external view returns (uint256 length) {
         length = trancheOrder.length;
     }

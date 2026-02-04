@@ -45,6 +45,10 @@ describe("Vault Yield Distribution", () => {
     let junior: Tranche;
     let mezzanine: Tranche;
     let senior: Tranche;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let lossManagerSigner: any;
+    let navOracleSigner: any;
 
     let whale: any;
 
@@ -82,18 +86,6 @@ describe("Vault Yield Distribution", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, carol.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -106,9 +98,17 @@ describe("Vault Yield Distribution", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        })) as unknown as Vault;
 
         // 3 tranches
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -173,12 +173,31 @@ describe("Vault Yield Distribution", () => {
             }
         )) as unknown as Tranche;
 
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vault.target, mzusd.target);
+        await lossManagerRef.waitForDeployment();
+
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vault.target,
+            lossManagerRef.target,
+            mzusd.target
+        );
+        await navOracleRef.waitForDeployment();
+        lossManagerSigner = await imp(lossManagerRef.target as string);
+        navOracleSigner = await imp(navOracleRef.target as string);
+
         // Roles
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // admin: vault.distributeYield/addTranche/updateTranche + config setters used by tests
-        const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
         const setLossManagerSel = vault.interface.getFunction("setLossManager").selector;
@@ -191,7 +210,6 @@ describe("Vault Yield Distribution", () => {
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
-                setMZUSDSel,
                 distributeSel,
                 advanceEpochSel,
                 setLossManagerSel,
@@ -204,6 +222,9 @@ describe("Vault Yield Distribution", () => {
             ],
             ADMIN_ROLE
         );
+
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSel], ADMIN_ROLE);
 
         // admin: Tranche config/finalize functions (for tests/helpers)
         const tSetUnstakeDelaySel = junior.interface.getFunction("setUnstakeDelayEpochs").selector;
@@ -225,9 +246,9 @@ describe("Vault Yield Distribution", () => {
         );
 
         // wire and register
-        await vault.setMZUSD(mzusd.target);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        await mzusd.setVault(vault.target);
+        await vault.setLossManager(lossManagerRef.target);
+        await vault.setNavOracle(navOracleRef.target);
 
         await vault.addTranche({tranche: junior.target, weight: 2000, enabled: true});
         await vault.addTranche({tranche: mezzanine.target, weight: 3000, enabled: true});
@@ -351,25 +372,25 @@ describe("Vault Yield Distribution", () => {
             );
 
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
-            await expect(vault.connect(deployer).distributeYield(0))
+            await expect(vault.connect(navOracleSigner).distributeYield(0))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
             await expect(vault.connect(deployer).rebalance())
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
-            const minted = await mintMZUSDFor(deployer, to6(1n));
-            await expect(mzusd.connect(deployer).requestWithdrawal(minted))
-                .to.be.revertedWithCustomError(vault, "CategoryPaused")
-                .withArgs(PauseCategory.PROTOCOL);
-            await expect(vault.connect(deployer).advanceEpoch())
+            await expect(vault.connect(lossManagerSigner).advanceEpoch())
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.PROTOCOL);
             await pauseManager.unpauseGlobal(PauseCategory.PROTOCOL);
 
+            const minted = await mintMZUSDFor(deployer, to6(1n));
+            await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
+            await expect(mzusd.connect(deployer).requestWithdrawal(minted))
+                .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+                .withArgs(PauseCategory.WITHDRAWALS);
+            await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
+
             await pauseManager.pauseGlobal(PauseCategory.ADMIN);
-            await expect(vault.connect(deployer).setMZUSD(bob.address))
-                .to.be.revertedWithCustomError(vault, "CategoryPaused")
-                .withArgs(PauseCategory.ADMIN);
             await expect(vault.connect(deployer).setFeeRates(1, 1))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
@@ -399,7 +420,7 @@ describe("Vault Yield Distribution", () => {
             const before = await vault.currentEpochId();
 
             await time.increase(DAY);
-            await (await vault.connect(deployer).advanceEpoch()).wait();
+            await (await vault.connect(lossManagerSigner).advanceEpoch()).wait();
 
             const after = await vault.currentEpochId();
             expect(after).to.equal(before + 1n);
@@ -410,44 +431,22 @@ describe("Vault Yield Distribution", () => {
             const VaultFactory = await ethers.getContractFactory("Vault", deployer);
 
             await expect(
-                upgrades.deployProxy(
-                    VaultFactory,
-                    [
-                        accessManager.target,
-                        pauseManager.target,
-                        0,
-                        ethers.ZeroAddress,
-                        0,
-                        carol.address,
-                    ],
-                    {
-                        kind: "uups",
-                        initializer: "initialize",
-                        unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [MAINNET_USDC, reservoir.target],
-                    }
-                )
+                upgrades.deployProxy(VaultFactory, [0, ethers.ZeroAddress, 0, carol.address], {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [mzusd.target, reservoir.target],
+                })
             ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
 
             const overMax = (await vault.MAX_TOTAL_FEE_BPS()) + 1n;
             await expect(
-                upgrades.deployProxy(
-                    VaultFactory,
-                    [
-                        accessManager.target,
-                        pauseManager.target,
-                        overMax,
-                        bob.address,
-                        0,
-                        carol.address,
-                    ],
-                    {
-                        kind: "uups",
-                        initializer: "initialize",
-                        unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [MAINNET_USDC, reservoir.target],
-                    }
-                )
+                upgrades.deployProxy(VaultFactory, [overMax, bob.address, 0, carol.address], {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [mzusd.target, reservoir.target],
+                })
             ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");
 
             await expect(
@@ -496,7 +495,7 @@ describe("Vault Yield Distribution", () => {
             await usdc.connect(whale).transfer(reservoir.target as string, yieldUSDC);
             await time.increase(DAY);
 
-            await (await vault.connect(deployer).distributeYield(yieldUSDC)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(yieldUSDC)).wait();
             await expectSupplyMatchesBacking();
         });
     });
@@ -526,7 +525,7 @@ describe("Vault Yield Distribution", () => {
             const bS0 = await mzusd.balanceOf(senior.target);
 
             await fundYieldUSDC(reportedUSDC);
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -586,7 +585,7 @@ describe("Vault Yield Distribution", () => {
 
             await time.increase(duration * 3n + 5n);
 
-            const tx = await vault.connect(deployer).distributeYield(to6(1n));
+            const tx = await vault.connect(navOracleSigner).distributeYield(to6(1n));
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startAfter = await vault.epochStart();
@@ -596,11 +595,11 @@ describe("Vault Yield Distribution", () => {
             expect(await vault.currentEpochId()).to.equal(epochBefore + 1n);
 
             await expect(
-                vault.connect(deployer).distributeYield(to6(1n))
+                vault.connect(navOracleSigner).distributeYield(to6(1n))
             ).to.be.revertedWithCustomError(vault, "EpochTooSoon");
 
             await time.increase(duration);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
             expect(await vault.currentEpochId()).to.equal(epochBefore + 2n);
         });
 
@@ -621,7 +620,7 @@ describe("Vault Yield Distribution", () => {
             const bJ0 = await mzusd.balanceOf(junior.target);
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
-            await (await vault.connect(deployer).distributeYield(reportedUSDC)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(reportedUSDC)).wait();
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
             const bS1 = await mzusd.balanceOf(senior.target);
@@ -638,7 +637,7 @@ describe("Vault Yield Distribution", () => {
             const bJ2 = await mzusd.balanceOf(junior.target);
             const bM2 = await mzusd.balanceOf(mezzanine.target);
             const bS2 = await mzusd.balanceOf(senior.target);
-            await (await vault.connect(deployer).distributeYield(reportedUSDC)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(reportedUSDC)).wait();
             const bJ3 = await mzusd.balanceOf(junior.target);
             const bM3 = await mzusd.balanceOf(mezzanine.target);
             const bS3 = await mzusd.balanceOf(senior.target);
@@ -671,7 +670,7 @@ describe("Vault Yield Distribution", () => {
             const bS0 = await mzusd.balanceOf(senior.target);
 
             await fundYieldUSDC(reportedUSDC);
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -735,7 +734,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -797,7 +796,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -859,7 +858,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -916,7 +915,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -957,7 +956,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -1010,7 +1009,7 @@ describe("Vault Yield Distribution", () => {
             const reportedUSDC = to6("0.000001");
             const expectedYield = to18("0.000001");
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             await tx.wait();
 
             const bJ1 = await mzusd.balanceOf(junior.target);
@@ -1061,7 +1060,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -1142,7 +1141,7 @@ describe("Vault Yield Distribution", () => {
                 const totalAssetsBefore = await junior.totalAssets();
                 const ppsBefore = await junior.pricePerShare();
 
-                await (await vault.connect(deployer).distributeYield(c.usdcReported)).wait();
+                await (await vault.connect(navOracleSigner).distributeYield(c.usdcReported)).wait();
                 await time.increase(DAY);
 
                 const ppsAfter = await junior.pricePerShare();
@@ -1180,7 +1179,7 @@ describe("Vault Yield Distribution", () => {
             const juniorBalBefore = await mzusd.balanceOf(junior.target);
 
             await fundYieldUSDC(usdcReported);
-            const tx = await vault.connect(deployer).distributeYield(usdcReported);
+            const tx = await vault.connect(navOracleSigner).distributeYield(usdcReported);
             await tx.wait();
 
             const epochAfter = await vault.currentEpochId();
@@ -1215,7 +1214,7 @@ describe("Vault Yield Distribution", () => {
             const feeBalBefore = await mzusd.balanceOf(receiver);
             const juniorBalBefore = await mzusd.balanceOf(junior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(usdcReported);
+            const tx = await vault.connect(navOracleSigner).distributeYield(usdcReported);
             await tx.wait();
 
             const feeBalAfter = await mzusd.balanceOf(receiver);
@@ -1260,7 +1259,7 @@ describe("Vault Yield Distribution", () => {
             const bS0 = await mzusd.balanceOf(senior.target);
 
             await fundYieldUSDC(usdcReported);
-            const tx = await vault.connect(deployer).distributeYield(usdcReported);
+            const tx = await vault.connect(navOracleSigner).distributeYield(usdcReported);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -1331,7 +1330,7 @@ describe("Vault Yield Distribution", () => {
             await time.increase(DAY);
             const firstReported = to6(10n);
             await fundYieldUSDC(firstReported);
-            await (await vault.connect(deployer).distributeYield(firstReported)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(firstReported)).wait();
 
             // Disable junior and change weights
             await (await vault.connect(deployer).updateTranche(0, 2000, false)).wait();
@@ -1364,7 +1363,7 @@ describe("Vault Yield Distribution", () => {
             const newEpochId = epochBefore + 1n;
 
             await fundYieldUSDC(usdcReported);
-            const tx = await vault.connect(deployer).distributeYield(usdcReported);
+            const tx = await vault.connect(navOracleSigner).distributeYield(usdcReported);
 
             // Junior should not be notified at all
             await expect(tx).to.not.emit(junior, "YieldNotified");
@@ -1406,7 +1405,7 @@ describe("Vault Yield Distribution", () => {
             await time.increase(DAY);
 
             const bM0 = await mzusd.balanceOf(mezzanine.target);
-            const txA = await vault.connect(deployer).distributeYield(to6(9n));
+            const txA = await vault.connect(navOracleSigner).distributeYield(to6(9n));
             await expect(txA).to.not.emit(mezzanine, "YieldNotified");
             const bM1 = await mzusd.balanceOf(mezzanine.target);
             expect(bM1).to.equal(bM0);
@@ -1418,7 +1417,7 @@ describe("Vault Yield Distribution", () => {
 
             await time.increase(DAY);
             await expect(
-                vault.connect(deployer).distributeYield(to6(1n))
+                vault.connect(navOracleSigner).distributeYield(to6(1n))
             ).to.be.revertedWithCustomError(vault, "WeightsZero");
         });
 
@@ -1437,7 +1436,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -1494,7 +1493,7 @@ describe("Vault Yield Distribution", () => {
             const bM0 = await mzusd.balanceOf(mezzanine.target);
             const bS0 = await mzusd.balanceOf(senior.target);
 
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
             const startTs = BigInt(block!.timestamp);
@@ -1544,18 +1543,18 @@ describe("Vault Yield Distribution", () => {
             // Ensure TVL > 0 so allocation is attempted
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
 
-            await time.increase(DAY - 60);
+            await time.increase(DAY - 300);
 
             await (await vault.connect(deployer).setEpochConfig(60 * 60)).wait();
             expect(await vault.pendingEpochDuration()).to.equal(3600n);
 
             await expect(
-                vault.connect(deployer).distributeYield(to6(1n))
+                vault.connect(navOracleSigner).distributeYield(to6(1n))
             ).to.be.revertedWithCustomError(vault, "EpochTooSoon");
 
-            await time.increase(60);
+            await time.increase(301);
 
-            const tx = await vault.connect(deployer).distributeYield(to6(1n));
+            const tx = await vault.connect(navOracleSigner).distributeYield(to6(1n));
             await tx.wait();
 
             expect(await vault.pendingEpochDuration()).to.equal(0n);
@@ -1573,7 +1572,7 @@ describe("Vault Yield Distribution", () => {
 
             await time.increase(DAY);
 
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
 
             expect((await junior.yieldStreamEnd()) - (await junior.yieldStreamStart())).to.equal(
                 2n * 3600n
@@ -1597,7 +1596,7 @@ describe("Vault Yield Distribution", () => {
             const before = await vault.currentEpochId();
 
             await time.increase(DAY);
-            await expect(vault.connect(deployer).distributeYield(0)).to.not.be.reverted;
+            await expect(vault.connect(navOracleSigner).distributeYield(0)).to.not.be.reverted;
 
             const after = await vault.currentEpochId();
             expect(after).to.equal(before + 1n);
