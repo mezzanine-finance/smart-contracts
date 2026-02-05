@@ -595,7 +595,7 @@ contract Vault is
         for (uint256 i; i < trancheCount; ++i) {
             trancheTvl = trancheTvls[i];
             t = tranches[i];
-            if (trancheTvl == 0 || t.riskPremiumBps == 0) continue;
+            if (trancheTvl == 0) continue;
 
             baseShare = (basePool * trancheTvl) / totalTvl;
             riskPremiumShare = (allocatableMZUSD * t.riskPremiumBps) / BPS;
