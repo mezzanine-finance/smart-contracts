@@ -801,7 +801,6 @@ async function main() {
         accessManagerAdmin,
         vault.address,
         [
-            vault.contract.interface.getFunction("rebalance").selector,
             vault.contract.interface.getFunction("setLossManager").selector,
             vault.contract.interface.getFunction("setNavOracle").selector,
             vault.contract.interface.getFunction("setFeeRates").selector,
@@ -812,6 +811,12 @@ async function main() {
             vault.contract.interface.getFunction("updateTranche").selector,
         ],
         adminRole
+    );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        vault.address,
+        [vault.contract.interface.getFunction("rebalance").selector],
+        roleIds.KEEPER_ROLE
     );
     await ensureTargetRole(
         accessManagerAdmin,
@@ -993,6 +998,14 @@ async function main() {
             addr,
             delays.reservoirWithdraw ?? 0
         );
+    }
+
+    const keeperMembers = new Set<string>(config.roles.keepers ?? []);
+    if (grantDevRoles) {
+        keeperMembers.add(devDeployer);
+    }
+    for (const addr of keeperMembers) {
+        await ensureRoleMember(accessManagerAdmin, roleIds.KEEPER_ROLE, addr, delays.keeper ?? 0);
     }
 
     const oracleMembers = new Set<string>(config.navOracle.oracles);

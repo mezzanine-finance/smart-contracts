@@ -17,6 +17,8 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 // Role for Vault to call Reservoir.withdraw
 const RESERVOIR_WITHDRAW_ROLE = 2n;
+// Role for keeper/automation to call Vault.rebalance
+const KEEPER_ROLE = 7n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
@@ -110,11 +112,9 @@ describe("Vault <-> Reservoir", () => {
         const rebalanceSelector = vault.interface.getFunction("rebalance").selector;
         const setBufferSelector = vault.interface.getFunction("setBuffer").selector;
 
-        await accessManager.setTargetFunctionRole(
-            vault.target,
-            [rebalanceSelector, setBufferSelector],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(vault.target, [setBufferSelector], ADMIN_ROLE);
+        await accessManager.setTargetFunctionRole(vault.target, [rebalanceSelector], KEEPER_ROLE);
+        await accessManager.grantRole(KEEPER_ROLE, deployer.address, 0);
 
         const reservoirWithdrawSelector = reservoir.interface.getFunction("withdraw").selector;
         const reservoirSetVaultSelector = reservoir.interface.getFunction("setVault").selector;

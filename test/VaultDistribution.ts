@@ -363,13 +363,12 @@ describe("Vault Yield Distribution", () => {
     describe("Access control", () => {
         it("Pauses all guarded Vault functions", async () => {
             const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+            const KEEPER_ROLE = 7n;
             const rebalanceSel = vault.interface.getFunction("rebalance").selector;
             const setBufferSel = vault.interface.getFunction("setBuffer").selector;
-            await accessManager.setTargetFunctionRole(
-                vault.target,
-                [rebalanceSel, setBufferSel],
-                ADMIN_ROLE
-            );
+            await accessManager.setTargetFunctionRole(vault.target, [setBufferSel], ADMIN_ROLE);
+            await accessManager.setTargetFunctionRole(vault.target, [rebalanceSel], KEEPER_ROLE);
+            await accessManager.grantRole(KEEPER_ROLE, deployer.address, 0);
 
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
             await expect(vault.connect(navOracleSigner).distributeYield(0))
