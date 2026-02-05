@@ -512,18 +512,6 @@
                 "internalType": "address",
                 "name": "tranche",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "riskPremiumBps",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
             }
         ],
         "name": "TrancheRegistered",
@@ -743,26 +731,9 @@
     {
         "inputs": [
             {
-                "components": [
-                    {
-                        "internalType": "address",
-                        "name": "tranche",
-                        "type": "address"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "riskPremiumBps",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "bool",
-                        "name": "enabled",
-                        "type": "bool"
-                    }
-                ],
-                "internalType": "struct Vault.TrancheInfo",
-                "name": "info",
-                "type": "tuple"
+                "internalType": "address",
+                "name": "_tranche",
+                "type": "address"
             }
         ],
         "name": "addTranche",

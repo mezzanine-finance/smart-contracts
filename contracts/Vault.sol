@@ -76,7 +76,7 @@ contract Vault is
     event FeesPaid(uint256 performanceMZUSD, uint256 protocolMZUSD, uint256 epochId);
     event Rebalanced(uint256 sent, uint256 pulled, uint256 idleAfter);
     event YieldDistributed(uint256 usdcUsed, uint256 mintedMZUSD, uint256 epochId);
-    event TrancheRegistered(address tranche, uint256 riskPremiumBps, bool enabled);
+    event TrancheRegistered(address tranche);
     event TrancheUpdated(uint256 idx, uint256 riskPremiumBps, bool enabled);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
@@ -307,16 +307,15 @@ contract Vault is
     }
 
     /// @notice Register a new tranche.
-    function addTranche(
-        TrancheInfo calldata info
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (info.tranche == address(0)) revert ZeroAddress();
-        if (isTranche[info.tranche]) revert TrancheExists();
+    /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setYieldDistribution().
+    function addTranche(address _tranche) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_tranche == address(0)) revert ZeroAddress();
+        if (isTranche[_tranche]) revert TrancheExists();
         if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
 
-        tranches.push(TrancheInfo(info.tranche, info.riskPremiumBps, info.enabled));
-        isTranche[info.tranche] = true;
-        emit TrancheRegistered(info.tranche, info.riskPremiumBps, info.enabled);
+        tranches.push(TrancheInfo(_tranche, 0, false));
+        isTranche[_tranche] = true;
+        emit TrancheRegistered(_tranche);
     }
 
     // /// @notice Update tranche info.
