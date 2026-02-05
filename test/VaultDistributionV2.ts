@@ -195,9 +195,9 @@ describe("Vault Yield Distribution V2", () => {
 
         // Register tranches (riskPremiumBps=0 initially, configured via setYieldDistribution)
         // Order: senior=idx0, mezzanine=idx1, junior=idx2
-        await vault.addTranche({tranche: senior.target, riskPremiumBps: 0, enabled: true});
-        await vault.addTranche({tranche: mezzanine.target, riskPremiumBps: 0, enabled: true});
-        await vault.addTranche({tranche: junior.target, riskPremiumBps: 0, enabled: true});
+        await vault.addTranche(senior.target);
+        await vault.addTranche(mezzanine.target);
+        await vault.addTranche(junior.target);
 
         // Default yield distribution: baseReward 40%, senior 20%, mezzanine 20%, junior 20%
         await vault.setYieldDistribution(4000, [2000, 2000, 2000], [true, true, true]);
@@ -401,6 +401,291 @@ describe("Vault Yield Distribution V2", () => {
             expect(juniorPPSAfter)
                 .to.be.gte(expectedJuniorPPS - 1n)
                 .and.lte(expectedJuniorPPS);
+        });
+
+        it("Scenario 2: 45/40 TVL split, senior 0% / junior 30% risk premium, 10% protocol fee", async () => {
+            const TOTAL_USDC = to6(1_000_000);
+            const YIELD_USDC = to6(80_000); // 8% APR on 1M
+
+            // ── Configure yield distribution ──────────────────────
+            // Mezzanine disabled, no deposits there.
+            // riskPremium: senior=0%, mezzanine=0% (disabled), junior=30%
+            // baseRewardBps = 10000 - (0 + 0 + 3000) = 7000 (70%)
+            await vault.setYieldDistribution(7000, [0, 0, 3000], [true, false, true]);
+
+            // Protocol fee = 10%, no performance fee
+            await vault.setFeeRates(0, 1000);
+
+            // ── Seed TVL: 45% senior, 40% junior, 15% idle ────
+            await depositIntoTranches(TOTAL_USDC, [
+                {tranche: senior, user: alice, pct: 45},
+                {tranche: junior, user: carol, pct: 40},
+            ]);
+
+            // 15% idle MZUSD (unstaked)
+            await mintMZUSDFor(deployer, (TOTAL_USDC * 15n) / 100n);
+
+            // ── Verify initial state ─────────────────────────────
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            expect(seniorTVL).to.equal(to18(450_000));
+            expect(juniorTVL).to.equal(to18(400_000));
+            expect(await mezzanine.totalAssets()).to.equal(0n); // disabled, no deposits
+            expect(await mzusd.totalSupply()).to.equal(to18(1_000_000));
+
+            // All shares are 1:1 before yield
+            expect(await senior.pricePerShare()).to.equal(to18(1));
+            expect(await junior.pricePerShare()).to.equal(to18(1));
+
+            // ── Distribute yield ─────────────────────────────────
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.distributeYield(YIELD_USDC);
+
+            // ── Expected yield math ──────────────────────────────
+            //
+            // mintedGross      = 80,000 MZUSD
+            // protocolFee      = 80,000 × 10%        = 8,000 MZUSD
+            // allocatable      = 80,000 − 8,000      = 72,000 MZUSD
+            //
+            // basePool         = 72,000 × 70%        = 50,400 MZUSD
+            // totalTvl         = 450k + 400k          = 850,000 MZUSD
+            //
+            // TVL ratio is 45:40 (= 9:8), so 9/17 and 8/17 — not evenly
+            // divisible. Values are computed via integer division matching
+            // the contract's exact Solidity arithmetic.
+            //
+            // ┌───────────┬──────────────────────────────────┬────────────────┬──────────────┐
+            // │ Tranche   │ baseShare (pool×tvl/totalTvl)    │ riskPremium    │ total        │
+            // ├───────────┼──────────────────────────────────┼────────────────┼──────────────┤
+            // │ Senior    │ 50,400 × 450k/850k ≈ 26,682.35  │ 72k×0% = 0    │ ≈ 26,682.35  │
+            // │ Junior    │ remainder = 72k − senior         │ (dust)         │ ≈ 45,317.65  │
+            // └───────────┴──────────────────────────────────┴────────────────┴──────────────┘
+            //
+            // Junior cross-check: base ≈ 23,717.65 + risk 21,600 ≈ 45,317.65
+
+            const allocatable = to18(72_000);
+            const protocolFee = to18(8_000);
+            const totalTvl = seniorTVL + juniorTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Senior: base share only (riskPremiumBps = 0)
+            const seniorBaseShare = (basePool * seniorTVL) / totalTvl;
+            const expectedSeniorYield = seniorBaseShare;
+
+            // Junior: dust catch-all (remainder after senior)
+            const expectedJuniorYield = allocatable - expectedSeniorYield;
+
+            // Verify clean intermediates
+            expect(allocatable).to.equal(to18(72_000));
+            expect(basePool).to.equal(to18(50_400));
+
+            // ── Verify on-chain yield amounts ────────────────────
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n); // disabled
+
+            // Protocol fee minted to carol
+            expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
+
+            // Vault retains no MZUSD
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+
+            // ── Verify APR from yield amounts ───────────────────
+            //
+            // Integer division truncates fractional bps:
+            // Senior: ≈ 5.93% → 592 bps (spreadsheet rounds to 5.93%)
+            // Junior: ≈ 11.33% → 1132 bps (spreadsheet rounds to 11.33%)
+
+            const seniorReturn_bps = (expectedSeniorYield * BPS) / seniorTVL;
+            const juniorReturn_bps = (expectedJuniorYield * BPS) / juniorTVL;
+
+            expect(seniorReturn_bps).to.equal(592n);
+            expect(juniorReturn_bps).to.equal(1132n);
+
+            // ── Cross-check: share price reflects yield after full stream
+            await time.increase(DAY);
+
+            const seniorPPSAfter = await senior.pricePerShare();
+            const juniorPPSAfter = await junior.pricePerShare();
+
+            const WAD = to18(1);
+            const expectedSeniorPPS = ((seniorTVL + expectedSeniorYield) * WAD) / seniorTVL;
+            const expectedJuniorPPS = ((juniorTVL + expectedJuniorYield) * WAD) / juniorTVL;
+
+            expect(seniorPPSAfter)
+                .to.be.gte(expectedSeniorPPS - 1n)
+                .and.lte(expectedSeniorPPS);
+            expect(juniorPPSAfter)
+                .to.be.gte(expectedJuniorPPS - 1n)
+                .and.lte(expectedJuniorPPS);
+        });
+
+        it("Scenario 3 (Strata-style): 80/20 TVL split, no unstaked, senior 0% / junior 29.03% risk premium, 0% fees", async () => {
+            const TOTAL_USDC = to6(1_000_000);
+            const YIELD_USDC = to6(110_000); // 11% APR on 1M
+
+            // ── Configure yield distribution ──────────────────────
+            // Mezzanine disabled, no deposits there.
+            // riskPremium: senior=0%, mezzanine=0% (disabled), junior=29.03%
+            // baseRewardBps = 10000 - (0 + 0 + 2903) = 7097 (70.97%)
+            await vault.setYieldDistribution(7097, [0, 0, 2903], [true, false, true]);
+
+            // No fees
+            // Default is already 0, 0 from initialization — set explicitly for clarity
+            await vault.setFeeRates(0, 0);
+
+            // ── Seed TVL: 80% senior, 20% junior, 0% idle ─────
+            await depositIntoTranches(TOTAL_USDC, [
+                {tranche: senior, user: alice, pct: 80},
+                {tranche: junior, user: carol, pct: 20},
+            ]);
+
+            // No idle MZUSD — all supply is in tranches
+
+            // ── Verify initial state ─────────────────────────────
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            expect(seniorTVL).to.equal(to18(800_000));
+            expect(juniorTVL).to.equal(to18(200_000));
+            expect(await mezzanine.totalAssets()).to.equal(0n); // disabled, no deposits
+            expect(await mzusd.totalSupply()).to.equal(to18(1_000_000));
+
+            // All shares are 1:1 before yield
+            expect(await senior.pricePerShare()).to.equal(to18(1));
+            expect(await junior.pricePerShare()).to.equal(to18(1));
+
+            // ── Distribute yield ─────────────────────────────────
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.distributeYield(YIELD_USDC);
+
+            // ── Expected yield math ──────────────────────────────
+            //
+            // mintedGross      = 110,000 MZUSD
+            // protocolFee      = 0 (no fees)
+            // allocatable      = 110,000 MZUSD
+            //
+            // basePool         = 110,000 × 70.97%     = 78,067 MZUSD
+            // totalTvl         = 800k + 200k           = 1,000,000 MZUSD
+            //
+            // TVL ratio is 80:20 (= 4:1). basePool × 4/5 = 78,067 × 4/5
+            // = 62,453.6 — non-integer, computed via integer division.
+            //
+            // ┌───────────┬──────────────────────────────────┬─────────────────┬──────────────┐
+            // │ Tranche   │ baseShare (pool×tvl/totalTvl)    │ riskPremium     │ total        │
+            // ├───────────┼──────────────────────────────────┼─────────────────┼──────────────┤
+            // │ Senior    │ 78,067 × 800k/1M ≈ 62,453.6     │ 110k×0% = 0    │ ≈ 62,453.6   │
+            // │ Junior    │ remainder = 110k − senior        │ (dust)          │ ≈ 47,546.4   │
+            // └───────────┴──────────────────────────────────┴─────────────────┴──────────────┘
+            //
+            // Junior cross-check: base ≈ 15,613.4 + risk 31,933 ≈ 47,546.4
+
+            const allocatable = to18(110_000);
+            const totalTvl = seniorTVL + juniorTVL;
+            const basePool = (allocatable * 7097n) / BPS;
+
+            // Senior: base share only (riskPremiumBps = 0)
+            const seniorBaseShare = (basePool * seniorTVL) / totalTvl;
+            const expectedSeniorYield = seniorBaseShare;
+
+            // Junior: dust catch-all (remainder after senior)
+            const expectedJuniorYield = allocatable - expectedSeniorYield;
+
+            // Verify clean intermediates
+            expect(allocatable).to.equal(to18(110_000));
+            expect(basePool).to.equal(to18(78_067));
+
+            // ── Verify on-chain yield amounts ────────────────────
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n); // disabled
+
+            // No fees, so no MZUSD minted to fee receivers
+            expect(await mzusd.balanceOf(bob.address)).to.equal(0n); // performanceFeeReceiver
+            expect(await mzusd.balanceOf(carol.address)).to.equal(0n); // protocolFeeReceiver
+
+            // Vault retains no MZUSD
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+
+            // ── Verify return from yield amounts ────────────────
+            //
+            // Integer division truncates fractional bps:
+            // Senior: ≈ 7.81% → 780 bps (spreadsheet: 8.05% at 11.34% APR)
+            // Junior: ≈ 23.77% → 2377 bps (spreadsheet: 24.51% at 11.34% APR)
+
+            const seniorReturn_bps = (expectedSeniorYield * BPS) / seniorTVL;
+            const juniorReturn_bps = (expectedJuniorYield * BPS) / juniorTVL;
+
+            expect(seniorReturn_bps).to.equal(780n);
+            expect(juniorReturn_bps).to.equal(2377n);
+
+            // ── Cross-check: share price reflects yield after full stream
+            await time.increase(DAY);
+
+            const seniorPPSAfter = await senior.pricePerShare();
+            const juniorPPSAfter = await junior.pricePerShare();
+
+            const WAD = to18(1);
+            const expectedSeniorPPS = ((seniorTVL + expectedSeniorYield) * WAD) / seniorTVL;
+            const expectedJuniorPPS = ((juniorTVL + expectedJuniorYield) * WAD) / juniorTVL;
+
+            expect(seniorPPSAfter)
+                .to.be.gte(expectedSeniorPPS - 1n)
+                .and.lte(expectedSeniorPPS);
+            expect(juniorPPSAfter)
+                .to.be.gte(expectedJuniorPPS - 1n)
+                .and.lte(expectedJuniorPPS);
+        });
+    });
+
+    // ── setYieldDistribution unit tests ───────────────────────────────
+
+    describe("setYieldDistribution", () => {
+        it("should update baseRewardBps, per-tranche riskPremiumBps and enabled flags", async () => {
+            // 3 tranches registered: senior=idx0, mezzanine=idx1, junior=idx2
+            await expect(vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, false, true]))
+                .to.emit(vault, "YieldDistributionUpdated")
+                .withArgs(5000, [1000, 2000, 2000], [true, false, true]);
+
+            expect(await vault.baseRewardBps()).to.equal(5000);
+
+            const t0 = await vault.tranches(0);
+            const t1 = await vault.tranches(1);
+            const t2 = await vault.tranches(2);
+
+            expect(t0.riskPremiumBps).to.equal(1000);
+            expect(t0.enabled).to.equal(true);
+
+            expect(t1.riskPremiumBps).to.equal(2000);
+            expect(t1.enabled).to.equal(false);
+
+            expect(t2.riskPremiumBps).to.equal(2000);
+            expect(t2.enabled).to.equal(true);
+        });
+
+        it("should revert when riskPremiumsBps array length does not match tranches", async () => {
+            await expect(
+                vault.setYieldDistribution(5000, [2500, 2500], [true, true, true])
+            ).to.be.revertedWithCustomError(vault, "LengthMismatch");
+        });
+
+        it("should revert when enabled array length does not match tranches", async () => {
+            await expect(
+                vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, true])
+            ).to.be.revertedWithCustomError(vault, "LengthMismatch");
+        });
+
+        it("should revert when baseRewardBps + sum(riskPremiumsBps) != 10000", async () => {
+            // Total = 5000 + 1000 + 1000 + 1000 = 8000 (< 10000)
+            await expect(
+                vault.setYieldDistribution(5000, [1000, 1000, 1000], [true, true, true])
+            ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
+
+            // Total = 5000 + 2000 + 2000 + 2000 = 11000 (> 10000)
+            await expect(
+                vault.setYieldDistribution(5000, [2000, 2000, 2000], [true, true, true])
+            ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
         });
     });
 });
