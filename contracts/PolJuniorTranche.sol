@@ -96,11 +96,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         uint256 yieldAmount
     ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
         if (yieldAmount == 0) revert ZeroYieldPassed();
-
-        address payout = polPayout;
-        if (payout == address(0)) revert PolPayoutNotSet();
-
-        mzusd.transfer(payout, yieldAmount);
+        mzusd.transfer(polPayout, yieldAmount);
         emit PolPayoutNotified(yieldAmount);
     }
 
