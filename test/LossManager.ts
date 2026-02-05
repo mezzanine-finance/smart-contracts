@@ -200,15 +200,7 @@ describe("LossManager", () => {
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
         pol = (await upgrades.deployProxy(
             PolFactory,
-            [
-                mzusd.target,
-                vault.target,
-                "POL Junior Tranche",
-                "pJLT",
-                accessManager.target,
-                pauseManager.target,
-                bob.address,
-            ],
+            [mzusd.target, vault.target, accessManager.target, pauseManager.target, bob.address],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -263,13 +255,8 @@ describe("LossManager", () => {
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
-        const polRedeemSel = pol.interface.getFunction("redeem").selector;
 
-        await accessManager.setTargetFunctionRole(
-            polAddr,
-            [polWithdrawSel, polRedeemSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(polAddr, [polWithdrawSel], ADMIN_ROLE);
 
         // admin: vault distribute + tranche management + epoch config (for integration test)
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
@@ -356,6 +343,10 @@ describe("LossManager", () => {
         const trancheAddr = await tranche.getAddress();
         await mzusd.connect(user).approve(trancheAddr, mzAmount18);
         await (await tranche.connect(user).deposit(mzAmount18, user.address)).wait();
+    }
+
+    async function depositMZIntoPol(mzAmount18: bigint) {
+        await (await mzusd.connect(deployer).transfer(polAddr, mzAmount18)).wait();
     }
 
     function parseLossApplied(receipt: any) {
@@ -828,7 +819,7 @@ describe("LossManager", () => {
         it("Pair-mode: proportional loss across [Junior, POL Junior] when contiguous and same tranche group", async () => {
             // deposit: junior = 100, pol = 300
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
 
             // order: [junior, pol, mezz, senior]
             await (
@@ -855,8 +846,8 @@ describe("LossManager", () => {
             const jDeposit = await mintMZUSDFor(alice, to6(100n));
             await depositMZIntoTranche(alice, junior, jDeposit);
 
-            const pDeposit = await mintMZUSDFor(alice, to6(300n));
-            await depositMZIntoTranche(alice, pol, pDeposit);
+            const pDeposit = await mintMZUSDFor(deployer, to6(300n));
+            await depositMZIntoPol(pDeposit);
 
             await (
                 await lossManager
@@ -883,7 +874,7 @@ describe("LossManager", () => {
         });
 
         it("Pair-mode burns only from the tranche with TVL", async () => {
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(50n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(50n)));
 
             await (
                 await lossManager
@@ -906,7 +897,7 @@ describe("LossManager", () => {
 
         it("Pair-mode passes remainder to the next tranche", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(5n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(5n)));
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(20n)));
 
             await (
@@ -933,7 +924,7 @@ describe("LossManager", () => {
         it("Pair mode burns match expected proportional split (30 iterations)", async () => {
             // Big buffers
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10_000n)));
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(30_000n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(30_000n)));
 
             // Put pair first
             await (
@@ -976,7 +967,7 @@ describe("LossManager", () => {
             // Setup TVL: mezz small, then pair big
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(200n)));
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
 
             await (
                 await lossManager
@@ -1017,7 +1008,7 @@ describe("LossManager", () => {
     describe("Order configuration validation (edge)", () => {
         it("Group Id set but NOT contiguous -> reverts in setTrancheOrderAndGroups", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
-            await depositMZIntoTranche(alice, pol, await mintMZUSDFor(alice, to6(300n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
 
             // Not contiguous: junior, mezz, pol, senior

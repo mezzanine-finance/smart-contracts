@@ -325,8 +325,6 @@ async function main() {
                     [
                         mzusd.address,
                         vault.address,
-                        config.polJunior!.name,
-                        config.polJunior!.symbol,
                         accessManager.address,
                         pauseManager.address,
                         config.polJunior!.polPayout,
@@ -914,7 +912,6 @@ async function main() {
             polJunior.address,
             [
                 polJunior.contract.interface.getFunction("withdraw").selector,
-                polJunior.contract.interface.getFunction("redeem").selector,
                 polJunior.contract.interface.getFunction("setPolPayout").selector,
             ],
             adminRole
@@ -1108,7 +1105,7 @@ async function main() {
         }
     }
     if (polJunior?.implementation) {
-        await verifyContract(polJunior.implementation, [], shouldVerify);
+        await verifyContract(polJunior.implementation, [vault.address], shouldVerify);
     }
     if (lossManager.implementation) {
         await verifyContract(lossManager.implementation, [], shouldVerify);

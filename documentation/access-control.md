@@ -83,7 +83,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 ### PolJuniorTranche (UUPS)
 
 - `notifyYield` → only the configured `vault` address
-- `withdraw`, `redeem`, `setPolPayout` → `ADMIN_ROLE`
+- `withdraw`, `setPolPayout` → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### ReservoirUSDC (UUPS)

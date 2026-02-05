@@ -85,8 +85,6 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 
 ### PolJuniorTranche
 
-- `DEPOSITS`: `deposit`, `mint`
-- `WITHDRAWALS`: `withdraw`, `redeem`
-- `TRANSFERS`: `transfer`, `transferFrom`, `approve`
+- `WITHDRAWALS`: `withdraw`
 - `ADMIN`: `setPolPayout`
 - `PROTOCOL`: `notifyYield`

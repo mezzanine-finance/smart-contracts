@@ -100,8 +100,6 @@
   ],
   "polJunior": {
     "enabled": true,
-    "name": "POL Junior Tranche",
-    "symbol": "pJLT",
     "polPayout": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     "registerInVault": false
   },

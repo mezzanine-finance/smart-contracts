@@ -12,7 +12,7 @@ The protocol supports multiple tranches. The code does not hardcode a count (Vau
 
 - 3 user tranches: **Senior** (instant withdrawal, no deposit cap), **Mezzanine** and
   **Junior** (umbrella withdrawals with delays and deposit caps).
-- 1 protocol-owned tranche: **PolJuniorTranche** (instant withdrawals, yield forwarded
+- 1 protocol-owned tranche: **PolJuniorTranche** (admin-only withdrawals, yield forwarded
   immediately to `polPayout`).
 
 Implementation-wise, **Senior/Mezzanine/Junior are all `Tranche` instances** with different
@@ -181,11 +181,13 @@ avoid “magic defaults” in scripts.
 
 | Key                         | Type    | Required                           | Meaning / Impact                                                                                      |
 | --------------------------- | ------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `polJunior.name`            | string  | yes                                | ERC20 name.                                                                                           |
-| `polJunior.symbol`          | string  | yes                                | ERC20 symbol.                                                                                         |
 | `polJunior.polPayout`       | address | yes                                | Address that receives all yield immediately.                                                          |
 | `polJunior.registerInVault` | bool    | no                                 | If `true`, add as tranche to Vault distribution. Decide whether POL should share yield and/or losses. |
 | `polJunior.weight`          | uint16  | required if `registerInVault=true` | Weight used in Vault distribution.                                                                    |
+
+Notes:
+- PolJuniorTranche is an admin-only escrow (no ERC4626 shares); withdrawals are restricted.
+- Admins fund it by transferring MZUSD directly to the tranche address.
 
 ## Notes and decisions
 

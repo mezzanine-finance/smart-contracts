@@ -34,16 +34,16 @@ engineers, integrators, and auditors.
 
 ### PolJuniorTranche (contracts/PolJuniorTranche.sol)
 
-- ERC4626 tranche intended for protocol-owned liquidity.
-- Withdraw and redeem are AccessManager-restricted.
+- Admin-only escrow-style tranche intended for protocol-owned liquidity (no ERC4626 shares).
+- Funded by direct MZUSD transfers; withdraw is AccessManager-restricted.
 - Yield is forwarded immediately to `polPayout` (no streaming, no umbrella).
 - Asset is **intended** to be MZUSD; initializer validates MZUSD authority/pause manager wiring.
 - Vault address is immutable (constructor param) and validated on initialize.
 
 Note (Phase 1 transfer safety):
 - Explicit `SafeERC20.safeTransfer` usage in our contracts is limited to
-  `Tranche.claim` and `PolJuniorTranche.notifyYield`. ERC4626 itself uses
-  SafeERC20 internally for asset transfers in deposit/mint/withdraw/redeem.
+  `Tranche.claim`. ERC4626 itself uses SafeERC20 internally for asset transfers
+  in deposit/mint/withdraw/redeem.
 
 ### MZUSD (contracts/MZUSD.sol)
 

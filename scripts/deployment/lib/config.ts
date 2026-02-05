@@ -86,8 +86,6 @@ export interface TrancheConfig {
 
 export interface PolJuniorConfig {
     enabled: boolean;
-    name: string;
-    symbol: string;
     polPayout: string;
     registerInVault?: boolean;
     weight?: number;
