@@ -16,6 +16,7 @@ import "./interfaces/IMZUSD.sol";
 /// @notice Despite governance/ops control, this tranche still participates in loss realization via LossManager `applyLoss`.
 /// @notice When configured in the same LossManager group as the regular Junior tranche, losses are split proportionally by TVL within that group.
 /// @notice There is no deposit function; admins fund by transferring MZUSD directly to this contract.
+/// @notice Anyone can transfer MZUSD into this contract, but only admins can withdraw.
 /// @dev Intended usage is protocol treasury liquidity management; governance/ops roles decide who can exit.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
