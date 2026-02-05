@@ -403,4 +403,64 @@ describe("NavOracleAutomation", () => {
             navAutomation.connect(deployer).setVetoPeriod(max + 1n)
         ).to.be.revertedWithCustomError(navAutomation, "InvalidVetoPeriod");
     });
+
+    it("rotates nav oracle end-to-end (old submits, switch, new submits, old revoked)", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(5n);
+
+        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await time.increase(DAY);
+        await navAutomation.performUpkeep("0x");
+
+        const NavAutomationFactory = await ethers.getContractFactory(
+            "NavOracleAutomation",
+            deployer
+        );
+        const navAutomation2 = (await NavAutomationFactory.deploy(
+            accessManager.target,
+            mzusd.target,
+            vault.target,
+            lossManager.target,
+            DAY
+        )) as unknown as NavOracleAutomation;
+        await navAutomation2.waitForDeployment();
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const submitSelector = navAutomation2.interface.getFunction("submitNav").selector;
+        const rejectSelector = navAutomation2.interface.getFunction("rejectPendingNav").selector;
+        const setVetoSelector = navAutomation2.interface.getFunction("setVetoPeriod").selector;
+        await accessManager.setTargetFunctionRole(
+            navAutomation2.target,
+            [submitSelector],
+            ORACLE_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            navAutomation2.target,
+            [rejectSelector, setVetoSelector],
+            ADMIN_ROLE
+        );
+        await accessManager.grantRole(ADMIN_ROLE, navAutomation2.target, 0);
+
+        await vault.setNavOracle(navAutomation2.target);
+        await lossManager.setNavOracle(navAutomation2.target);
+
+        await accessManager.revokeRole(ORACLE_ROLE, oracle.address);
+        await accessManager.revokeRole(ADMIN_ROLE, navAutomation.target);
+        await accessManager.grantRole(ORACLE_ROLE, bob.address, 0);
+
+        await expect(navAutomation.connect(oracle).submitNav(navUSDC)).to.be.reverted;
+
+        const totalSupplyMZ2 = await mzusd.totalSupply();
+        const totalSupplyUSDC2 = totalSupplyMZ2 / SCALE;
+        const navUSDC2 = totalSupplyUSDC2 + to6(1n);
+        await navAutomation2.connect(bob).submitNav(navUSDC2);
+        await time.increase(DAY);
+        await navAutomation2.performUpkeep("0x");
+
+        expect(await vault.navOracle()).to.equal(navAutomation2.target);
+        expect(await navAutomation2.hasPendingNav()).to.equal(false);
+    });
 });

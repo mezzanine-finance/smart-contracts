@@ -461,6 +461,75 @@ describe("Vault Yield Distribution", () => {
             await vault.connect(deployer).setFeeReceivers(bob.address, bob.address);
         });
 
+        it("Allows nav oracle rotation to another compatible oracle", async () => {
+            const MockNavOracleFactory = await ethers.getContractFactory(
+                "MockNavOracleAutomationRef",
+                deployer
+            );
+            const nextOracle = await MockNavOracleFactory.deploy(
+                vault.target,
+                lossManagerRef.target,
+                mzusd.target
+            );
+            await nextOracle.waitForDeployment();
+
+            await expect(vault.connect(deployer).setNavOracle(nextOracle.target))
+                .to.emit(vault, "NavOracleUpdated")
+                .withArgs(nextOracle.target);
+            expect(await vault.navOracle()).to.equal(nextOracle.target);
+
+            await expect(
+                vault.connect(deployer).setNavOracle(nextOracle.target)
+            ).to.be.revertedWithCustomError(vault, "SameValue");
+        });
+
+        it("Rejects nav oracle rotation when references mismatch", async () => {
+            const MockLossManagerFactory = await ethers.getContractFactory(
+                "MockLossManagerRef",
+                deployer
+            );
+            const otherLossManager = await MockLossManagerFactory.deploy(
+                vault.target,
+                mzusd.target
+            );
+            await otherLossManager.waitForDeployment();
+
+            const MockNavOracleFactory = await ethers.getContractFactory(
+                "MockNavOracleAutomationRef",
+                deployer
+            );
+
+            const wrongVaultOracle = await MockNavOracleFactory.deploy(
+                bob.address,
+                lossManagerRef.target,
+                mzusd.target
+            );
+            await wrongVaultOracle.waitForDeployment();
+            await expect(vault.connect(deployer).setNavOracle(wrongVaultOracle.target))
+                .to.be.revertedWithCustomError(vault, "InvalidNavOracleVault")
+                .withArgs(bob.address);
+
+            const wrongLossOracle = await MockNavOracleFactory.deploy(
+                vault.target,
+                otherLossManager.target,
+                mzusd.target
+            );
+            await wrongLossOracle.waitForDeployment();
+            await expect(vault.connect(deployer).setNavOracle(wrongLossOracle.target))
+                .to.be.revertedWithCustomError(vault, "InvalidNavOracleLossManager")
+                .withArgs(otherLossManager.target);
+
+            const wrongMzusdOracle = await MockNavOracleFactory.deploy(
+                vault.target,
+                lossManagerRef.target,
+                bob.address
+            );
+            await wrongMzusdOracle.waitForDeployment();
+            await expect(vault.connect(deployer).setNavOracle(wrongMzusdOracle.target))
+                .to.be.revertedWithCustomError(vault, "InvalidNavOracleMZUSD")
+                .withArgs(bob.address);
+        });
+
         it("Enforces tranche weight limit for add/update", async () => {
             const limit = await vault.TRANCHE_WEIGHT_LIMIT();
             const over = limit + 1n;
