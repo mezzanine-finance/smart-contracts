@@ -1,6 +1,7 @@
 # Access Control and Roles (Phase 1)
 
 ## Overview
+
 Access control is centralized in OpenZeppelin `AccessManager` for all functions that use
 the `restricted` modifier. Some critical flows are **not** AccessManager-gated and instead
 use direct address checks (e.g. `onlyVault`, `onlyMZUSD`, `onlyLossManager`, `onlyNavOracle`).
@@ -58,6 +59,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### Vault (UUPS)
+
 - `distributeYield` → only the configured `navOracle` address
 - `rebalance` → `ADMIN_ROLE` (or a dedicated operator role)
 - `withdraw` → only the configured MZUSD address (no AccessManager role)
@@ -69,12 +71,14 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### Tranche (UUPS)
+
 - `notifyYield` → only the configured `vault` address
 - `setUnstakeDelayEpochs`, `setDepositLimits` → `ADMIN_ROLE`
 - `finalizeEpoch` → public (no AccessManager role; paused via `PROTOCOL` category)
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### PolJuniorTranche (UUPS)
+
 - `notifyYield` → only the configured `vault` address
 - `withdraw`, `redeem`, `setPolPayout` → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
@@ -86,6 +90,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### LossManager (UUPS)
+
 - `applyLoss` → only the configured `navOracle` address
 - `setTrancheOrderAndGroups`, `setMaxLossPerTxUSDC`, `setNavOracle` → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
@@ -96,10 +101,12 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `rejectPendingNav`, `setVetoPeriod` → `ADMIN_ROLE`
 
 ## Cross-contract grants (must exist)
+
 - Vault + designated operators must hold `RESERVOIR_WITHDRAW_ROLE` to call:
-  - `ReservoirUSDC.withdraw`
+    - `ReservoirUSDC.withdraw`
 
 ## Direct address checks (must be wired)
+
 - `Vault.mzusd` is immutable (constructor param) and gates `Vault.withdraw`.
 - `Vault.reservoir` is immutable (constructor param) and used for rebalance/withdraw liquidity pulls.
 - `Vault.lossManager` is set once via `setLossManager` and gates `Vault.advanceEpoch`.

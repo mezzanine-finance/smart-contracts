@@ -1,8 +1,8 @@
-import {Contract} from "ethers";
+import type {AccessManager} from "../../../typechain-types";
 import {log} from "./logger";
 
 export async function ensureTargetRole(
-    accessManager: Contract,
+    accessManager: AccessManager,
     target: string,
     selectors: string[],
     roleId: number
@@ -19,7 +19,7 @@ export async function ensureTargetRole(
 }
 
 export async function ensureRoleMember(
-    accessManager: Contract,
+    accessManager: AccessManager,
     roleId: number,
     account: string,
     executionDelay = 0
