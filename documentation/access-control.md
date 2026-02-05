@@ -121,7 +121,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `MZUSD.lossManager` is set once via `setLossManager` and gates `MZUSD.burn`.
 - `MZUSD.vault` is set once via `setVault` and gates `MZUSD.mint`.
 - `Tranche.vault` is set on initialization and gates `Tranche.notifyYield`.
-- `PolJuniorTranche.vault` is set on initialization and gates `PolJuniorTranche.notifyYield`.
+- `PolJuniorTranche.vault` is an immutable constructor param and gates `PolJuniorTranche.notifyYield`.
 
 ## Minimal separation recommendation
 

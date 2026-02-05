@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 // solhint-disable-next-line max-line-length
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PauseManagedUpgradeable} from "./pause/PauseManagedUpgradeable.sol";
 import {PauseCategory} from "./pause/PauseCategory.sol";
@@ -15,12 +14,7 @@ import {IVault} from "./interfaces/IVault.sol";
 /// @notice Burn MZUSD from tranches in predefined order to materialize protocol losses.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract LossManager is
-    Initializable,
-    AccessManagedUpgradeable,
-    UUPSUpgradeable,
-    PauseManagedUpgradeable
-{
+contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
     uint256 public constant USDC_DECIMALS = 6;
     uint256 public constant MZ_DECIMALS = 18;
     uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12

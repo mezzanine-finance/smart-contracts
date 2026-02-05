@@ -331,7 +331,12 @@ async function main() {
                         pauseManager.address,
                         config.polJunior!.polPayout,
                     ],
-                    {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+                    {
+                        kind: "uups",
+                        initializer: "initialize",
+                        unsafeAllow: ["constructor", "state-variable-immutable"],
+                        constructorArgs: [vault.address],
+                    }
                 ),
             fresh,
             deployments

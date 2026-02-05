@@ -209,7 +209,12 @@ describe("LossManager", () => {
                 pauseManager.target,
                 bob.address,
             ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [vault.target],
+            }
         )) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
 

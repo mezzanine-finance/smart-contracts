@@ -1,6 +1,12 @@
 [
     {
-        "inputs": [],
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "constructor"
     },
@@ -261,6 +267,61 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actual",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actual",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actual",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "payout",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidPolPayout",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidVault",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "NotInitializing",
         "type": "error"
@@ -283,11 +344,6 @@
     {
         "inputs": [],
         "name": "PolPayoutNotSet",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ReentrancyGuardReentrantCall",
         "type": "error"
     },
     {
