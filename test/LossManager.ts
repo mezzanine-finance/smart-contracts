@@ -258,7 +258,8 @@ describe("LossManager", () => {
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
-        const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
+        const setYieldDistributionSel =
+            vault.interface.getFunction("setYieldDistribution").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         const setVaultLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setVaultNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
@@ -269,7 +270,7 @@ describe("LossManager", () => {
                 setMZUSDSel,
                 distributeSel,
                 addTrancheSel,
-                updateTrancheSel,
+                setYieldDistributionSel,
                 setEpochConfigSel,
                 setVaultLossManagerSel,
                 setVaultNavOracleSel,
@@ -319,9 +320,11 @@ describe("LossManager", () => {
         await vault.setNavOracle(deployer.address);
         await lossManager.setNavOracle(deployer.address);
 
-        await vault.addTranche({tranche: juniorAddr, weight: 2000, enabled: true});
-        await vault.addTranche({tranche: mezzanineAddr, weight: 3000, enabled: true});
-        await vault.addTranche({tranche: seniorAddr, weight: 5000, enabled: true});
+        await vault.addTranche(juniorAddr);
+        await vault.addTranche(mezzanineAddr);
+        await vault.addTranche(seniorAddr);
+        // Configure yield distribution: junior=20%, mezzanine=30%, senior=50% risk premium
+        await vault.setYieldDistribution(0, [2000, 3000, 5000], [true, true, true]);
 
         snapshot = await takeSnapshot();
     });

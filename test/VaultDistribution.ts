@@ -1,14 +1,29 @@
 import {expect} from "chai";
-import {ethers, upgrades} from "hardhat";
+import {ethers, upgrades, network} from "hardhat";
 import {parseUnits} from "ethers";
-import {takeSnapshot, time} from "@nomicfoundation/hardhat-network-helpers";
+import {
+    impersonateAccount,
+    setBalance,
+    takeSnapshot,
+    time,
+} from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, MockUSDC, Tranche, PauseManager} from "../typechain-types";
+import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, PauseManager} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
+
+// Mainnet USDC constants
+const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
+
+async function imp(addr: string) {
+    await setBalance(addr, to18(10)); // ETH for gas
+    await impersonateAccount(addr);
+    return ethers.getSigner(addr);
+}
 
 describe("Vault Yield Distribution", () => {
     let snapshot: SnapshotRestorer;
@@ -20,7 +35,8 @@ describe("Vault Yield Distribution", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let usdc: MockUSDC;
+    let usdc: IERC20;
+    let usdcTotalSupply: bigint;
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
@@ -30,19 +46,20 @@ describe("Vault Yield Distribution", () => {
     let mezzanine: Tranche;
     let senior: Tranche;
 
+    let whale: any;
+
     const DAY = 24 * 60 * 60;
     const MZUSD_SCALE = 1_000_000_000_000n;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
+
+        usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
+        usdcTotalSupply = await usdc.totalSupply();
+        whale = await imp(USDC_WHALE);
         upgrades.silenceWarnings();
+        await network.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
 
-        // ── Mock USDC ───────────────────────────────────────────────
-        const MockUSDCFactory = await ethers.getContractFactory("MockUSDC", deployer);
-        usdc = (await MockUSDCFactory.deploy()) as unknown as MockUSDC;
-        await usdc.waitForDeployment();
-
-        // ── Access & Pause ──────────────────────────────────────────
         const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
         accessManager = await AccessManagerFactory.deploy(deployer.address);
         await accessManager.waitForDeployment();
@@ -53,7 +70,6 @@ describe("Vault Yield Distribution", () => {
             initializer: "initialize",
         })) as unknown as PauseManager;
 
-        // ── Reservoir ───────────────────────────────────────────────
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
         reservoir = (await upgrades.deployProxy(
             ReservoirFactory,
@@ -62,11 +78,10 @@ describe("Vault Yield Distribution", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [usdc.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as ReservoirUSDC;
 
-        // ── Vault ───────────────────────────────────────────────────
         const VaultFactory = await ethers.getContractFactory("Vault", deployer);
         vault = (await upgrades.deployProxy(
             VaultFactory,
@@ -75,24 +90,23 @@ describe("Vault Yield Distribution", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [usdc.target, reservoir.target],
+                constructorArgs: [MAINNET_USDC, reservoir.target],
             }
         )) as unknown as Vault;
 
-        // ── MZUSD ──────────────────────────────────────────────────
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
             [
                 accessManager.target,
                 pauseManager.target,
-                to6(1_000_000_000), // _hourlyLimitUSDC
+                usdcTotalSupply, // _hourlyLimitUSDC (max allowed)
             ],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [usdc.target, vault.target],
+                constructorArgs: [MAINNET_USDC, vault.target],
             }
         )) as unknown as MZUSD;
 
@@ -218,7 +232,7 @@ describe("Vault Yield Distribution", () => {
     });
 
     async function mintMZUSDFor(user: any, usdcAmount6: bigint): Promise<bigint> {
-        await usdc.mint(user.address, usdcAmount6);
+        await usdc.connect(whale).transfer(user.address, usdcAmount6);
         await usdc.connect(user).approve(mzusd.target, usdcAmount6);
         await (await mzusd.connect(user).deposit(usdcAmount6)).wait();
         return await mzusd.balanceOf(user.address);
@@ -230,7 +244,7 @@ describe("Vault Yield Distribution", () => {
     }
 
     async function fundYieldUSDC(amountUSDC: bigint) {
-        await usdc.mint(reservoir.target as string, amountUSDC);
+        await usdc.connect(whale).transfer(reservoir.target as string, amountUSDC);
     }
 
     async function expectSupplyMatchesBacking() {
@@ -313,7 +327,7 @@ describe("Vault Yield Distribution", () => {
             expect(epochDuration).to.equal(await vault.epochDuration());
 
             // currentIdleUSDC
-            await usdc.mint(vault.target as string, to6(5n));
+            await usdc.connect(whale).transfer(vault.target as string, to6(5n));
             expect(await vault.currentIdleUSDC()).to.equal(to6(5n));
 
             // Length unchanged
@@ -411,7 +425,7 @@ describe("Vault Yield Distribution", () => {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [usdc.target, reservoir.target],
+                        constructorArgs: [MAINNET_USDC, reservoir.target],
                     }
                 )
             ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
@@ -432,7 +446,7 @@ describe("Vault Yield Distribution", () => {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [usdc.target, reservoir.target],
+                        constructorArgs: [MAINNET_USDC, reservoir.target],
                     }
                 )
             ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");
@@ -461,7 +475,7 @@ describe("Vault Yield Distribution", () => {
             await expectSupplyMatchesBacking();
 
             const yieldUSDC = to6(10n);
-            await usdc.mint(reservoir.target as string, yieldUSDC);
+            await usdc.connect(whale).transfer(reservoir.target as string, yieldUSDC);
             await time.increase(DAY);
 
             await (await vault.connect(deployer).distributeYield(yieldUSDC)).wait();

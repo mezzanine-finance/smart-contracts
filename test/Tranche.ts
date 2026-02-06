@@ -134,6 +134,8 @@ describe("Tranche", () => {
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const setYieldDistributionSelector =
+            vault.interface.getFunction("setYieldDistribution").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
@@ -144,6 +146,7 @@ describe("Tranche", () => {
                 distributeYieldSelector,
                 advanceEpochSelector,
                 addTrancheSelector,
+                setYieldDistributionSelector,
                 setLossManagerSelector,
                 setNavOracleSelector,
             ],
@@ -155,11 +158,8 @@ describe("Tranche", () => {
         await vault.setLossManager(deployer.address);
         await vault.setNavOracle(deployer.address);
 
-        await vault.addTranche({
-            tranche: tranche.target,
-            weight: 10_000,
-            enabled: true,
-        });
+        await vault.addTranche(tranche.target);
+        await vault.setYieldDistribution(0, [10_000], [true]);
 
         snapshot = await takeSnapshot();
     });

@@ -161,7 +161,8 @@ describe("PolJuniorTranche", () => {
         const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
-        const updateTrancheSel = vault.interface.getFunction("updateTranche").selector;
+        const setYieldDistributionSel =
+            vault.interface.getFunction("setYieldDistribution").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         const setLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
@@ -171,7 +172,7 @@ describe("PolJuniorTranche", () => {
                 setMZUSDSel,
                 distributeSel,
                 addTrancheSel,
-                updateTrancheSel,
+                setYieldDistributionSel,
                 setEpochConfigSel,
                 setLossManagerSel,
                 setNavOracleSel,
@@ -275,7 +276,8 @@ describe("PolJuniorTranche", () => {
     describe("Yield forwarding", () => {
         it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
             // Register only POL tranche to make allocation deterministic (100% to POL)
-            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+            await vault.addTranche(polAddr);
+            await vault.setYieldDistribution(0, [10_000], [true]);
 
             // Deposit principal by Alice (PUBLIC deposit should work)
             const alicePrincipal = await mintMZUSDFor(alice, to6(1n));
@@ -354,7 +356,8 @@ describe("PolJuniorTranche", () => {
 
     describe("Multi-user flows", () => {
         it("Many users deposit, admin withdraws across owners", async () => {
-            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+            await vault.addTranche(polAddr);
+            await vault.setYieldDistribution(0, [10_000], [true]);
 
             const participants = [alice, ...users.slice(0, 8)];
 
@@ -414,7 +417,8 @@ describe("PolJuniorTranche", () => {
         });
 
         it("Repeated deposit/withdraw roundtrips", async () => {
-            await vault.addTranche({tranche: polAddr, weight: 10_000, enabled: true});
+            await vault.addTranche(polAddr);
+            await vault.setYieldDistribution(0, [10_000], [true]);
 
             await mintMZUSDFor(alice, to6(200n));
             const startBal = await mzusd.balanceOf(alice.address);
