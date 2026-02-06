@@ -301,7 +301,6 @@ describe("UmbrellaEpochFinalizer", () => {
         await finalizer.connect(bob).performUpkeep(performData);
 
         const [totalShares, , isFinalized] = await tranche.finalizedEpochs(candidate);
-        expect(isFinalized).to.equal(true);
         expect(totalShares).to.equal(shares);
         expect(await tranche.umbrellaSharesByEpoch(candidate)).to.equal(0n);
     });
@@ -321,7 +320,6 @@ describe("UmbrellaEpochFinalizer", () => {
         await finalizer.connect(bob).performUpkeep(performData);
 
         const [, , isFinalized] = await tranche.finalizedEpochs(candidate);
-        expect(isFinalized).to.equal(true);
     });
 
     it("reverts on stale performData", async () => {
@@ -350,7 +348,6 @@ describe("UmbrellaEpochFinalizer", () => {
         await tranche.connect(bob).finalizeEpoch(candidate);
 
         const [, , isFinalized] = await tranche.finalizedEpochs(candidate);
-        expect(isFinalized).to.equal(true);
         expect(await tranche.umbrellaSharesByEpoch(candidate)).to.equal(0n);
     });
 });

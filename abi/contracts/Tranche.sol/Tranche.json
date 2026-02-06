@@ -1095,11 +1095,6 @@
                 "internalType": "uint256",
                 "name": "totalAssets",
                 "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "isFinalized",
-                "type": "bool"
             }
         ],
         "stateMutability": "view",

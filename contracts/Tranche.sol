@@ -36,7 +36,6 @@ contract Tranche is
     struct FinalizedEpoch {
         uint256 totalShares;
         uint256 totalAssets;
-        bool isFinalized;
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
@@ -245,7 +244,7 @@ contract Tranche is
         if (userShares == 0) revert NothingToClaim();
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
-        if (!finalizedData.isFinalized) revert NotFinalized();
+        if (finalizedData.totalShares == 0) revert NotFinalized();
         uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
 
         userSharesByEpoch[msg.sender][epochId] = 0;
@@ -277,8 +276,7 @@ contract Tranche is
 
         finalizedEpochs[epochId] = FinalizedEpoch({
             totalShares: sharesToFinalize,
-            totalAssets: assetsToCredit,
-            isFinalized: true
+            totalAssets: assetsToCredit
         });
 
         reservedAssets += assetsToCredit;
@@ -409,11 +407,11 @@ contract Tranche is
     {
         pendingShares = userSharesByEpoch[user][epochId];
         FinalizedEpoch memory e = finalizedEpochs[epochId];
-        isFinalized = e.isFinalized;
+        isFinalized = e.totalShares > 0;
         totalShares = e.totalShares;
         totalAssets_ = e.totalAssets;
 
-        if (isFinalized && pendingShares != 0 && e.totalShares != 0) {
+        if (isFinalized && pendingShares != 0) {
             claimableAssets = (pendingShares * e.totalAssets) / e.totalShares;
         }
     }
@@ -438,7 +436,7 @@ contract Tranche is
     {
         umbrellaShares = umbrellaSharesByEpoch[epochId];
         FinalizedEpoch memory e = finalizedEpochs[epochId];
-        isFinalized = e.isFinalized;
+        isFinalized = e.totalShares > 0;
         totalShares = e.totalShares;
         totalAssets_ = e.totalAssets;
     }

@@ -35,8 +35,8 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
         uint256 candidate = current - 1;
         if (tranche.umbrellaSharesByEpoch(candidate) == 0) return (false, "");
 
-        (, , bool isFinalized) = tranche.finalizedEpochs(candidate);
-        if (isFinalized) return (false, "");
+        (uint256 totalShares, ) = tranche.finalizedEpochs(candidate);
+        if (totalShares > 0) return (false, "");
 
         return (true, abi.encode(candidate));
     }
@@ -55,8 +55,8 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
 
         if (tranche.umbrellaSharesByEpoch(candidate) == 0) revert NoWork();
 
-        (, , bool isFinalized) = tranche.finalizedEpochs(candidate);
-        if (isFinalized) revert NoWork();
+        (uint256 totalShares, ) = tranche.finalizedEpochs(candidate);
+        if (totalShares > 0) revert NoWork();
 
         tranche.finalizeEpoch(epochId);
     }

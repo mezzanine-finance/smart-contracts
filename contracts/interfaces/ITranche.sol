@@ -9,6 +9,6 @@ interface ITranche {
     function umbrellaSharesByEpoch(uint256) external view returns (uint256 shares);
     function finalizedEpochs(
         uint256
-    ) external view returns (uint256 totalShares, uint256 totalAssets, bool isFinalized);
+    ) external view returns (uint256 totalShares, uint256 totalAssets);
     function finalizeEpoch(uint256) external;
 }
