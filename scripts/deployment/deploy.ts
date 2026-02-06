@@ -402,6 +402,7 @@ async function main() {
             "UmbrellaEpochFinalizer",
             deployer
         );
+        const finalizerStartEpoch = BigInt(config.umbrellaFinalizer.startEpoch ?? 1);
         for (const tranche of config.tranches) {
             if (tranche.directWithdrawEnabled) continue;
             const trancheContract = trancheByKey.get(tranche.key)!;
@@ -409,7 +410,7 @@ async function main() {
             const finalizer = await ensureDeployment<UmbrellaEpochFinalizer>(
                 key,
                 FinalizerFactory,
-                async () => FinalizerFactory.deploy(trancheContract.address),
+                async () => FinalizerFactory.deploy(trancheContract.address, finalizerStartEpoch),
                 fresh,
                 deployments
             );

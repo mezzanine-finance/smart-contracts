@@ -105,6 +105,7 @@ export interface NavOracleConfig {
 
 export interface UmbrellaFinalizerConfig {
     enabled: boolean;
+    startEpoch?: number;
 }
 
 export interface PostDeployConfig {
@@ -319,5 +320,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
             requireAddress(deposit.receiver, "seed.trancheDeposits.receiver");
             parseUSDC(deposit.amountUSDC);
         }
+    }
+
+    if (config.umbrellaFinalizer?.startEpoch !== undefined) {
+        assert(
+            Number.isSafeInteger(config.umbrellaFinalizer.startEpoch),
+            "umbrellaFinalizer.startEpoch must be a safe integer"
+        );
+        assert(config.umbrellaFinalizer.startEpoch > 0, "umbrellaFinalizer.startEpoch must be > 0");
     }
 }
