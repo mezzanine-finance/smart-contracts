@@ -363,36 +363,6 @@ describe("LossManager", () => {
         return a < b ? a : b;
     }
 
-    // Mirrors LossManager pair split logic (floor + remainder to first tranche then second)
-    function computePairBurns(lossMZ: bigint, tvl0: bigint, tvl1: bigint) {
-        const pairTVL = tvl0 + tvl1;
-        if (pairTVL === 0n) return {burn0: 0n, burn1: 0n, lossForPair: 0n};
-
-        const lossForPair = min(lossMZ, pairTVL);
-
-        let burn0 = tvl0 === 0n ? 0n : (lossForPair * tvl0) / pairTVL;
-        if (burn0 > tvl0) burn0 = tvl0;
-
-        let burn1 = tvl1 === 0n ? 0n : (lossForPair * tvl1) / pairTVL;
-        if (burn1 > tvl1) burn1 = tvl1;
-
-        let rem = lossForPair - (burn0 + burn1);
-        if (rem !== 0n) {
-            const cap0 = tvl0 - burn0;
-            const add0 = min(cap0, rem);
-            burn0 += add0;
-            rem -= add0;
-        }
-        if (rem !== 0n) {
-            const cap1 = tvl1 - burn1;
-            const add1 = min(cap1, rem);
-            burn1 += add1;
-            rem -= add1;
-        }
-
-        return {burn0, burn1, lossForPair};
-    }
-
     describe("Pause guards", () => {
         it("Pauses protocol operations via PauseManager", async () => {
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
@@ -750,6 +720,127 @@ describe("LossManager", () => {
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(21n));
         });
 
+        it("Burns all available across all tranches, then accumulates more debt when TVL is zero", async () => {
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndPairs(
+                        [juniorAddr, mezzanineAddr, seniorAddr],
+                        [false, false, false]
+                    )
+            ).wait();
+
+            // Deposit 20 into each tranche, then reserve 10 via umbrella withdrawal.
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(20n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(20n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(20n)));
+
+            const epochAtRequest = await vault.currentEpochId();
+            await junior.connect(alice).requestWithdrawal(to18(10n));
+            await mezzanine.connect(bob).requestWithdrawal(to18(10n));
+            await senior.connect(carol).requestWithdrawal(to18(10n));
+
+            await time.increase(DAY);
+            await vault.connect(navOracleSigner).distributeYield(0);
+            await junior.connect(deployer).finalizeEpoch(epochAtRequest);
+            await mezzanine.connect(deployer).finalizeEpoch(epochAtRequest);
+            await senior.connect(deployer).finalizeEpoch(epochAtRequest);
+
+            // 10 liquid in each tranche => total burnable 30.
+            expect(await junior.totalAssets()).to.equal(to18(10n));
+            expect(await mezzanine.totalAssets()).to.equal(to18(10n));
+            expect(await senior.totalAssets()).to.equal(to18(10n));
+
+            await time.increase(DAY);
+            const tx1 = await lossManager.connect(navOracleSigner).applyLoss(to6(35n));
+            const receipt1 = await tx1.wait();
+            const parsed1 = parseLossApplied(receipt1);
+            expect(parsed1).to.not.equal(null);
+
+            const cuts1 = parsed1!.args.cutsMZ as bigint[];
+            expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n)]);
+            expect(parsed1!.args.uncoveredMZ as bigint).to.equal(to18(5n));
+            expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
+            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
+
+            // After first burn, only reserved balances remain => no liquid TVL.
+            expect(await junior.totalAssets()).to.equal(0n);
+            expect(await mezzanine.totalAssets()).to.equal(0n);
+            expect(await senior.totalAssets()).to.equal(0n);
+
+            await time.increase(DAY);
+            const tx2 = await lossManager.connect(navOracleSigner).applyLoss(to6(7n));
+            const receipt2 = await tx2.wait();
+            const parsed2 = parseLossApplied(receipt2);
+            expect(parsed2).to.not.equal(null);
+
+            const cuts2 = parsed2!.args.cutsMZ as bigint[];
+            expect(cuts2).to.deep.equal([0n, 0n, 0n]);
+            expect(parsed2!.args.burnedMZ as bigint).to.equal(0n);
+            expect(parsed2!.args.uncoveredMZ as bigint).to.equal(to18(7n));
+            expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
+            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
+        });
+
+        it("Production order pair drains all tranches and next loss accumulates pure debt", async () => {
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndPairs(
+                        [polAddr, juniorAddr, mezzanineAddr, seniorAddr],
+                        [true, true, false, false]
+                    )
+            ).wait();
+
+            // Keep non-tranche supply so sanity check (loss <= totalSupply) still allows second loss.
+            await mintMZUSDFor(carol, to6(100n));
+
+            // Tranche TVL: POL=10, Junior=10, Mezz=10, Senior=10 => total burnable 40.
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(10n)));
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
+            await depositMZIntoTranche(deployer, senior, await mintMZUSDFor(deployer, to6(10n)));
+
+            expect(await pol.totalAssets()).to.equal(to18(10n));
+            expect(await junior.totalAssets()).to.equal(to18(10n));
+            expect(await mezzanine.totalAssets()).to.equal(to18(10n));
+            expect(await senior.totalAssets()).to.equal(to18(10n));
+
+            // First loss exceeds aggregate tranche TVL by 5.
+            await time.increase(DAY);
+            const tx1 = await lossManager.connect(navOracleSigner).applyLoss(to6(45n));
+            const receipt1 = await tx1.wait();
+            const parsed1 = parseLossApplied(receipt1);
+            expect(parsed1).to.not.equal(null);
+
+            const cuts1 = parsed1!.args.cutsMZ as bigint[];
+            expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n), to18(10n)]);
+            expect(parsed1!.args.burnedMZ as bigint).to.equal(to18(40n));
+            expect(parsed1!.args.uncoveredMZ as bigint).to.equal(to18(5n));
+            expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
+            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
+
+            // All tranches fully drained.
+            expect(await pol.totalAssets()).to.equal(0n);
+            expect(await junior.totalAssets()).to.equal(0n);
+            expect(await mezzanine.totalAssets()).to.equal(0n);
+            expect(await senior.totalAssets()).to.equal(0n);
+
+            // Second loss with zero tranche TVL should produce pure uncovered debt.
+            await time.increase(DAY);
+            const tx2 = await lossManager.connect(navOracleSigner).applyLoss(to6(7n));
+            const receipt2 = await tx2.wait();
+            const parsed2 = parseLossApplied(receipt2);
+            expect(parsed2).to.not.equal(null);
+
+            const cuts2 = parsed2!.args.cutsMZ as bigint[];
+            expect(cuts2).to.deep.equal([0n, 0n, 0n, 0n]);
+            expect(parsed2!.args.burnedMZ as bigint).to.equal(0n);
+            expect(parsed2!.args.uncoveredMZ as bigint).to.equal(to18(7n));
+            expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
+            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
+        });
+
         it("Reverts when loss exceeds total supply sanity bound", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n))); // only 10 total
             await time.increase(DAY);
@@ -844,6 +935,56 @@ describe("LossManager", () => {
     });
 
     describe("Pair mode", () => {
+        it("Pair-mode never over-burns tranche TVL in rounding-heavy sequence", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(11n)));
+
+            await (
+                await lossManager
+                    .connect(deployer)
+                    .setTrancheOrderAndPairs([juniorAddr, polAddr], [true, true])
+            ).wait();
+
+            const requestedLossesUSDC = [1n, 2n, 1n, 2n, 3n, 1n, 4n, 1n, 1n, 2n];
+            for (const requested of requestedLossesUSDC) {
+                const jTvlBefore = await junior.totalAssets();
+                const pTvlBefore = await pol.totalAssets();
+                const pairTVLBefore = jTvlBefore + pTvlBefore;
+                if (pairTVLBefore === 0n) break;
+
+                const pairUSDCWhole = pairTVLBefore / to18(1n);
+                const usdcLossWhole = requested < pairUSDCWhole ? requested : pairUSDCWhole;
+                if (usdcLossWhole === 0n) break;
+
+                const jBalBefore = await mzusd.balanceOf(juniorAddr);
+                const pBalBefore = await mzusd.balanceOf(polAddr);
+
+                await time.increase(DAY);
+                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(usdcLossWhole));
+                const receipt = await tx.wait();
+                const parsed = parseLossApplied(receipt);
+                expect(parsed).to.not.equal(null);
+
+                const requestedMZ = parsed!.args.requestedMZ as bigint;
+                const burnedMZ = parsed!.args.burnedMZ as bigint;
+                const uncoveredMZ = parsed!.args.uncoveredMZ as bigint;
+                const cuts = parsed!.args.cutsMZ as bigint[];
+
+                const cutJ = cuts[0];
+                const cutP = cuts[1];
+                expect(cutJ <= jTvlBefore).to.equal(true);
+                expect(cutP <= pTvlBefore).to.equal(true);
+                expect(cutJ + cutP).to.equal(burnedMZ);
+                expect(uncoveredMZ).to.equal(0n);
+                expect(burnedMZ).to.equal(requestedMZ);
+
+                const jBalAfter = await mzusd.balanceOf(juniorAddr);
+                const pBalAfter = await mzusd.balanceOf(polAddr);
+                expect(jBalBefore - jBalAfter).to.equal(cutJ);
+                expect(pBalBefore - pBalAfter).to.equal(cutP);
+            }
+        });
+
         it("Pair-mode: proportional loss across [Junior, POL Junior] when contiguous and same tranche group", async () => {
             // deposit: junior = 100, pol = 300
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
@@ -949,7 +1090,7 @@ describe("LossManager", () => {
             expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
         });
 
-        it("Pair mode burns match expected proportional split (30 iterations)", async () => {
+        it("Pair mode keeps cuts bounded by TVL (30 iterations)", async () => {
             // Big buffers
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10_000n)));
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(30_000n)));
@@ -969,29 +1110,47 @@ describe("LossManager", () => {
 
             for (let k = 1; k <= 30; k++) {
                 const lossUSDC = BigInt((k % 97) + 1); // 1 - 97
-                const lossMZ = to18(lossUSDC);
 
                 const jTvl = await junior.totalAssets();
                 const pTvl = await pol.totalAssets();
+                const pairTVL = jTvl + pTvl;
 
                 const jBal0 = await mzusd.balanceOf(juniorAddr);
                 const pBal0 = await mzusd.balanceOf(polAddr);
+                const mBal0 = await mzusd.balanceOf(mezzanineAddr);
+                const sBal0 = await mzusd.balanceOf(seniorAddr);
 
-                const {burn0, burn1, lossForPair} = computePairBurns(lossMZ, jTvl, pTvl);
                 await time.increase(DAY);
-                await (await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC))).wait();
+                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC));
+                const receipt = await tx.wait();
+                const parsed = parseLossApplied(receipt);
+                expect(parsed).to.not.equal(null);
 
-                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
-                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
-                expect(burn0 + burn1).to.equal(lossForPair);
+                const requestedMZ = parsed!.args.requestedMZ as bigint;
+                const burnedMZ = parsed!.args.burnedMZ as bigint;
+                const uncoveredMZ = parsed!.args.uncoveredMZ as bigint;
+                const cuts = parsed!.args.cutsMZ as bigint[];
+
+                const cutJ = cuts[0];
+                const cutP = cuts[1];
+                expect(cutJ <= jTvl).to.equal(true);
+                expect(cutP <= pTvl).to.equal(true);
+                expect(cutJ + cutP).to.equal(burnedMZ);
+                expect(burnedMZ).to.equal(min(requestedMZ, pairTVL));
+                expect(uncoveredMZ).to.equal(0n);
+
+                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - cutJ);
+                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - cutP);
 
                 // untouched (pair always covers)
                 expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mStart);
                 expect(await mzusd.balanceOf(seniorAddr)).to.equal(sStart);
+                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0);
+                expect(await mzusd.balanceOf(seniorAddr)).to.equal(sBal0);
             }
         });
 
-        it("Pair-mode works when pair is not first (sequential then proportional)", async () => {
+        it("Pair-mode works when pair is not first and cuts stay within TVL", async () => {
             // Setup TVL: mezz small, then pair big
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(200n)));
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
@@ -1008,27 +1167,42 @@ describe("LossManager", () => {
 
             for (let k = 1; k <= 20; k++) {
                 const lossUSDC = 5n + BigInt(k); // 6..25
-                const lossMZ = to18(lossUSDC);
+                const requestedMZ = to18(lossUSDC);
 
                 const mTvl = await mezzanine.totalAssets();
                 const jTvl = await junior.totalAssets();
                 const pTvl = await pol.totalAssets();
+                const sTvl = await senior.totalAssets();
 
                 const mBal0 = await mzusd.balanceOf(mezzanineAddr);
                 const jBal0 = await mzusd.balanceOf(juniorAddr);
                 const pBal0 = await mzusd.balanceOf(polAddr);
-
-                const burnMezz = min(mTvl, lossMZ);
-                const remaining = lossMZ - burnMezz;
-
-                const {burn0, burn1} = computePairBurns(remaining, jTvl, pTvl);
+                const sBal0 = await mzusd.balanceOf(seniorAddr);
 
                 await time.increase(DAY);
-                await (await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC))).wait();
+                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC));
+                const receipt = await tx.wait();
+                const parsed = parseLossApplied(receipt);
+                expect(parsed).to.not.equal(null);
 
-                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - burnMezz);
-                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - burn0);
-                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - burn1);
+                const burnedMZ = parsed!.args.burnedMZ as bigint;
+                const cuts = parsed!.args.cutsMZ as bigint[];
+                const cutM = cuts[0];
+                const cutJ = cuts[1];
+                const cutP = cuts[2];
+                const cutS = cuts[3];
+
+                expect(cutM <= mTvl).to.equal(true);
+                expect(cutJ <= jTvl).to.equal(true);
+                expect(cutP <= pTvl).to.equal(true);
+                expect(cutS <= sTvl).to.equal(true);
+                expect(cutM + cutJ + cutP + cutS).to.equal(burnedMZ);
+                expect(burnedMZ <= requestedMZ).to.equal(true);
+
+                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - cutM);
+                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - cutJ);
+                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - cutP);
+                expect(await mzusd.balanceOf(seniorAddr)).to.equal(sBal0 - cutS);
             }
         });
     });
