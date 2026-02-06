@@ -141,12 +141,10 @@ describe("NavOracleAutomation", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                accessManager.target,
-                pauseManager.target,
                 mzusd.target,
                 vault.target,
                 [tranche.target],
-                [0],
+                [false],
                 0, // maxLossPerTxUSDC
             ],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}

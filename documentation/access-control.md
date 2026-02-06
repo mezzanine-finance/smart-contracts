@@ -95,7 +95,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 ### LossManager (UUPS)
 
 - `applyLoss` → only the configured `navOracle` address
-- `setTrancheOrderAndGroups`, `setMaxLossPerTxUSDC`, `setNavOracle` → `ADMIN_ROLE`
+- `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC`, `setNavOracle` → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### NavOracleAutomation (non-upgradeable)

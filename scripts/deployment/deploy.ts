@@ -359,12 +359,10 @@ async function main() {
             upgrades.deployProxy(
                 LossManagerFactory,
                 [
-                    accessManager.address,
-                    pauseManager.address,
                     mzusd.address,
                     vault.address,
                     orderAddresses,
-                    config.lossManager.groupIds,
+                    config.lossManager.isPairedWithNext,
                     parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0"),
                 ],
                 {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
@@ -731,25 +729,25 @@ async function main() {
         }
     }
 
-    const [currentOrder, currentGroups] = await lossManager.contract.getTrancheOrderAndGroups();
+    const [currentOrder, currentPairFlags] = await lossManager.contract.getTrancheOrderAndPairs();
     const orderMatch =
         currentOrder.length === orderAddresses.length &&
         currentOrder.every(
             (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
         );
-    const groupMatch =
-        currentGroups.length === config.lossManager.groupIds.length &&
-        currentGroups.every(
-            (gid: bigint, i: number) => gid === BigInt(config.lossManager.groupIds[i])
+    const pairFlagsMatch =
+        currentPairFlags.length === config.lossManager.isPairedWithNext.length &&
+        currentPairFlags.every(
+            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
         );
-    if (!orderMatch || !groupMatch) {
+    if (!orderMatch || !pairFlagsMatch) {
         await (
-            await lossManagerAdmin.setTrancheOrderAndGroups(
+            await lossManagerAdmin.setTrancheOrderAndPairs(
                 orderAddresses,
-                config.lossManager.groupIds
+                config.lossManager.isPairedWithNext
             )
         ).wait();
-        log.success("LossManager.setTrancheOrderAndGroups");
+        log.success("LossManager.setTrancheOrderAndPairs");
     }
 
     if (config.lossManager.maxLossPerTxUSDC !== undefined) {
@@ -876,7 +874,7 @@ async function main() {
         accessManagerAdmin,
         lossManager.address,
         [
-            lossManager.contract.interface.getFunction("setTrancheOrderAndGroups").selector,
+            lossManager.contract.interface.getFunction("setTrancheOrderAndPairs").selector,
             lossManager.contract.interface.getFunction("setNavOracle").selector,
             lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector,
         ],

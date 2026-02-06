@@ -63,9 +63,9 @@ Use this checklist in scripts after deploying all components.
 
 **LossManager configuration**
 
-- Initialize with `trancheOrder` and `groupIds`.
+- Initialize with `trancheOrder` and `isPairedWithNext`.
     - Order is the burn priority for loss allocation.
-    - `groupIds` allow proportional splitting between _contiguous pairs_ only.
+    - `isPairedWithNext` uses contiguous `true,true` flags to define proportional pairs.
 - `LossManager.setMaxLossPerTxUSDC()` (optional).
 
 **Seeding**
@@ -180,7 +180,7 @@ avoid “magic defaults” in scripts.
 | Key                    | Type     | Required | Meaning / Impact                                                                         |
 | ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------- |
 | `lossManager.order`    | string[] | yes      | Burn order by tranche key (e.g. `polJunior`, `junior`, `mezzanine`, `senior`).           |
-| `lossManager.groupIds` | uint[]   | yes      | Parallel array; non-zero ids create proportional loss sharing for contiguous pairs only. |
+| `lossManager.isPairedWithNext` | bool[] | yes      | Parallel array; contiguous `true,true` flags create proportional loss sharing pairs. |
 
 ### PolJuniorTranche config
 

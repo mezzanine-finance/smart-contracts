@@ -105,7 +105,7 @@
   },
   "lossManager": {
     "order": ["polJunior", "junior", "mezzanine", "senior"],
-    "groupIds": [1, 1, 0, 0],
+    "isPairedWithNext": [true, true, false, false],
     "maxLossPerTxUSDC": "10000000"
   },
   "navOracle": {

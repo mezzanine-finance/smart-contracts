@@ -94,7 +94,7 @@ export interface PolJuniorConfig {
 
 export interface LossManagerConfig {
     order: string[];
-    groupIds: number[];
+    isPairedWithNext: boolean[];
     maxLossPerTxUSDC?: string;
 }
 
@@ -248,27 +248,29 @@ function validateConfig(config: DeployConfig, filePath: string) {
     }
 
     const loss = config.lossManager;
-    assert(loss.order.length === loss.groupIds.length, "lossManager order/groupIds mismatch");
+    assert(
+        loss.order.length === loss.isPairedWithNext.length,
+        "lossManager order/isPairedWithNext mismatch"
+    );
     for (const key of loss.order) {
         assert(
             key === "polJunior" || keys.has(key),
             `lossManager.order references unknown tranche key: ${key}`
         );
     }
-    const seenGroupIds = new Set<number>();
-    for (let i = 0; i < loss.groupIds.length; ) {
-        const gid = loss.groupIds[i];
-        if (gid === 0) {
+
+    for (let i = 0; i < loss.isPairedWithNext.length; ) {
+        if (!loss.isPairedWithNext[i]) {
             i += 1;
             continue;
         }
-        if (i + 1 >= loss.groupIds.length || loss.groupIds[i + 1] !== gid) {
-            throw new Error(`lossManager.groupIds must use contiguous pairs (index ${i})`);
+
+        if (i + 1 >= loss.isPairedWithNext.length || !loss.isPairedWithNext[i + 1]) {
+            throw new Error(
+                `lossManager.isPairedWithNext must use contiguous true/true pairs (index ${i})`
+            );
         }
-        if (seenGroupIds.has(gid)) {
-            throw new Error(`lossManager.groupIds cannot reuse group id ${gid}`);
-        }
-        seenGroupIds.add(gid);
+
         i += 2;
     }
 

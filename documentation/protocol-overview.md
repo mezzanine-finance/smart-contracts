@@ -139,7 +139,7 @@ Notes:
 1. If NAV is lower than supply, the delta is loss.
 2. LossManager advances the epoch and burns MZUSD from tranches.
 3. Losses are applied sequentially, or proportionally within configured pairs.
-4. If TVL is insufficient, the call reverts.
+4. If TVL is insufficient, partial burn is applied and uncovered loss is accumulated on LossManager.
 
 ### Rebalancing and idle buffer
 

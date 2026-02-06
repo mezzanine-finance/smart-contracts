@@ -148,15 +148,7 @@ describe("Tranche claim solvency", () => {
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
-            [
-                accessManager.target,
-                pauseManager.target,
-                mzusdAddr,
-                vaultAddr,
-                [trancheAddr],
-                [0],
-                0,
-            ],
+            [mzusdAddr, vaultAddr, [trancheAddr], [false], 0],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as LossManager;
 

@@ -134,15 +134,7 @@ describe("NavSubmitterAutomation", () => {
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
-            [
-                accessManager.target,
-                pauseManager.target,
-                mzusd.target,
-                vault.target,
-                [tranche.target],
-                [0],
-                0,
-            ],
+            [mzusd.target, vault.target, [tranche.target], [false], 0],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as LossManager;
 
