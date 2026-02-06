@@ -495,7 +495,6 @@ contract Tranche is
         uint256 duration = end - start;
 
         uint256 accrued = (amount * elapsed) / duration;
-        if (accrued >= amount) return 0;
         unaccrued = amount - accrued;
     }
 
