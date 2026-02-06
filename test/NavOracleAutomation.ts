@@ -280,7 +280,8 @@ describe("NavOracleAutomation", () => {
             .withArgs(navUSDC, totalSupplyMZ, true, deltaUSDC, submittedAt, readyAt);
 
         expect(await navAutomation.hasPendingNav()).to.equal(true);
-        expect(await navAutomation.pendingNavUSDC()).to.equal(navUSDC);
+        expect(await navAutomation.pendingDeltaUSDC()).to.equal(deltaUSDC);
+        expect(await navAutomation.pendingIsYield()).to.equal(true);
 
         await expect(
             navAutomation.connect(oracle).submitNav(navUSDC)
@@ -304,20 +305,65 @@ describe("NavOracleAutomation", () => {
             .withArgs(PauseCategory.PROTOCOL);
     });
 
+    it("performUpkeep reverts with NotReady and returns pending readyAt", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(10n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+
+        await navAutomation.connect(oracle).submitNav(navUSDC);
+        const readyAt = await navAutomation.pendingReadyAt();
+
+        await expect(navAutomation.performUpkeep("0x"))
+            .to.be.revertedWithCustomError(navAutomation, "NotReady")
+            .withArgs(readyAt);
+    });
+
+    it("rejectPendingNav reverts when no pending snapshot exists", async () => {
+        await expect(
+            navAutomation.connect(deployer).rejectPendingNav()
+        ).to.be.revertedWithCustomError(navAutomation, "NoPendingNav");
+    });
+
     it("reject clears pending NAV", async () => {
         await mintAndDepositIntoTranche(oracle, to6(50n));
         const navUSDC = to6(40n);
 
         const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const isYield = navUSDC >= totalSupplyUSDC;
+        const deltaUSDC = isYield ? navUSDC - totalSupplyUSDC : totalSupplyUSDC - navUSDC;
         const tx = await navAutomation.connect(oracle).submitNav(navUSDC);
         await expect(tx).to.emit(navAutomation, "NavSubmitted");
+        const readyAt = await navAutomation.pendingReadyAt();
 
         const rejectTx = await navAutomation.connect(deployer).rejectPendingNav();
         await expect(rejectTx)
             .to.emit(navAutomation, "NavRejected")
-            .withArgs(navUSDC, totalSupplyMZ);
+            .withArgs(isYield, deltaUSDC, readyAt);
 
         expect(await navAutomation.hasPendingNav()).to.equal(false);
+    });
+
+    it("allows a new submit after reject clears pending state", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(50n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+
+        const firstNav = totalSupplyUSDC + to6(1n);
+        await navAutomation.connect(oracle).submitNav(firstNav);
+        await navAutomation.connect(deployer).rejectPendingNav();
+
+        const secondNav = totalSupplyUSDC + to6(2n);
+        await expect(navAutomation.connect(oracle).submitNav(secondNav)).to.emit(
+            navAutomation,
+            "NavSubmitted"
+        );
+        expect(await navAutomation.hasPendingNav()).to.equal(true);
+        expect(await navAutomation.pendingDeltaUSDC()).to.equal(to6(2n));
+        expect(await navAutomation.pendingIsYield()).to.equal(true);
     });
 
     it("applies yield after veto period", async () => {
@@ -326,8 +372,10 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(5n);
+        const deltaUSDC = navUSDC - totalSupplyUSDC;
 
         await navAutomation.connect(oracle).submitNav(navUSDC);
+        const readyAt = await navAutomation.pendingReadyAt();
 
         await time.increase(DAY);
 
@@ -335,7 +383,9 @@ describe("NavOracleAutomation", () => {
         expect(upkeepNeeded).to.equal(true);
 
         const epochBefore = await vault.currentEpochId();
-        await navAutomation.performUpkeep("0x");
+        await expect(navAutomation.performUpkeep("0x"))
+            .to.emit(navAutomation, "NavApplied")
+            .withArgs(true, deltaUSDC, readyAt);
         const epochAfter = await vault.currentEpochId();
 
         expect(epochAfter).to.equal(epochBefore + 1n);
@@ -351,9 +401,12 @@ describe("NavOracleAutomation", () => {
         const deltaUSDC = totalSupplyUSDC - navUSDC;
 
         await navAutomation.connect(oracle).submitNav(navUSDC);
+        const readyAt = await navAutomation.pendingReadyAt();
         await time.increase(DAY);
 
-        await navAutomation.performUpkeep("0x");
+        await expect(navAutomation.performUpkeep("0x"))
+            .to.emit(navAutomation, "NavApplied")
+            .withArgs(false, deltaUSDC, readyAt);
 
         const totalSupplyAfter = await mzusd.totalSupply();
         expect(totalSupplyAfter).to.equal(totalSupplyBefore - deltaUSDC * SCALE);
@@ -388,6 +441,67 @@ describe("NavOracleAutomation", () => {
 
         const epochBefore = await vault.currentEpochId();
         await navAutomation.connect(oracle).submitNav(navUSDC);
+        const epochAfter = await vault.currentEpochId();
+
+        expect(epochAfter).to.equal(epochBefore + 1n);
+        expect(await navAutomation.hasPendingNav()).to.equal(false);
+    });
+
+    it("pins pending readyAt to submit-time veto period snapshot", async () => {
+        await navAutomation.connect(deployer).setVetoPeriod(DAY);
+        await mintAndDepositIntoTranche(oracle, to6(70n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(2n);
+
+        const submitTx = await navAutomation.connect(oracle).submitNav(navUSDC);
+        const receipt = await submitTx.wait();
+        const block = await ethers.provider.getBlock(receipt!.blockNumber);
+        const submittedAt = BigInt(block!.timestamp);
+        const expectedReadyAt = submittedAt + BigInt(DAY);
+
+        expect(await navAutomation.pendingReadyAt()).to.equal(expectedReadyAt);
+
+        // Changing vetoPeriod now must not affect already pending NAV.
+        await navAutomation.connect(deployer).setVetoPeriod(0);
+        expect(await navAutomation.pendingReadyAt()).to.equal(expectedReadyAt);
+
+        const [neededNow] = await navAutomation.checkUpkeep("0x");
+        expect(neededNow).to.equal(false);
+
+        await time.increase(DAY);
+        const [neededAfter] = await navAutomation.checkUpkeep("0x");
+        expect(neededAfter).to.equal(true);
+    });
+
+    it("reverts submitNav when computed delta exceeds uint128 storage bound", async () => {
+        // Build NAV so computed delta is exactly uint128.max + 1.
+        await mintAndDepositIntoTranche(oracle, to6(1n));
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const tooLargeNav = (1n << 128n) + totalSupplyUSDC;
+
+        await expect(
+            navAutomation.connect(oracle).submitNav(tooLargeNav)
+        ).to.be.revertedWithCustomError(navAutomation, "ValueTooLarge");
+    });
+
+    it("ignores checkData and performData payloads", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(90n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(4n);
+
+        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x1234");
+        expect(upkeepNeeded).to.equal(true);
+
+        const epochBefore = await vault.currentEpochId();
+        await navAutomation.performUpkeep("0xdeadbeef");
         const epochAfter = await vault.currentEpochId();
 
         expect(epochAfter).to.equal(epochBefore + 1n);

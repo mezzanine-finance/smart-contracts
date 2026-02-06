@@ -46,10 +46,17 @@ Recommended rotation sequence:
 
 - Register `checkUpkeep(bytes)` and `performUpkeep(bytes)` on the deployed `NavOracleAutomation`.
 - Ensure the automation registry can call `performUpkeep` (no AccessManager role required).
+- `checkData`/`performData` are intentionally unused; upkeep action is derived from contract state.
 
 ## Notes
 
+- Trust model: NAV value is trusted oracle input. The protocol does not cryptographically verify
+  NAV truthfulness on-chain; safety relies on oracle role governance and optional veto delay.
 - NAV is submitted in USDC (6 decimals); MZUSD total supply is 18 decimals and is scaled down by 1e12.
+- Pending readiness is snapshotted as `pendingReadyAt` at submission time.
+  Changing `vetoPeriod` later affects only future submissions.
+- Pending storage is compact and keeps only `delta`, `isYield`, and `readyAt`.
+  Full `(navUSDC, totalSupplyMZ)` context is emitted in `NavSubmitted`.
 - If `vetoPeriod` is `0`, `submitNav` applies immediately (no veto).
 - Zero-yield (`NAV == totalSupplyUSDC`) still calls `Vault.distributeYield(0)`.
     - The current `Vault` accepts zero, advances the epoch, and emits events.
