@@ -316,7 +316,9 @@ contract Tranche is
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).
-    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+    function burnMZUSD(
+        uint256 amount
+    ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
         IMZUSD(asset()).burn(amount);
     }
 

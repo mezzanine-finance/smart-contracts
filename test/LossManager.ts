@@ -452,12 +452,12 @@ describe("LossManager", () => {
     });
 
     describe("Burn access", () => {
-        it("Only LossManager can call tranche burn", async () => {
-            await expect(junior.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
+        it("Only LossManager can call tranche burnMZUSD", async () => {
+            await expect(junior.connect(deployer).burnMZUSD(1n)).to.be.revertedWithCustomError(
                 junior,
                 "NotLossManager"
             );
-            await expect(pol.connect(deployer).burn(1n)).to.be.revertedWithCustomError(
+            await expect(pol.connect(deployer).burnMZUSD(1n)).to.be.revertedWithCustomError(
                 pol,
                 "NotLossManager"
             );

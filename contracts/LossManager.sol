@@ -371,7 +371,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         uint256 idx
     ) internal {
         if (amount == 0) return;
-        ITranche(tranche).burn(amount);
+        ITranche(tranche).burnMZUSD(amount);
         cuts[idx] = amount;
     }
 

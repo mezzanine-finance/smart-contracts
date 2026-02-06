@@ -103,7 +103,9 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     /// @notice Burn MZUSD from this tranche (used by LossManager).
     /// @dev Burns only this contract's own asset balance via MZUSD burn access controls.
     /// @dev For grouped loss application (with Junior tranche), the burned amount is this tranche's proportional share computed by LossManager.
-    function burn(uint256 amount) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
+    function burnMZUSD(
+        uint256 amount
+    ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
         mzusd.burn(amount);
     }
 
