@@ -89,12 +89,7 @@ contract Tranche is
 
     /// @notice Emitted when new yield is registered for linear streaming.
     /// @dev yieldAmount must correspond to MZUSD amount already transferred to this tranche.
-    event YieldNotified(
-        uint256 indexed epochId,
-        uint256 yieldAmount,
-        uint256 streamStart,
-        uint256 streamEnd
-    );
+    event YieldNotified(uint256 yieldAmount, uint256 streamStart, uint256 streamEnd);
 
     error InvalidAmount();
     error DepositLimitExceeded(uint256 attempted, uint256 limit);
@@ -311,8 +306,7 @@ contract Tranche is
         yieldStreamStart = SafeCast.toUint64(startTs);
         yieldStreamEnd = SafeCast.toUint64(endTs);
 
-        uint256 epochId = IVault(vault).currentEpochId();
-        emit YieldNotified(epochId, yieldAmount, yieldStreamStart, yieldStreamEnd);
+        emit YieldNotified(yieldAmount, yieldStreamStart, yieldStreamEnd);
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).

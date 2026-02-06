@@ -681,7 +681,7 @@ describe("Tranche", () => {
 
             await expect(tx)
                 .to.emit(tranche, "YieldNotified")
-                .withArgs(newEpochId, expectedYieldMZ, streamStartTs, expectedStreamEnd)
+                .withArgs(expectedYieldMZ, streamStartTs, expectedStreamEnd)
                 .and.emit(vault, "YieldDistributed")
                 .withArgs(reportedUSDC, expectedYieldMZ, newEpochId);
 

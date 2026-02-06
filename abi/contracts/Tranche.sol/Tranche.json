@@ -759,12 +759,6 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "epochId",
-                "type": "uint256"
-            },
-            {
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "yieldAmount",

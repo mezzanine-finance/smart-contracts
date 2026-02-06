@@ -612,15 +612,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             await expect(tx)
                 .to.emit(vault, "YieldDistributed")
@@ -760,15 +756,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             await expectSupplyMatchesBacking();
 
@@ -824,15 +816,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -886,15 +874,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -945,13 +929,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
             await expect(tx).to.not.emit(mezzanine, "YieldNotified");
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -994,7 +976,7 @@ describe("Vault Yield Distribution", () => {
             await expect(tx).to.not.emit(mezzanine, "YieldNotified");
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, expectedYield, startTs, endTs);
+                .withArgs(expectedYield, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1045,13 +1027,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
             await expect(tx).to.not.emit(mezzanine, "YieldNotified");
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1135,12 +1115,10 @@ describe("Vault Yield Distribution", () => {
             const endTs = startTs + BigInt(WEEK);
 
             await expect(tx).to.not.emit(junior, "YieldNotified");
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1356,15 +1334,11 @@ describe("Vault Yield Distribution", () => {
             const partSWithDust = partS + dust;
 
             // notifyYield amounts include dust in the last tranche
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             // Fees should be minted out
             const perfAfter = await mzusd.balanceOf(perfReceiver);
@@ -1443,12 +1417,10 @@ describe("Vault Yield Distribution", () => {
             const duration = BigInt(await vault.epochDuration());
             const endTs = startTs + duration;
 
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1526,15 +1498,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
@@ -1583,15 +1551,11 @@ describe("Vault Yield Distribution", () => {
             const dust = expectedYield - (partJ + partM + partS);
             const partSWithDust = partS + dust;
 
-            await expect(tx)
-                .to.emit(junior, "YieldNotified")
-                .withArgs(newEpochId, partJ, startTs, endTs);
-            await expect(tx)
-                .to.emit(mezzanine, "YieldNotified")
-                .withArgs(newEpochId, partM, startTs, endTs);
+            await expect(tx).to.emit(junior, "YieldNotified").withArgs(partJ, startTs, endTs);
+            await expect(tx).to.emit(mezzanine, "YieldNotified").withArgs(partM, startTs, endTs);
             await expect(tx)
                 .to.emit(senior, "YieldNotified")
-                .withArgs(newEpochId, partSWithDust, startTs, endTs);
+                .withArgs(partSWithDust, startTs, endTs);
 
             const bJ1 = await mzusd.balanceOf(junior.target);
             const bM1 = await mzusd.balanceOf(mezzanine.target);
