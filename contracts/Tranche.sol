@@ -5,7 +5,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
@@ -23,7 +22,6 @@ import "./interfaces/IMZUSD.sol";
 contract Tranche is
     ERC4626Upgradeable,
     AccessManagedUpgradeable,
-    ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
     PauseManagedUpgradeable
 {
@@ -161,7 +159,6 @@ contract Tranche is
         __ERC4626_init(assetToken);
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
-        __ReentrancyGuard_init();
 
         vault = vaultAddress;
         trancheId = trancheIdentifier;
@@ -188,7 +185,7 @@ contract Tranche is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 shares) {
+    ) public override whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 shares) {
         _checkDepositLimit(assets);
         shares = super.deposit(assets, receiver);
     }
@@ -201,7 +198,7 @@ contract Tranche is
     function mint(
         uint256 shares,
         address receiver
-    ) public override nonReentrant whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
+    ) public override whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
         uint256 assetsRequired = convertToAssets(shares);
         _checkDepositLimit(assetsRequired);
         assets = super.mint(shares, receiver);
@@ -210,9 +207,7 @@ contract Tranche is
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
     /// @param shares Tranche shares to withdraw.
-    function requestWithdrawal(
-        uint256 shares
-    ) external nonReentrant whenNotPaused(PauseCategory.WITHDRAWALS) {
+    function requestWithdrawal(uint256 shares) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         if (shares == 0) revert ZeroPassedShares();
         if (balanceOf(msg.sender) < shares) revert InvalidBalance();
 
@@ -241,7 +236,7 @@ contract Tranche is
     function cancelUnstake(
         uint256 epochId,
         uint256 shares
-    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+    ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NoPendingUnstake();
         if (shares == 0) revert ZeroPassedShares();
@@ -268,7 +263,7 @@ contract Tranche is
     /// @param epochId The epoch for which to claim assets.
     function claim(
         uint256 epochId
-    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+    ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 userShares = userSharesByEpoch[msg.sender][epochId];
         if (userShares == 0) revert NothingToClaim();
 
@@ -290,7 +285,7 @@ contract Tranche is
     /// @param epochId The epoch to finalize.
     function finalizeEpoch(
         uint256 epochId
-    ) external nonReentrant whenDirectDisabled whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external whenDirectDisabled whenNotPaused(PauseCategory.PROTOCOL) {
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
@@ -322,7 +317,6 @@ contract Tranche is
     )
         public
         override
-        nonReentrant
         whenDirectEnabled
         whenNotPaused(PauseCategory.WITHDRAWALS)
         returns (uint256 shares)
@@ -337,7 +331,6 @@ contract Tranche is
     )
         public
         override
-        nonReentrant
         whenDirectEnabled
         whenNotPaused(PauseCategory.WITHDRAWALS)
         returns (uint256 assets)
