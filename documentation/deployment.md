@@ -79,6 +79,9 @@ Use this checklist in scripts after deploying all components.
 
 - Deploy `NavOracleAutomation` and set `vetoPeriod`.
 - Deploy `UmbrellaEpochFinalizer` for each umbrella tranche if using Chainlink Automation.
+    - `UmbrellaEpochFinalizer` is cursor-based and processes at most one epoch per upkeep tx.
+    - During catch-up, expect one upkeep transaction per missed epoch.
+    - Choose `umbrellaFinalizer.startEpoch` carefully: if it is set above the oldest unfinalized epoch, older epochs can be skipped by this helper.
 - For NAV oracle rotations, follow `integration-docs/NAV_AUTOMATION.md`:
     - settle/reject pending NAV on old oracle first,
     - then update `Vault.setNavOracle(new)` and `LossManager.setNavOracle(new)`,
@@ -145,6 +148,8 @@ avoid “magic defaults” in scripts.
 | `lossManager.maxLossPerTxUSDC`      | uint (6d) | no                             | 0 disables the limit.                                                                                                                     |
 | `navOracle.vetoPeriodSec`           | uint      | yes                            | Veto window for NAV snapshots.                                                                                                            |
 | `navOracle.oracles`                 | address[] | yes                            | ORACLE_ROLE addresses.                                                                                                                    |
+| `umbrellaFinalizer.enabled`         | bool      | no                             | Enables deployment of `UmbrellaEpochFinalizer` for umbrella tranches.                                                                    |
+| `umbrellaFinalizer.startEpoch`      | uint      | no                             | Initial finalizer cursor (`>= 1`, default `1`). Set to the oldest epoch you want the helper to process; higher values can skip older epochs. |
 | `seed.mzusdDepositUSDC`             | uint (6d) | no                             | USDC amount to deposit into MZUSD (funds Vault + mints MZUSD).                                                                            |
 | `seed.vaultUSDC`                    | uint (6d) | no                             | Direct USDC transfer to Vault.                                                                                                            |
 | `seed.reservoirUSDC`                | uint (6d) | no                             | USDC deposit into Reservoir.                                                                                                              |
