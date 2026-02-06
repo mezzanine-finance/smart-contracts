@@ -111,7 +111,6 @@ contract Tranche is
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
-    error ZeroAssetSupply();
     error NotVault();
     error NotLossManager();
 
@@ -544,8 +543,6 @@ contract Tranche is
         }
 
         uint256 assetTotalSupply = IERC20(asset()).totalSupply();
-        if (assetTotalSupply == 0) revert ZeroAssetSupply();
-
         uint256 trancheAssets = totalAssets(); // virtual TVL with streaming
         uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BASIS_POINTS;
         if (maxTotalByTvl <= trancheAssets) {

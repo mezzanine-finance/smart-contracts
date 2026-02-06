@@ -433,11 +433,6 @@
     },
     {
         "inputs": [],
-        "name": "ZeroAssetSupply",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "ZeroEpochDuration",
         "type": "error"
     },
