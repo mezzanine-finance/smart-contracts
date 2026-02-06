@@ -17,6 +17,7 @@ import "./interfaces/IMZUSD.sol";
 // @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
+/// @dev The contract enforces deposit limit via setDepositLimits function based on the TVL bps. The contract has not deposit limit by default.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract Tranche is
