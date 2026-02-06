@@ -23,8 +23,9 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
   - Files: `contracts/MZUSD.sol`, `contracts/ReservoirUSDC.sol`,
     `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
   - Reason: we interact with well-known tokens (USDC) or our own ERC20s. These
-    calls revert on failure; return values are not relied upon. Using SafeERC20
-    everywhere adds boilerplate without changing behavior.
+    calls revert on failure; return values are not relied upon. We intentionally
+    use direct ERC20 calls for known tokens; SafeERC20 can be introduced if
+    support for non-standard tokens is required.
 
 - `modifier-invoked-only-once` (L-2)
   - Files: `contracts/LossManager.sol`, `contracts/MZUSD.sol`,

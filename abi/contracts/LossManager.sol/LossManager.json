@@ -137,6 +137,28 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "orderLen",
                 "type": "uint256"
@@ -354,32 +376,6 @@
         "type": "event"
     },
     {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "vault",
-                "type": "address"
-            }
-        ],
-        "name": "VaultUpdated",
-        "type": "event"
-    },
-    {
-        "inputs": [],
-        "name": "MZ_DECIMALS",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [],
         "name": "SCALE",
         "outputs": [
@@ -400,19 +396,6 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "USDC_DECIMALS",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
             }
         ],
         "stateMutability": "view",

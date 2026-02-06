@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
@@ -27,7 +26,6 @@ contract Tranche is
     UUPSUpgradeable,
     PauseManagedUpgradeable
 {
-    using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
     struct FinalizedEpoch {
@@ -279,7 +277,7 @@ contract Tranche is
         userSharesByEpoch[msg.sender][epochId] = 0;
         reservedAssets -= userAssets;
 
-        IERC20(asset()).safeTransfer(msg.sender, userAssets);
+        IERC20(asset()).transfer(msg.sender, userAssets);
 
         emit WithdrawalClaimed(msg.sender, epochId, userAssets);
     }
