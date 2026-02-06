@@ -17,7 +17,11 @@ import "./interfaces/IMZUSD.sol";
 // @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
 // @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
-/// @dev The contract enforces deposit limit via setDepositLimits function based on the TVL bps. The contract has not deposit limit by default.
+/// @dev The contract enforces deposit cap via setDepositLimits function based on the TVL bps. The contract has no deposit cap by default.
+/// @dev Deposit cap is enforced on the whole Tranche's totalSupply.
+/// @dev Deposit cap is dynamic and grows as the total supply of the asset grows.
+/// @dev Deposit cap can be disabled or updated by the Admin at any time.
+/// @dev Dynamic cap through TVL (maxDepositTvlBps) enforces limits at the early stages as the asset's supply grows. After that, the static cap (maxDepositCap) is enforced.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract Tranche is
@@ -49,6 +53,7 @@ contract Tranche is
     bool public depositLimitEnabled;
     address public vault;
     uint256 public maxDepositCap;
+    /// @notice Limits how much the users can deposit into Tranche in total based on the asset's TVL and specified BPS.
     uint256 public maxDepositTvlBps;
 
     // YIELD STREAMING (linear distribution over epoch)
