@@ -177,33 +177,6 @@ contract Tranche is
 
     // CORE USER FUNCTIONS
 
-    /// @notice Deposit assets into the tranche, respecting deposit limits.
-    /// @dev Overrides ERC4626 deposit to enforce deposit limits.
-    /// @param assets The amount of the underlying asset to deposit.
-    /// @param receiver The address receiving the tranche shares.
-    /// @return shares The amount of tranche shares minted to the receiver.
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) public override whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 shares) {
-        _checkDepositLimit(assets);
-        shares = super.deposit(assets, receiver);
-    }
-
-    /// @notice Mint tranche shares by depositing assets, respecting deposit limits.
-    /// @dev Overrides ERC4626 mint to enforce deposit limits.
-    /// @param shares The amount of tranche shares to mint.
-    /// @param receiver The address receiving the tranche shares.
-    /// @return assets The amount of the underlying asset deposited.
-    function mint(
-        uint256 shares,
-        address receiver
-    ) public override whenNotPaused(PauseCategory.DEPOSITS) returns (uint256 assets) {
-        uint256 assetsRequired = convertToAssets(shares);
-        _checkDepositLimit(assetsRequired);
-        assets = super.mint(shares, receiver);
-    }
-
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
     /// @param shares Tranche shares to withdraw.
@@ -308,71 +281,6 @@ contract Tranche is
         _burn(address(this), sharesToFinalize);
 
         emit EpochFinalized(epochId, sharesToFinalize, assetsToCredit);
-    }
-
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    )
-        public
-        override
-        whenDirectEnabled
-        whenNotPaused(PauseCategory.WITHDRAWALS)
-        returns (uint256 shares)
-    {
-        return super.withdraw(assets, receiver, owner);
-    }
-
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    )
-        public
-        override
-        whenDirectEnabled
-        whenNotPaused(PauseCategory.WITHDRAWALS)
-        returns (uint256 assets)
-    {
-        return super.redeem(shares, receiver, owner);
-    }
-
-    function transfer(
-        address to,
-        uint256 value
-    )
-        public
-        override(ERC20Upgradeable, IERC20)
-        whenNotPaused(PauseCategory.TRANSFERS)
-        returns (bool success)
-    {
-        return super.transfer(to, value);
-    }
-
-    function approve(
-        address spender,
-        uint256 value
-    )
-        public
-        override(ERC20Upgradeable, IERC20)
-        whenNotPaused(PauseCategory.TRANSFERS)
-        returns (bool success)
-    {
-        return super.approve(spender, value);
-    }
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 value
-    )
-        public
-        override(ERC20Upgradeable, IERC20)
-        whenNotPaused(PauseCategory.TRANSFERS)
-        returns (bool success)
-    {
-        return super.transferFrom(from, to, value);
     }
 
     // Linear yield streaming
@@ -531,7 +439,56 @@ contract Tranche is
         totalAssets_ = e.totalAssets;
     }
 
+    // OVERRIDEN FUNCTIONS
+
+    /// @notice Deposit assets into the tranche, respecting deposit limits.
+    /// @dev Overrides ERC4626 _deposit to enforce deposit limits and pause.
+    function _deposit(
+        address caller,
+        address receiver,
+        uint256 assets,
+        uint256 shares
+    ) internal override whenNotPaused(PauseCategory.DEPOSITS) {
+        _checkDepositLimit(assets);
+        super._deposit(caller, receiver, assets, shares);
+    }
+
+    /// @notice Withdraw assets from the Tranche if direct withdraw enabled.
+    /// @dev Overrides ERC4626 _withdraw to enforce direct withdraw validation and pause.
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal override whenDirectEnabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+        super._withdraw(caller, receiver, owner, assets, shares);
+    }
+
+    /// @dev Overrides ERC20 _update to enforce pause.
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal override whenNotPaused(PauseCategory.TRANSFERS) {
+        super._update(from, to, value);
+    }
+
+    /// @dev Overrides ERC20 approve to enforce pause.
+    function approve(
+        address spender,
+        uint256 value
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
+        return super.approve(spender, value);
+    }
+
     // INTERNAL HELPERS
+
     /// @notice Returns how much of current yield is still not accrued into NAV.
     /// @dev This is what we subtract from raw balance in totalAssets().
     function _unaccruedYield() internal view returns (uint256 unaccrued) {

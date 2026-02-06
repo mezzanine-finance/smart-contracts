@@ -382,6 +382,7 @@ describe("Tranche", () => {
                 .withArgs(PauseCategory.WITHDRAWALS);
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
 
+            await tranche.connect(alice).approve(deployer, 1n);
             await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
             await expect(tranche.transfer(bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
@@ -435,6 +436,10 @@ describe("Tranche", () => {
                     constructorArgs: [true],
                 }
             )) as unknown as Tranche;
+
+            const mintedMZ = await mintMZUSDFor(alice, to6(100n));
+            await mzusd.connect(alice).approve(directTranche, mintedMZ);
+            await directTranche.connect(alice).deposit(mintedMZ, alice);
 
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
             await expect(directTranche.withdraw(1n, alice.address, alice.address))
