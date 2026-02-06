@@ -223,10 +223,11 @@ contract Tranche is
         uint256 currentEpochOnVault = IVault(vault).currentEpochId();
         if (currentEpochOnVault > epochId) revert TooLateToCancel();
 
-        // Update user and global umbrella accounting
-        userSharesByEpoch[msg.sender][epochId] = userShares - shares;
         uint256 umbrellaShares = umbrellaSharesByEpoch[epochId];
         if (shares > umbrellaShares) revert InvalidAmount();
+
+        // Update user and global umbrella accounting
+        userSharesByEpoch[msg.sender][epochId] = userShares - shares;
         umbrellaSharesByEpoch[epochId] = umbrellaShares - shares;
 
         // Return shares back to the user from the tranche contract
