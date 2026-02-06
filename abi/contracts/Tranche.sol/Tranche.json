@@ -1177,21 +1177,6 @@
                 "type": "uint256"
             },
             {
-                "internalType": "bool",
-                "name": "isFinalized",
-                "type": "bool"
-            },
-            {
-                "internalType": "uint256",
-                "name": "totalShares",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "totalAssets_",
-                "type": "uint256"
-            },
-            {
                 "internalType": "uint256",
                 "name": "claimableAssets",
                 "type": "uint256"

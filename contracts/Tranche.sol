@@ -383,31 +383,15 @@ contract Tranche is
     /// @param user User address.
     /// @param epochId Epoch to query.
     /// @return pendingShares Shares pending under umbrella for that epoch.
-    /// @return isFinalized Whether the epoch has been finalized.
-    /// @return totalShares Total shares under umbrella for that epoch.
-    /// @return totalAssets_ Total assets credited on finalization.
     /// @return claimableAssets Assets user can claim (0 if not finalized).
     function getUserEpochInfo(
         address user,
         uint256 epochId
-    )
-        external
-        view
-        returns (
-            uint256 pendingShares,
-            bool isFinalized,
-            uint256 totalShares,
-            uint256 totalAssets_,
-            uint256 claimableAssets
-        )
-    {
+    ) external view returns (uint256 pendingShares, uint256 claimableAssets) {
         pendingShares = userSharesByEpoch[user][epochId];
         FinalizedEpoch memory e = finalizedEpochs[epochId];
-        isFinalized = e.totalShares > 0;
-        totalShares = e.totalShares;
-        totalAssets_ = e.totalAssets;
 
-        if (isFinalized && pendingShares != 0) {
+        if (e.totalShares > 0 && pendingShares > 0) {
             claimableAssets = (pendingShares * e.totalAssets) / e.totalShares;
         }
     }

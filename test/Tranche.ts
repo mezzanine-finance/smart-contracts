@@ -936,11 +936,12 @@ describe("Tranche", () => {
             // 5) Alice claims her withdrawal for that epoch
             const aliceMZBeforeClaim = await mzusd.balanceOf(alice.address);
 
-            const [pendingSharesBefore, isFinalizedUser, , , claimableBefore] =
-                await tranche.getUserEpochInfo(alice.address, targetEpoch);
+            const [pendingSharesBefore, claimableBefore] = await tranche.getUserEpochInfo(
+                alice.address,
+                targetEpoch
+            );
 
             expect(pendingSharesBefore).to.equal(aliceSharesBefore);
-            expect(isFinalizedUser).to.equal(true);
             // Since Alice is the only pending user for this epoch, claimable = finalized totalAssets
             expect(claimableBefore).to.equal(totalAssetsFinal);
 
@@ -955,7 +956,7 @@ describe("Tranche", () => {
             // Claim transfers the finalized, claimable assets for this epoch back to Alice
             expect(aliceMZAfterClaim).to.equal(aliceMZBeforeClaim + claimableBefore);
 
-            const [pendingSharesAfter, , , , claimableAfter] = await tranche.getUserEpochInfo(
+            const [pendingSharesAfter, claimableAfter] = await tranche.getUserEpochInfo(
                 alice.address,
                 targetEpoch
             );
@@ -1068,22 +1069,22 @@ describe("Tranche", () => {
             const expectedC = (cReq * totalAssetsFinal) / totalSharesFinal;
 
             // Verify getUserEpochInfo matches the same formula
-            const [aPending, aFinalized, aTotShares, aTotAssets, aClaimable] =
-                await tranche.getUserEpochInfo(alice.address, targetEpoch);
+            const [aPending, aClaimable] = await tranche.getUserEpochInfo(
+                alice.address,
+                targetEpoch
+            );
+            const [, aFinalized, aTotShares, aTotAssets] = await tranche.getEpochInfo(targetEpoch);
             expect(aPending).to.equal(aReq);
             expect(aFinalized).to.equal(true);
             expect(aTotShares).to.equal(totalSharesFinal);
             expect(aTotAssets).to.equal(totalAssetsFinal);
             expect(aClaimable).to.equal(expectedA);
 
-            const [bPending, , , , bClaimable] = await tranche.getUserEpochInfo(
-                bob.address,
-                targetEpoch
-            );
+            const [bPending, bClaimable] = await tranche.getUserEpochInfo(bob.address, targetEpoch);
             expect(bPending).to.equal(bReq);
             expect(bClaimable).to.equal(expectedB);
 
-            const [cPending, , , , cClaimable] = await tranche.getUserEpochInfo(
+            const [cPending, cClaimable] = await tranche.getUserEpochInfo(
                 carol.address,
                 targetEpoch
             );
