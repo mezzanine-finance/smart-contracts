@@ -12,10 +12,9 @@ import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IMZUSD.sol";
 
-// @title Tranche with epoch-based umbrella unstake
-// solhint-disable-next-line max-line-length
-// @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
-// @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
+/// @title Tranche with epoch-based umbrella unstake
+/// @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
+/// @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)

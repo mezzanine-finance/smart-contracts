@@ -12,11 +12,11 @@ import "./interfaces/IReservoir.sol";
 import "./interfaces/ITranche.sol";
 import "./interfaces/ILossManager.sol";
 import "./interfaces/INavOracleAutomation.sol";
-// NOTE: This Vault is not an ERC4626 vault. It does not mint user shares or represent deposits.
-// Tranches are the ERC4626-like vaults for users. This Vault acts as a protocol treasury:
-// it mints MZUSD, manages yield distribution, holds the USDC buffer for withdrawals/insurance,
-// and coordinates with the Reservoir where strategies live.
-
+/// @title Vault
+/// @notice Protocol treasury that mints MZUSD, manages yield distribution, buffers USDC for withdrawals/insurance,
+///         and coordinates with the Reservoir where strategies live.
+/// @dev This Vault is not an ERC4626 vault and does not mint user shares or represent deposits.
+/// @dev Tranches are the ERC4626-like vaults for users.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract Vault is
