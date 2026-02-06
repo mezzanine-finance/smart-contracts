@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -12,10 +11,9 @@ import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IMZUSD.sol";
 
-// @title Tranche with epoch-based umbrella unstake
-// solhint-disable-next-line max-line-length
-// @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
-// @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
+/// @title Tranche with epoch-based umbrella unstake
+/// @notice Users request withdrawal -> instant redeem in direct mode, or umbrella flow with delayed claim.
+/// @dev Linear yield streaming: vault sends yield in a lump sum, tranche streams it linearly in NAV.
 /// @dev directWithdrawEnabled = true: standard ERC4626 withdraw/redeem enabled, umbrella unstake disabled.
 /// @dev The contract enforces deposit cap via setDepositLimits function based on the TVL bps. The contract has no deposit cap by default.
 /// @dev Deposit cap is enforced on the whole Tranche's totalSupply.
@@ -30,7 +28,6 @@ contract Tranche is
     UUPSUpgradeable,
     PauseManagedUpgradeable
 {
-    using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
     struct FinalizedEpoch {
@@ -245,7 +242,7 @@ contract Tranche is
         userSharesByEpoch[msg.sender][epochId] = 0;
         reservedAssets -= userAssets;
 
-        IERC20(asset()).safeTransfer(msg.sender, userAssets);
+        IERC20(asset()).transfer(msg.sender, userAssets);
 
         emit WithdrawalClaimed(msg.sender, epochId, userAssets);
     }

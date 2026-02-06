@@ -11,8 +11,9 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
 - `unchecked-transfer` (High)
   - Files: `contracts/MZUSD.sol`, `contracts/ReservoirUSDC.sol`, `contracts/Vault.sol`.
   - Reason: we interact with well-behaved tokens (USDC) or protocol-owned tokens.
-    Calls revert on failure; return values are not relied upon. We can switch to
-    `SafeERC20` if we ever need to harden against non-standard tokens.
+    Calls revert on failure; return values are not relied upon. We intentionally
+    use direct ERC20 calls for known tokens. If we ever need to harden against
+    non-standard tokens, we can switch to `SafeERC20`.
 
 - `divide-before-multiply` (Medium)
   - File: `contracts/MZUSD.sol` (`requestWithdrawal`).

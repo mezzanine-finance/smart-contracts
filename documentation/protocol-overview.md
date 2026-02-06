@@ -41,9 +41,9 @@ engineers, integrators, and auditors.
 - Vault address is immutable (constructor param) and validated on initialize.
 
 Note (Phase 1 transfer safety):
-- Explicit `SafeERC20.safeTransfer` usage in our contracts is limited to
-  `Tranche.claim`. ERC4626 itself uses SafeERC20 internally for asset transfers
-  in deposit/mint/withdraw/redeem.
+- We use direct ERC20 `transfer`/`transferFrom` calls for known tokens
+  (USDC + protocol ERC20s). ERC4626 still uses SafeERC20 internally for
+  asset transfers in deposit/mint/withdraw/redeem.
 
 ### MZUSD (contracts/MZUSD.sol)
 

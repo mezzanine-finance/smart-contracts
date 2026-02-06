@@ -11,13 +11,12 @@ import {ITranche} from "./interfaces/ITranche.sol";
 import {IVault} from "./interfaces/IVault.sol";
 
 /// @title LossManager
-/// @notice Burn MZUSD from tranches in predefined order to materialize protocol losses.
+/// @notice Burn MZUSD from tranches in a predefined order to materialize protocol losses.
+/// @dev Losses are applied sequentially across the `trancheOrder`, or proportionally within configured pairs.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
-    uint256 public constant USDC_DECIMALS = 6;
-    uint256 public constant MZ_DECIMALS = 18;
-    uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // 1e12
+    uint256 public constant SCALE = 1e12; // USDC (6) -> MZUSD (18)
 
     IMZUSD public mzusd; // protocol stablecoin contract
     address[] public trancheOrder; // order to burn from
@@ -27,6 +26,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @notice Optional group id for proportional loss sharing across a PAIR of tranches.
     /// @dev If trancheOrder[i] and trancheOrder[i+1] are contiguous and share the same non-zero group id,
     ///      then they form a pair and share losses proportionally by TVL (totalAssets).
+    /// @dev Each non-zero group id may appear at most once (i.e., only one pair per group).
     mapping(address => uint256) public trancheGroup;
     address public navOracle; // canonical NAV automation address
 
@@ -50,14 +50,16 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error GroupIdAlreadyAssigned(uint256 groupId);
     error GroupNotContiguous(uint256 groupId);
     error LengthMismatch(uint256 orderLen, uint256 groupLen);
-    event VaultUpdated(address indexed vault);
     error NotNavOracle();
+    error InvalidMZUSDAccessManager(address actualAccessManager);
+    error InvalidMZUSDPauseManager(address actualPauseManager);
 
     constructor() {
         _disableInitializers();
     }
 
     /// @notice Initialize LossManager with tranche order and group configuration.
+    /// @dev `accessManager` and `pauseManager_` must match MZUSD's authority and pause manager.
     /// @param accessManager AccessManager address.
     /// @param pauseManager_ PauseManager address for category-based pauses.
     /// @param _mzusd MZUSD contract address.
@@ -74,15 +76,20 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         uint256[] memory groupIds,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
-        if (accessManager == address(0) || _mzusd == address(0) || _vault == address(0)) {
+        if (
+            accessManager == address(0) ||
+            pauseManager_ == address(0) ||
+            _mzusd == address(0) ||
+            _vault == address(0)
+        ) {
             revert ZeroAddress();
         }
 
+        _validateManagers(accessManager, pauseManager_, _mzusd);
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
         mzusd = IMZUSD(_mzusd);
         vault = _vault;
-        emit VaultUpdated(_vault);
         _setTrancheOrderAndGroups(order, groupIds);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
@@ -94,6 +101,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Apply loss in USDC and burn MZUSD from tranches in order.
     /// @dev Advances the vault epoch to keep withdrawal flows progressing.
+    /// @dev If loss exceeds aggregate TVL across all tranches, reverts with InsufficientCover.
     /// @param usdcLoss Loss amount in USDC (6 decimals).
     function applyLoss(
         uint256 usdcLoss
@@ -103,10 +111,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
         // Advance the epoch as part of loss materialization so epoch-based withdrawal flows
         // do not get stuck in periods where yield is zero but losses are applied.
-        address v = vault;
-        if (v == address(0)) revert ZeroAddress();
         // Hard-fail if epoch cannot be advanced (e.g., too soon / missing permissions).
-        IVault(v).advanceEpoch();
+        IVault(vault).advanceEpoch();
 
         uint256 remainingMZ = _toMZ(usdcLoss);
         uint256 orderLen = trancheOrder.length;
@@ -125,6 +131,10 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @param groupIds Group ids aligned with `order`.
     /// @dev Pairs are contiguous tranches with the same non-zero group id.
     /// @dev Groups share losses proportionally by TVL within each pair.
+    /// @dev Examples:
+    ///      order = [A,B,C,D], groupIds = [0,1,1,0] => (B,C) paired, A/D solo
+    ///      order = [A,B,C,D], groupIds = [2,2,3,3] => (A,B) paired, (C,D) paired
+    ///      order = [A,B,C,D], groupIds = [1,0,1,0] => invalid (group id repeated)
     function setTrancheOrderAndGroups(
         address[] memory order,
         uint256[] memory groupIds
@@ -183,6 +193,24 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     //INTERNAL HELPERS
 
+    /// @notice Validate AccessManager and PauseManager against MZUSD settings.
+    function _validateManagers(
+        address accessManager,
+        address pauseManager_,
+        address _mzusd
+    ) internal view {
+        IMZUSD token = IMZUSD(_mzusd);
+        address actualAccessManager = token.authority();
+        if (actualAccessManager != accessManager) {
+            revert InvalidMZUSDAccessManager(actualAccessManager);
+        }
+
+        address actualPauseManager = token.pauseManager();
+        if (actualPauseManager != pauseManager_) {
+            revert InvalidMZUSDPauseManager(actualPauseManager);
+        }
+    }
+
     function _setTrancheOrderAndGroups(address[] memory order, uint256[] memory groupIds) internal {
         _validateTrancheConfig(order, groupIds);
 
@@ -213,6 +241,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
                 ++i;
                 continue;
             }
+            if (i + 1 >= orderLen) revert GroupNotContiguous(gid);
             emit TrancheGroupUpdated(order[i], order[i + 1], gid);
             i += 2;
         }
@@ -227,6 +256,10 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @param groupIds group ids aligned with order
     /// @dev Validation checks: non-zero length, matching lengths, no zero addresses,
     ///      no duplicate tranches, group ids are contiguous and unique
+    /// @dev Examples:
+    ///      order = [A,B,C,D], groupIds = [0,1,1,0] => ok (pair B/C)
+    ///      order = [A,B,C,D], groupIds = [2,2,3,3] => ok (pairs A/B and C/D)
+    ///      order = [A,B,C,D], groupIds = [1,0,1,0] => invalid (group id repeated)
     function _validateTrancheConfig(
         address[] memory order,
         uint256[] memory groupIds
