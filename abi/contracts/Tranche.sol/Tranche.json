@@ -60,11 +60,6 @@
         "type": "error"
     },
     {
-        "inputs": [],
-        "name": "AlreadyFinalized",
-        "type": "error"
-    },
-    {
         "inputs": [
             {
                 "internalType": "enum PauseCategory",

@@ -105,7 +105,6 @@ contract Tranche is
     error NothingToClaim();
     error ZeroAddress();
     error YieldStreamIsActive();
-    error AlreadyFinalized();
     error NoPendingUnstake();
     error ZeroPassedShares();
     error InvalidShares();
@@ -220,7 +219,6 @@ contract Tranche is
         if (shares == 0) revert ZeroPassedShares();
         if (shares > userShares) revert InvalidShares();
 
-        if (finalizedEpochs[epochId].isFinalized) revert AlreadyFinalized();
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentEpochOnVault = IVault(vault).currentEpochId();
         if (currentEpochOnVault > epochId) revert TooLateToCancel();

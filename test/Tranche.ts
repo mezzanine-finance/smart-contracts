@@ -1439,10 +1439,10 @@ describe("Tranche", () => {
             // Epoch 3 umbrella should be unaffected by finalizing epoch 2
             expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
 
-            // After finalization, cancel for epoch 2 is blocked with AlreadyFinalized (checked before TooLateToCancel)
+            // After finalization, cancel for epoch 2 is blocked with TooLateToCancel
             await expect(
                 tranche.connect(alice).cancelUnstake(2n, 1n)
-            ).to.be.revertedWithCustomError(tranche, "AlreadyFinalized");
+            ).to.be.revertedWithCustomError(tranche, "TooLateToCancel");
 
             // Claims for epoch 2, pro-rata floor math
             const expectedA = (aPendingE2 * totalAssetsFinal) / totalSharesFinal;
