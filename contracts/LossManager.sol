@@ -16,9 +16,7 @@ import {IVault} from "./interfaces/IVault.sol";
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
-    uint256 public constant USDC_DECIMALS = 6;
-    uint256 public constant MZ_DECIMALS = 18;
-    uint256 public constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS); // USDC 6d -> MZUSD 18d
+    uint256 public constant SCALE = 1e12; // USDC 6d -> MZUSD 18d
 
     /// @notice Protocol stablecoin contract.
     IMZUSD public mzusd;
@@ -45,14 +43,12 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @param burnedMZ Burned amount in MZUSD 18d.
     /// @param uncoveredMZ Uncovered amount for this call in MZUSD 18d.
     /// @param totalUncoveredMZ Accumulated uncovered amount in MZUSD 18d.
-    /// @param cutsMZ Per-tranche burns aligned with current `trancheOrder`.
     event LossApplied(
         uint256 usdcLoss,
         uint256 requestedMZ,
         uint256 burnedMZ,
         uint256 uncoveredMZ,
-        uint256 totalUncoveredMZ,
-        uint256[] cutsMZ
+        uint256 totalUncoveredMZ
     );
     /// @notice Emitted when tranche order (and implied pair mapping) is updated.
     /// @param newOrder New tranche burn order.
@@ -147,23 +143,14 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         // Hard-fail if epoch cannot be advanced (e.g., too soon / missing permissions).
         IVault(vault).advanceEpoch();
 
-        (uint256 burnedMZ, uint256 uncoveredMZ, uint256[] memory cuts) = _applyLossAcrossOrder(
-            _toMZ(usdcLoss)
-        );
+        (uint256 burnedMZ, uint256 uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss));
 
         lastUncoveredLossMZ = uncoveredMZ;
         if (uncoveredMZ != 0) {
             totalUncoveredLossMZ += uncoveredMZ;
         }
 
-        emit LossApplied(
-            usdcLoss,
-            _toMZ(usdcLoss),
-            burnedMZ,
-            uncoveredMZ,
-            totalUncoveredLossMZ,
-            cuts
-        );
+        emit LossApplied(usdcLoss, _toMZ(usdcLoss), burnedMZ, uncoveredMZ, totalUncoveredLossMZ);
     }
 
     // SETTERS
@@ -332,13 +319,11 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @param requestedMZ Requested loss amount in MZUSD 18 decimals.
     /// @return burnedMZ Total amount actually burned in MZUSD 18 decimals.
     /// @return uncoveredMZ Uncovered remainder in MZUSD 18 decimals.
-    /// @return cuts Per-tranche burn amounts aligned with `trancheOrder`.
     /// @dev Applies proportional split inside configured pairs and sequential burn for solo tranches.
     function _applyLossAcrossOrder(
         uint256 requestedMZ
-    ) internal returns (uint256 burnedMZ, uint256 uncoveredMZ, uint256[] memory cuts) {
+    ) internal returns (uint256 burnedMZ, uint256 uncoveredMZ) {
         uint256 orderLen = trancheOrder.length;
-        cuts = new uint256[](orderLen);
 
         // Remaining amount is progressively reduced as cuts are applied by order.
         uint256 remainingMZ = requestedMZ;
@@ -363,13 +348,11 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
                     if (burn0 != 0) {
                         ITranche(t0).burnMZUSD(burn0);
-                        cuts[i] = burn0;
                         burnedMZ += burn0;
                     }
 
                     if (burn1 != 0) {
                         ITranche(t1).burnMZUSD(burn1);
-                        cuts[i + 1] = burn1;
                         burnedMZ += burn1;
                     }
 
@@ -385,7 +368,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
             if (tvl != 0) {
                 uint256 burnAmount = tvl < remainingMZ ? tvl : remainingMZ;
                 ITranche(t0).burnMZUSD(burnAmount);
-                cuts[i] = burnAmount;
                 burnedMZ += burnAmount;
                 remainingMZ -= burnAmount;
             }

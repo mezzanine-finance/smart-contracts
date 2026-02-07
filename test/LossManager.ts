@@ -359,6 +359,21 @@ describe("LossManager", () => {
         return null;
     }
 
+    async function applyLossAndCapture(order: string[], usdcLoss6: bigint) {
+        const balancesBefore = await Promise.all(order.map((tranche) => mzusd.balanceOf(tranche)));
+
+        const tx = await lossManager.connect(navOracleSigner).applyLoss(usdcLoss6);
+        const receipt = await tx.wait();
+        const parsed = parseLossApplied(receipt);
+        expect(parsed).to.not.equal(null);
+        if (parsed === null) throw new Error("LossApplied event not found");
+
+        const balancesAfter = await Promise.all(order.map((tranche) => mzusd.balanceOf(tranche)));
+        const cuts = balancesBefore.map((before, i) => before - balancesAfter[i]);
+
+        return {parsed, cuts};
+    }
+
     function min(a: bigint, b: bigint): bigint {
         return a < b ? a : b;
     }
@@ -472,8 +487,7 @@ describe("LossManager", () => {
                 await tx1.wait();
 
                 await time.increase(DAY);
-                const tx2 = await lossManager.connect(navOracleSigner).applyLoss(to6(1n));
-                const receipt2 = await tx2.wait();
+                const {parsed, cuts} = await applyLossAndCapture(order, to6(1n));
 
                 // expected burn only from first tranche (they all have enough TVL)
                 expected[order[0]] -= burnStep;
@@ -482,15 +496,10 @@ describe("LossManager", () => {
                 expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(expected[mezzanineAddr]);
                 expect(await mzusd.balanceOf(seniorAddr)).to.equal(expected[seniorAddr]);
 
-                // Event should reflect the current order and cuts
-                const parsed = parseLossApplied(receipt2);
-                expect(parsed).to.not.equal(null);
-
-                const usdcLoss = parsed!.args.usdcLoss as bigint;
-                const requestedMZ = parsed!.args.requestedMZ as bigint;
-                const burnedMZ = parsed!.args.burnedMZ as bigint;
-                const uncoveredMZ = parsed!.args.uncoveredMZ as bigint;
-                const cuts = parsed!.args.cutsMZ as bigint[];
+                const usdcLoss = parsed.args.usdcLoss;
+                const requestedMZ = parsed.args.requestedMZ;
+                const burnedMZ = parsed.args.burnedMZ;
+                const uncoveredMZ = parsed.args.uncoveredMZ;
 
                 expect(usdcLoss).to.equal(to6(1n));
                 expect(requestedMZ).to.equal(to18(1n));
@@ -752,14 +761,12 @@ describe("LossManager", () => {
             expect(await senior.totalAssets()).to.equal(to18(10n));
 
             await time.increase(DAY);
-            const tx1 = await lossManager.connect(navOracleSigner).applyLoss(to6(35n));
-            const receipt1 = await tx1.wait();
-            const parsed1 = parseLossApplied(receipt1);
-            expect(parsed1).to.not.equal(null);
-
-            const cuts1 = parsed1!.args.cutsMZ as bigint[];
+            const {parsed: parsed1, cuts: cuts1} = await applyLossAndCapture(
+                [juniorAddr, mezzanineAddr, seniorAddr],
+                to6(35n)
+            );
             expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n)]);
-            expect(parsed1!.args.uncoveredMZ as bigint).to.equal(to18(5n));
+            expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
@@ -769,15 +776,13 @@ describe("LossManager", () => {
             expect(await senior.totalAssets()).to.equal(0n);
 
             await time.increase(DAY);
-            const tx2 = await lossManager.connect(navOracleSigner).applyLoss(to6(7n));
-            const receipt2 = await tx2.wait();
-            const parsed2 = parseLossApplied(receipt2);
-            expect(parsed2).to.not.equal(null);
-
-            const cuts2 = parsed2!.args.cutsMZ as bigint[];
+            const {parsed: parsed2, cuts: cuts2} = await applyLossAndCapture(
+                [juniorAddr, mezzanineAddr, seniorAddr],
+                to6(7n)
+            );
             expect(cuts2).to.deep.equal([0n, 0n, 0n]);
-            expect(parsed2!.args.burnedMZ as bigint).to.equal(0n);
-            expect(parsed2!.args.uncoveredMZ as bigint).to.equal(to18(7n));
+            expect(parsed2.args.burnedMZ).to.equal(0n);
+            expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
@@ -808,15 +813,13 @@ describe("LossManager", () => {
 
             // First loss exceeds aggregate tranche TVL by 5.
             await time.increase(DAY);
-            const tx1 = await lossManager.connect(navOracleSigner).applyLoss(to6(45n));
-            const receipt1 = await tx1.wait();
-            const parsed1 = parseLossApplied(receipt1);
-            expect(parsed1).to.not.equal(null);
-
-            const cuts1 = parsed1!.args.cutsMZ as bigint[];
+            const {parsed: parsed1, cuts: cuts1} = await applyLossAndCapture(
+                [polAddr, juniorAddr, mezzanineAddr, seniorAddr],
+                to6(45n)
+            );
             expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n), to18(10n)]);
-            expect(parsed1!.args.burnedMZ as bigint).to.equal(to18(40n));
-            expect(parsed1!.args.uncoveredMZ as bigint).to.equal(to18(5n));
+            expect(parsed1.args.burnedMZ).to.equal(to18(40n));
+            expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
@@ -828,15 +831,13 @@ describe("LossManager", () => {
 
             // Second loss with zero tranche TVL should produce pure uncovered debt.
             await time.increase(DAY);
-            const tx2 = await lossManager.connect(navOracleSigner).applyLoss(to6(7n));
-            const receipt2 = await tx2.wait();
-            const parsed2 = parseLossApplied(receipt2);
-            expect(parsed2).to.not.equal(null);
-
-            const cuts2 = parsed2!.args.cutsMZ as bigint[];
+            const {parsed: parsed2, cuts: cuts2} = await applyLossAndCapture(
+                [polAddr, juniorAddr, mezzanineAddr, seniorAddr],
+                to6(7n)
+            );
             expect(cuts2).to.deep.equal([0n, 0n, 0n, 0n]);
-            expect(parsed2!.args.burnedMZ as bigint).to.equal(0n);
-            expect(parsed2!.args.uncoveredMZ as bigint).to.equal(to18(7n));
+            expect(parsed2.args.burnedMZ).to.equal(0n);
+            expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
@@ -956,19 +957,15 @@ describe("LossManager", () => {
                 const usdcLossWhole = requested < pairUSDCWhole ? requested : pairUSDCWhole;
                 if (usdcLossWhole === 0n) break;
 
-                const jBalBefore = await mzusd.balanceOf(juniorAddr);
-                const pBalBefore = await mzusd.balanceOf(polAddr);
-
                 await time.increase(DAY);
-                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(usdcLossWhole));
-                const receipt = await tx.wait();
-                const parsed = parseLossApplied(receipt);
-                expect(parsed).to.not.equal(null);
+                const {parsed, cuts} = await applyLossAndCapture(
+                    [juniorAddr, polAddr],
+                    to6(usdcLossWhole)
+                );
 
-                const requestedMZ = parsed!.args.requestedMZ as bigint;
-                const burnedMZ = parsed!.args.burnedMZ as bigint;
-                const uncoveredMZ = parsed!.args.uncoveredMZ as bigint;
-                const cuts = parsed!.args.cutsMZ as bigint[];
+                const requestedMZ = parsed.args.requestedMZ;
+                const burnedMZ = parsed.args.burnedMZ;
+                const uncoveredMZ = parsed.args.uncoveredMZ;
 
                 const cutJ = cuts[0];
                 const cutP = cuts[1];
@@ -977,11 +974,6 @@ describe("LossManager", () => {
                 expect(cutJ + cutP).to.equal(burnedMZ);
                 expect(uncoveredMZ).to.equal(0n);
                 expect(burnedMZ).to.equal(requestedMZ);
-
-                const jBalAfter = await mzusd.balanceOf(juniorAddr);
-                const pBalAfter = await mzusd.balanceOf(polAddr);
-                expect(jBalBefore - jBalAfter).to.equal(cutJ);
-                expect(pBalBefore - pBalAfter).to.equal(cutP);
             }
         });
 
@@ -1115,21 +1107,15 @@ describe("LossManager", () => {
                 const pTvl = await pol.totalAssets();
                 const pairTVL = jTvl + pTvl;
 
-                const jBal0 = await mzusd.balanceOf(juniorAddr);
-                const pBal0 = await mzusd.balanceOf(polAddr);
-                const mBal0 = await mzusd.balanceOf(mezzanineAddr);
-                const sBal0 = await mzusd.balanceOf(seniorAddr);
-
                 await time.increase(DAY);
-                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC));
-                const receipt = await tx.wait();
-                const parsed = parseLossApplied(receipt);
-                expect(parsed).to.not.equal(null);
+                const {parsed, cuts} = await applyLossAndCapture(
+                    [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                    to6(lossUSDC)
+                );
 
-                const requestedMZ = parsed!.args.requestedMZ as bigint;
-                const burnedMZ = parsed!.args.burnedMZ as bigint;
-                const uncoveredMZ = parsed!.args.uncoveredMZ as bigint;
-                const cuts = parsed!.args.cutsMZ as bigint[];
+                const requestedMZ = parsed.args.requestedMZ;
+                const burnedMZ = parsed.args.burnedMZ;
+                const uncoveredMZ = parsed.args.uncoveredMZ;
 
                 const cutJ = cuts[0];
                 const cutP = cuts[1];
@@ -1139,14 +1125,9 @@ describe("LossManager", () => {
                 expect(burnedMZ).to.equal(min(requestedMZ, pairTVL));
                 expect(uncoveredMZ).to.equal(0n);
 
-                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - cutJ);
-                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - cutP);
-
                 // untouched (pair always covers)
                 expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mStart);
                 expect(await mzusd.balanceOf(seniorAddr)).to.equal(sStart);
-                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0);
-                expect(await mzusd.balanceOf(seniorAddr)).to.equal(sBal0);
             }
         });
 
@@ -1174,19 +1155,13 @@ describe("LossManager", () => {
                 const pTvl = await pol.totalAssets();
                 const sTvl = await senior.totalAssets();
 
-                const mBal0 = await mzusd.balanceOf(mezzanineAddr);
-                const jBal0 = await mzusd.balanceOf(juniorAddr);
-                const pBal0 = await mzusd.balanceOf(polAddr);
-                const sBal0 = await mzusd.balanceOf(seniorAddr);
-
                 await time.increase(DAY);
-                const tx = await lossManager.connect(navOracleSigner).applyLoss(to6(lossUSDC));
-                const receipt = await tx.wait();
-                const parsed = parseLossApplied(receipt);
-                expect(parsed).to.not.equal(null);
+                const {parsed, cuts} = await applyLossAndCapture(
+                    [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
+                    to6(lossUSDC)
+                );
 
-                const burnedMZ = parsed!.args.burnedMZ as bigint;
-                const cuts = parsed!.args.cutsMZ as bigint[];
+                const burnedMZ = parsed.args.burnedMZ;
                 const cutM = cuts[0];
                 const cutJ = cuts[1];
                 const cutP = cuts[2];
@@ -1198,11 +1173,6 @@ describe("LossManager", () => {
                 expect(cutS <= sTvl).to.equal(true);
                 expect(cutM + cutJ + cutP + cutS).to.equal(burnedMZ);
                 expect(burnedMZ <= requestedMZ).to.equal(true);
-
-                expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(mBal0 - cutM);
-                expect(await mzusd.balanceOf(juniorAddr)).to.equal(jBal0 - cutJ);
-                expect(await mzusd.balanceOf(polAddr)).to.equal(pBal0 - cutP);
-                expect(await mzusd.balanceOf(seniorAddr)).to.equal(sBal0 - cutS);
             }
         });
     });
