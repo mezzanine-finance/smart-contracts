@@ -242,6 +242,54 @@ describe("Vault Yield Integration", () => {
         expect(totalSupply).to.equal(totalUSDC * MZUSD_SCALE);
     }
 
+    async function deployVaultWithoutTranches() {
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const isolatedVault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, carol.address],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as Vault;
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const selectors = [
+            isolatedVault.interface.getFunction("distributeYield").selector,
+            isolatedVault.interface.getFunction("setLossManager").selector,
+            isolatedVault.interface.getFunction("setNavOracle").selector,
+        ];
+        await accessManager.setTargetFunctionRole(isolatedVault.target, selectors, ADMIN_ROLE);
+
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        const isolatedLossManager = await MockLossManagerFactory.deploy(
+            isolatedVault.target,
+            mzusd.target
+        );
+        await isolatedLossManager.waitForDeployment();
+        await isolatedVault.setLossManager(isolatedLossManager.target);
+
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        const isolatedNavOracle = await MockNavOracleFactory.deploy(
+            isolatedVault.target,
+            isolatedLossManager.target,
+            mzusd.target
+        );
+        await isolatedNavOracle.waitForDeployment();
+        await isolatedVault.setNavOracle(isolatedNavOracle.target);
+        const isolatedNavOracleSigner = await imp(isolatedNavOracle.target as string);
+
+        return {isolatedVault, isolatedNavOracleSigner};
+    }
+
     describe("Getters and admin", () => {
         it("Getters sanity", async () => {
             // tranchesLength
@@ -523,7 +571,6 @@ describe("Vault Yield Integration", () => {
             const duration = BigInt(await vault.epochDuration());
 
             await time.increase(duration * 3n + 5n);
-
             const tx = await vault.connect(navOracleSigner).distributeYield(to6(1n));
             const receipt = await tx.wait();
             const block = await ethers.provider.getBlock(receipt!.blockNumber);
@@ -540,6 +587,84 @@ describe("Vault Yield Integration", () => {
             await time.increase(duration);
             await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
             expect(await vault.currentEpochId()).to.equal(epochBefore + 2n);
+        });
+
+        it("Reverts NoTranchesAdded when distributeYield is called without any registered tranche", async () => {
+            const {isolatedVault, isolatedNavOracleSigner} = await deployVaultWithoutTranches();
+
+            await expect(
+                isolatedVault.connect(isolatedNavOracleSigner).distributeYield(to6(1n))
+            ).to.be.revertedWithCustomError(isolatedVault, "NoTranchesAdded");
+        });
+
+        it("Allocates rounding dust to the last non-zero tranche when a middle tranche is disabled", async () => {
+            await vault.setFeeRates(0, 0);
+            await vault.setYieldDistribution(10_000, [0, 0, 0], [true, false, true]);
+
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(5n))); // disabled
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(4n)));
+
+            const juniorTVL = await junior.totalAssets();
+            const seniorTVL = await senior.totalAssets();
+            const allocatable = 1_000_000_000_000n; // usdcReported=1 (6d) scaled to 18d MZUSD
+            const expectedJunior = (allocatable * juniorTVL) / (juniorTVL + seniorTVL);
+            const expectedSenior = allocatable - expectedJunior; // remainder must land here
+
+            const juniorBalBefore = await mzusd.balanceOf(junior.target);
+            const mezzBalBefore = await mzusd.balanceOf(mezzanine.target);
+            const seniorBalBefore = await mzusd.balanceOf(senior.target);
+
+            await time.increase(DAY);
+            await fundYieldUSDC(1n);
+            await vault.connect(navOracleSigner).distributeYield(1n);
+
+            const juniorBalAfter = await mzusd.balanceOf(junior.target);
+            const mezzBalAfter = await mzusd.balanceOf(mezzanine.target);
+            const seniorBalAfter = await mzusd.balanceOf(senior.target);
+
+            expect(juniorBalAfter - juniorBalBefore).to.equal(expectedJunior);
+            expect(mezzBalAfter - mezzBalBefore).to.equal(0n);
+            expect(seniorBalAfter - seniorBalBefore).to.equal(expectedSenior);
+
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJunior);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n);
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSenior);
+        });
+
+        it("Allocates rounding dust to the last non-zero tranche when the last tranche has zero TVL", async () => {
+            await vault.setFeeRates(0, 0);
+            await vault.setYieldDistribution(10_000, [0, 0, 0], [true, true, true]);
+
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(4n)));
+            // senior intentionally left with zero TVL
+
+            const juniorTVL = await junior.totalAssets();
+            const mezzTVL = await mezzanine.totalAssets();
+            const allocatable = 1_000_000_000_000n; // usdcReported=1 (6d) scaled to 18d MZUSD
+            const expectedJunior = (allocatable * juniorTVL) / (juniorTVL + mezzTVL);
+            const expectedMezz = allocatable - expectedJunior; // remainder must land here
+
+            const juniorBalBefore = await mzusd.balanceOf(junior.target);
+            const mezzBalBefore = await mzusd.balanceOf(mezzanine.target);
+            const seniorBalBefore = await mzusd.balanceOf(senior.target);
+
+            await time.increase(DAY);
+            await fundYieldUSDC(1n);
+            await vault.connect(navOracleSigner).distributeYield(1n);
+
+            const juniorBalAfter = await mzusd.balanceOf(junior.target);
+            const mezzBalAfter = await mzusd.balanceOf(mezzanine.target);
+            const seniorBalAfter = await mzusd.balanceOf(senior.target);
+
+            expect(juniorBalAfter - juniorBalBefore).to.equal(expectedJunior);
+            expect(mezzBalAfter - mezzBalBefore).to.equal(expectedMezz);
+            expect(seniorBalAfter - seniorBalBefore).to.equal(0n);
+
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJunior);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(expectedMezz);
+            expect(await senior.yieldStreamingAmount()).to.equal(0n);
         });
 
         it("Epoch advances, fees minted (max 50%), and yield is still allocated", async () => {
