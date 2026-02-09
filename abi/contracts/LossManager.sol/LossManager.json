@@ -1,6 +1,12 @@
 [
     {
-        "inputs": [],
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "constructor"
     },
@@ -56,6 +62,28 @@
     {
         "inputs": [
             {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            }
+        ],
+        "name": "DuplicateTranche",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "implementation",
                 "type": "address"
@@ -70,35 +98,8 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "attemptedAmount",
-                "type": "uint256"
-            }
-        ],
-        "name": "EthTransferFailed",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "FailedCall",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "remainingMZ",
-                "type": "uint256"
-            }
-        ],
-        "name": "InsufficientCover",
         "type": "error"
     },
     {
@@ -107,8 +108,40 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderLen",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "flagsLen",
+                "type": "uint256"
+            }
+        ],
+        "name": "LengthMismatch",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "LimitExceeded",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "usdcLoss",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "totalSupplyUSDC",
+                "type": "uint256"
+            }
+        ],
+        "name": "LossExceedsTotalSupply",
         "type": "error"
     },
     {
@@ -118,7 +151,23 @@
     },
     {
         "inputs": [],
-        "name": "ReentrancyGuardReentrantCall",
+        "name": "NotNavOracle",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "index",
+                "type": "uint256"
+            }
+        ],
+        "name": "PairNotContiguous",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PauseManagerZeroAddress",
         "type": "error"
     },
     {
@@ -190,20 +239,26 @@
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "lossMZ",
+                "name": "requestedMZ",
                 "type": "uint256"
             },
             {
                 "indexed": false,
-                "internalType": "address[]",
-                "name": "tranches",
-                "type": "address[]"
+                "internalType": "uint256",
+                "name": "burnedMZ",
+                "type": "uint256"
             },
             {
                 "indexed": false,
-                "internalType": "uint256[]",
-                "name": "cutsMZ",
-                "type": "uint256[]"
+                "internalType": "uint256",
+                "name": "uncoveredMZ",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "totalUncoveredMZ",
+                "type": "uint256"
             }
         ],
         "name": "LossApplied",
@@ -228,17 +283,11 @@
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "tranche",
+                "name": "newManager",
                 "type": "address"
-            },
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "groupId",
-                "type": "uint256"
             }
         ],
-        "name": "TrancheGroupUpdated",
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -268,32 +317,6 @@
         "type": "event"
     },
     {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "vault",
-                "type": "address"
-            }
-        ],
-        "name": "VaultUpdated",
-        "type": "event"
-    },
-    {
-        "inputs": [],
-        "name": "MZ_DECIMALS",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [],
         "name": "SCALE",
         "outputs": [
@@ -314,19 +337,6 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "USDC_DECIMALS",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -359,21 +369,47 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "_mzusd",
-                "type": "address"
-            },
+        "inputs": [],
+        "name": "getTrancheOrder",
+        "outputs": [
             {
                 "internalType": "address[]",
                 "name": "order",
                 "type": "address[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getTrancheOrderAndPairs",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "order",
+                "type": "address[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "isPairedWithNext",
+                "type": "bool[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address[]",
+                "name": "order",
+                "type": "address[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "isPairedWithNext",
+                "type": "bool[]"
             },
             {
                 "internalType": "uint256",
@@ -394,6 +430,19 @@
                 "internalType": "bytes4",
                 "name": "",
                 "type": "bytes4"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "lastUncoveredLossMZ",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -427,6 +476,19 @@
     },
     {
         "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "proxiableUUID",
         "outputs": [
             {
@@ -436,24 +498,6 @@
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "rescueETH",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -485,56 +529,24 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "tranche",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "groupId",
-                "type": "uint256"
-            }
-        ],
-        "name": "setTrancheGroup",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "address[]",
                 "name": "order",
                 "type": "address[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "isPairedWithNext",
+                "type": "bool[]"
             }
         ],
-        "name": "setTrancheOrder",
+        "name": "setTrancheOrderAndPairs",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_vault",
-                "type": "address"
-            }
-        ],
-        "name": "setVault",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "name": "trancheGroup",
+        "inputs": [],
+        "name": "totalUncoveredLossMZ",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -570,8 +582,27 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "length",
                 "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "tranchePairedTo",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
             }
         ],
         "stateMutability": "view",

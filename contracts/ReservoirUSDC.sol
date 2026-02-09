@@ -2,39 +2,29 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
 
-interface IStrategy {
-    function invest(uint256 amount) external returns (bool);
-    function divest(uint256 amount) external returns (uint256);
-    function harvest() external;
-    function totalAssets() external view returns (uint256);
-}
-
-contract ReservoirUSDC is
-    Initializable,
-    AccessManagedUpgradeable,
-    ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
-{
+// @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
+// aderyn-fp-next-line(contract-locks-ether)
+contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
     IERC20 public immutable usdc;
 
-    IStrategy[] internal _strategies; // version 2: list of strategies
-    mapping(IStrategy => bool) internal _isStrategy; // version 2: quick check
-    mapping(IStrategy => uint256) internal _strategyCap; // version 2: optional per-strategy cap
-
-    uint256 internal _minKeepInReservoir; // version 2: do not invest below this
+    address public vault;
+    mapping(address => uint256) public depositedBy;
+    mapping(address => uint256) public withdrawnTo;
+    address[] public actors;
+    mapping(address => bool) private actorSeen;
 
     event Deposited(address indexed from, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
+    event VaultUpdated(address indexed vault);
 
     error ZeroAmount();
     error ZeroAddress();
-    error EthTransferFailed(address to, uint256 attemptedAmount);
+    error VaultAlreadySet();
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -42,59 +32,73 @@ contract ReservoirUSDC is
         _disableInitializers();
     }
 
-    function initialize(address accessManager) external initializer {
+    function initialize(address accessManager, address pauseManager_) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __AccessManaged_init(accessManager);
-        __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
+        __PauseManaged_init(pauseManager_);
     }
 
-    /// @notice Called by the Vault to move idle USDC into the Reservoir.
-    function deposit(uint256 amount) external nonReentrant restricted {
+    /// @notice Set Vault address for tracking (one-time).
+    function setVault(address _vault) external restricted {
+        if (_vault == address(0)) revert ZeroAddress();
+        if (vault != address(0)) revert VaultAlreadySet();
+        vault = _vault;
+        emit VaultUpdated(_vault);
+    }
+
+    /// @notice Typically called by the Vault to move idle USDC into the Reservoir.
+    function deposit(uint256 amount) external whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
-        usdc.transferFrom(_msgSender(), address(this), amount);
-        emit Deposited(_msgSender(), amount);
+        usdc.transferFrom(msg.sender, address(this), amount);
+        if (!_isVault(msg.sender)) {
+            depositedBy[msg.sender] += amount;
+            _trackActor(msg.sender);
+        }
+        emit Deposited(msg.sender, amount);
     }
 
-    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault.
-    function withdraw(uint256 amount, address to) external nonReentrant restricted {
+    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault OR called by the Curators to move funds into the main fund to earn yield.
+    function withdraw(
+        uint256 amount,
+        address to
+    ) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         if (to == address(0)) revert ZeroAddress();
 
         // USDC will revert if balance is insufficient
         usdc.transfer(to, amount);
+        if (!_isVault(to)) {
+            withdrawnTo[to] += amount;
+            _trackActor(to);
+        }
         emit Withdrawn(to, amount);
     }
 
-    /// @notice helper to see how much USDC is on balance
-    function totalAssets() external view returns (uint256) {
-        return usdc.balanceOf(address(this));
+    /// @notice Helper to see how much USDC is on balance
+    function totalUSDC() external view returns (uint256 balance) {
+        balance = usdc.balanceOf(address(this));
     }
 
-    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
-    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
-    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
-    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
-    ///      via the proxy and no ETH should remain here, but having an explicit
-    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
-    ///      or mistaken transfers. This function is not part of the normal protocol
-    ///      flow and is restricted to the admin role.
-    // aderyn-ignore-next-line(state-change-without-event)
-    function rescueETH(address to, uint256 amount) external restricted {
-        if (to == address(0)) revert ZeroAddress();
+    /// @notice Return number of tracked non-vault actors.
+    function actorsLength() external view returns (uint256 length) {
+        length = actors.length;
+    }
 
-        uint256 bal = address(this).balance;
-        if (amount > bal) {
-            amount = bal;
+    function _trackActor(address actor) internal {
+        if (!actorSeen[actor]) {
+            actorSeen[actor] = true;
+            actors.push(actor);
         }
-
-        (bool ok, ) = to.call{value: amount}("");
-        if (!ok) revert EthTransferFailed(to, amount);
     }
 
+    function _isVault(address actor) internal view returns (bool) {
+        return vault != address(0) && actor == vault;
+    }
+
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
     // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address newImplementation) internal override restricted {}
 }

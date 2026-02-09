@@ -62,6 +62,17 @@
     {
         "inputs": [
             {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "implementation",
                 "type": "address"
@@ -162,22 +173,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "attemptedAmount",
-                "type": "uint256"
-            }
-        ],
-        "name": "EthTransferFailed",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "FailedCall",
         "type": "error"
@@ -191,7 +186,7 @@
             },
             {
                 "internalType": "uint256",
-                "name": "usedUSDC",
+                "name": "newTotal",
                 "type": "uint256"
             },
             {
@@ -200,12 +195,17 @@
                 "type": "uint256"
             }
         ],
-        "name": "GlobalHourlyCapExceeded",
+        "name": "GlobalRedemptionCapExceeded",
         "type": "error"
     },
     {
         "inputs": [],
         "name": "InvalidInitialization",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidRedemptionWindowDuration",
         "type": "error"
     },
     {
@@ -220,34 +220,18 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "amountMZ",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "usdcOut",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "dustMZ",
-                "type": "uint256"
-            }
-        ],
-        "name": "NonIntegralWithdrawalAmount",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "NotInitializing",
         "type": "error"
     },
     {
         "inputs": [],
-        "name": "ReentrancyGuardReentrantCall",
+        "name": "NotVault",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PauseManagerZeroAddress",
         "type": "error"
     },
     {
@@ -289,6 +273,16 @@
     },
     {
         "inputs": [],
+        "name": "VaultAlreadySet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "VaultNotSet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "ZeroAddress",
         "type": "error"
     },
@@ -300,11 +294,6 @@
     {
         "inputs": [],
         "name": "ZeroCap",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroDuration",
         "type": "error"
     },
     {
@@ -359,12 +348,6 @@
                 "internalType": "uint256",
                 "name": "usdcAmount",
                 "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "mzMinted",
-                "type": "uint256"
             }
         ],
         "name": "Deposit",
@@ -380,7 +363,7 @@
                 "type": "uint256"
             }
         ],
-        "name": "GlobalHourlyRedemptionCapUpdated",
+        "name": "GlobalRedemptionCapUpdated",
         "type": "event"
     },
     {
@@ -400,13 +383,13 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "newDuration",
-                "type": "uint256"
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
             }
         ],
-        "name": "RedemptionWindowDurationUpdated",
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -414,12 +397,25 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "address",
-                "name": "vault",
-                "type": "address"
+                "internalType": "uint32",
+                "name": "newDuration",
+                "type": "uint32"
             }
         ],
-        "name": "SetVault",
+        "name": "RedemptionWindowDurationQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint32",
+                "name": "newDuration",
+                "type": "uint32"
+            }
+        ],
+        "name": "RedemptionWindowDurationUpdated",
         "type": "event"
     },
     {
@@ -466,14 +462,21 @@
             {
                 "indexed": true,
                 "internalType": "address",
+                "name": "vault",
+                "type": "address"
+            }
+        ],
+        "name": "VaultUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
                 "name": "user",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "mzBurned",
-                "type": "uint256"
             },
             {
                 "indexed": false,
@@ -487,12 +490,25 @@
     },
     {
         "inputs": [],
-        "name": "MAX_WITHDRAW_DUST_MZ",
+        "name": "MAX_REDEMPTION_WINDOW_DURATION",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "",
-                "type": "uint256"
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MIN_REDEMPTION_WINDOW_DURATION",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
             }
         ],
         "stateMutability": "view",
@@ -578,7 +594,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -620,11 +636,6 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "from",
-                "type": "address"
-            },
-            {
                 "internalType": "uint256",
                 "name": "amount",
                 "type": "uint256"
@@ -633,49 +644,6 @@
         "name": "burn",
         "outputs": [],
         "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "amountUSDC",
-                "type": "uint256"
-            }
-        ],
-        "name": "calculateDeposit",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "mintMZ",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "pure",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "amountMZ",
-                "type": "uint256"
-            }
-        ],
-        "name": "calculateWithdrawalAmounts",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "usdcOut",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "dustMZ",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "pure",
         "type": "function"
     },
     {
@@ -706,16 +674,44 @@
     },
     {
         "inputs": [],
-        "name": "getRemainingGlobalHourlyCap",
+        "name": "getRedemptionWindow",
+        "outputs": [
+            {
+                "internalType": "uint40",
+                "name": "windowStart",
+                "type": "uint40"
+            },
+            {
+                "internalType": "uint40",
+                "name": "windowEnd",
+                "type": "uint40"
+            },
+            {
+                "internalType": "uint32",
+                "name": "duration",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getRemainingRedemptionCap",
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "remainingUSDC",
+                "name": "capUSDC",
                 "type": "uint256"
             },
             {
                 "internalType": "uint256",
-                "name": "windowStart",
+                "name": "usedUSDC",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "remainingUSDC",
                 "type": "uint256"
             }
         ],
@@ -724,7 +720,7 @@
     },
     {
         "inputs": [],
-        "name": "globalHourlyRedemptionCapUSDC",
+        "name": "globalRedemptionCapUSDC",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -743,8 +739,13 @@
                 "type": "address"
             },
             {
+                "internalType": "address",
+                "name": "pauseManager_",
+                "type": "address"
+            },
+            {
                 "internalType": "uint256",
-                "name": "_hourlyLimitUSDC",
+                "name": "_initialCapUSDC",
                 "type": "uint256"
             }
         ],
@@ -798,84 +799,26 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "amountMZ",
-                "type": "uint256"
-            }
-        ],
-        "name": "previewWithdrawalFlat",
+        "inputs": [],
+        "name": "nextRedemptionWindowDuration",
         "outputs": [
             {
-                "internalType": "uint256",
-                "name": "requestedMZ",
-                "type": "uint256"
-            },
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
             {
-                "internalType": "uint256",
-                "name": "userBalanceMZ",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "hasEnoughMZ",
-                "type": "bool"
-            },
-            {
-                "internalType": "uint256",
-                "name": "usdcOut",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "dustMZ",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "vaultLiquidityUSDC",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "hasSufficientLiquidity",
-                "type": "bool"
-            },
-            {
-                "internalType": "uint256",
-                "name": "globalCapUSDC",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "windowStart",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "windowEnd",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "windowUsedUSDC_",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "windowRemainingUSDC",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "isGlobalCapZero",
-                "type": "bool"
-            },
-            {
-                "internalType": "bool",
-                "name": "wouldExceedGlobalCap",
-                "type": "bool"
+                "internalType": "address",
+                "name": "",
+                "type": "address"
             }
         ],
         "stateMutability": "view",
@@ -899,9 +842,9 @@
         "name": "redemptionWindowDuration",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "stateMutability": "view",
@@ -916,24 +859,6 @@
             }
         ],
         "name": "requestWithdrawal",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "rescueETH",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -959,7 +884,7 @@
                 "type": "uint256"
             }
         ],
-        "name": "setGlobalHourlyRedemptionCap",
+        "name": "setGlobalRedemptionCap",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -967,9 +892,9 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "newDuration",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "name": "setRedemptionWindowDuration",
@@ -1033,7 +958,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1062,7 +987,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1118,9 +1043,9 @@
         "name": "windowStartTimestamp",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "uint40",
                 "name": "",
-                "type": "uint64"
+                "type": "uint40"
             }
         ],
         "stateMutability": "view",

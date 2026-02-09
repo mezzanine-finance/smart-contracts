@@ -1,5 +1,25 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -e
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  . "$NVM_DIR/nvm.sh" --no-use
+  if [ -f .nvmrc ]; then
+    if ! nvm use --silent >/dev/null; then
+      echo "Node version from .nvmrc is not installed. Run: nvm install" >&2
+      exit 1
+    fi
+  else
+    nvm use --silent default >/dev/null 2>&1 || nvm use --silent node >/dev/null 2>&1 || true
+  fi
+fi
+
+if ! command -v npm >/dev/null; then
+  echo "npm not found in PATH; install Node or add .nvmrc for this repo." >&2
+  exit 1
+fi
 
 npm run lint:staged
 npx hardhat check

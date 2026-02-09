@@ -5,10 +5,20 @@
                 "internalType": "address",
                 "name": "tranche_",
                 "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "startEpoch_",
+                "type": "uint256"
             }
         ],
         "stateMutability": "nonpayable",
         "type": "constructor"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidEpoch",
+        "type": "error"
     },
     {
         "inputs": [],
@@ -22,22 +32,17 @@
     },
     {
         "inputs": [],
-        "name": "StaleEpoch",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "ZeroAddress",
         "type": "error"
     },
     {
         "inputs": [],
-        "name": "TRANCHE",
+        "name": "MIN_EPOCH_ID",
         "outputs": [
             {
-                "internalType": "address",
+                "internalType": "uint256",
                 "name": "",
-                "type": "address"
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -47,7 +52,7 @@
         "inputs": [
             {
                 "internalType": "bytes",
-                "name": "",
+                "name": "checkData",
                 "type": "bytes"
             }
         ],
@@ -68,6 +73,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "nextEpochId",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "bytes",
@@ -78,6 +96,19 @@
         "name": "performUpkeep",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "tranche",
+        "outputs": [
+            {
+                "internalType": "contract ITranche",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     }
 ]

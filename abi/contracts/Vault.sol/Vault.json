@@ -3,7 +3,12 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "_usdc",
+                "name": "_mzusd",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "_reservoir",
                 "type": "address"
             }
         ],
@@ -63,6 +68,44 @@
         "inputs": [
             {
                 "internalType": "address",
+                "name": "candidate",
+                "type": "address"
+            }
+        ],
+        "name": "AddressHasNoCode",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "allocated",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "expected",
+                "type": "uint256"
+            }
+        ],
+        "name": "AllocationMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
                 "name": "implementation",
                 "type": "address"
             }
@@ -81,22 +124,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "attemptedAmount",
-                "type": "uint256"
-            }
-        ],
-        "name": "EthTransferFailed",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "FailedCall",
         "type": "error"
@@ -112,6 +139,158 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "actualDecimals",
+                "type": "uint8"
+            }
+        ],
+        "name": "InvalidMZUSDDecimals",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDUSDC",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualLossManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirUSDC",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidYieldDistribution",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LengthMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LossManagerAlreadySet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LossManagerNotSet",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "NoTranchesAdded",
         "type": "error"
@@ -123,7 +302,32 @@
     },
     {
         "inputs": [],
+        "name": "NotLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotNavOracle",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "ReentrancyGuardReentrantCall",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ReservoirEmpty",
         "type": "error"
     },
     {
@@ -153,11 +357,6 @@
     },
     {
         "inputs": [],
-        "name": "TrancheIndexOOB",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },
@@ -174,22 +373,7 @@
     },
     {
         "inputs": [],
-        "name": "WeightsZero",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "ZeroAddress",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroAddressWhileFeeIsOnPerformance",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroAddressWhileFeeIsOnProtocol",
         "type": "error"
     },
     {
@@ -246,6 +430,19 @@
             }
         ],
         "name": "EpochAdvanced",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochDuration",
+                "type": "uint256"
+            }
+        ],
+        "name": "EpochDurationQueued",
         "type": "event"
     },
     {
@@ -336,17 +533,11 @@
             {
                 "indexed": false,
                 "internalType": "address",
-                "name": "insurance",
+                "name": "newLossManager",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "bps",
-                "type": "uint256"
             }
         ],
-        "name": "InsuranceUpdated",
+        "name": "LossManagerUpdated",
         "type": "event"
     },
     {
@@ -355,11 +546,24 @@
             {
                 "indexed": false,
                 "internalType": "address",
-                "name": "newMZUSD",
+                "name": "newNavOracle",
                 "type": "address"
             }
         ],
-        "name": "MZUSDChanged",
+        "name": "NavOracleUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
+            }
+        ],
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -393,33 +597,8 @@
             {
                 "indexed": false,
                 "internalType": "address",
-                "name": "newReservoir",
-                "type": "address"
-            }
-        ],
-        "name": "ReservoirUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
                 "name": "tranche",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "weightBps",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
             }
         ],
         "name": "TrancheRegistered",
@@ -437,7 +616,7 @@
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "weightBps",
+                "name": "riskPremiumBps",
                 "type": "uint256"
             },
             {
@@ -508,13 +687,38 @@
         "type": "event"
     },
     {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint16",
+                "name": "baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint16[]",
+                "name": "riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "YieldDistributionUpdated",
+        "type": "event"
+    },
+    {
         "inputs": [],
         "name": "BPS",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -525,9 +729,22 @@
         "name": "MAX_EPOCH_DURATION_LIMIT",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_TOTAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -538,9 +755,9 @@
         "name": "MAX_TRANCHES",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -551,9 +768,9 @@
         "name": "MIN_EPOCH_DURATION_LIMIT",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -567,6 +784,19 @@
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "TRANCHE_WEIGHT_LIMIT",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -588,26 +818,9 @@
     {
         "inputs": [
             {
-                "components": [
-                    {
-                        "internalType": "address",
-                        "name": "tranche",
-                        "type": "address"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "weightBps",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "bool",
-                        "name": "enabled",
-                        "type": "bool"
-                    }
-                ],
-                "internalType": "struct Vault.TrancheInfo",
-                "name": "info",
-                "type": "tuple"
+                "internalType": "address",
+                "name": "_tranche",
+                "type": "address"
             }
         ],
         "name": "addTranche",
@@ -643,43 +856,12 @@
     },
     {
         "inputs": [],
-        "name": "bufferBounds",
+        "name": "baseRewardBps",
         "outputs": [
             {
-                "internalType": "uint256",
-                "name": "low",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "high",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "bufferHighUSDC",
-        "outputs": [
-            {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "bufferLowUSDC",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -690,9 +872,9 @@
         "name": "currentEpochId",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -704,7 +886,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "idleUSDC",
                 "type": "uint256"
             }
         ],
@@ -752,27 +934,50 @@
     },
     {
         "inputs": [],
-        "name": "getFeesConfig",
+        "name": "getBufferConfig",
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "_perfBps",
+                "name": "buffer",
                 "type": "uint256"
             },
             {
-                "internalType": "address",
-                "name": "_perfReceiver",
-                "type": "address"
+                "internalType": "uint16",
+                "name": "hysteresis",
+                "type": "uint16"
             },
             {
                 "internalType": "uint256",
-                "name": "_protBps",
+                "name": "low",
                 "type": "uint256"
             },
             {
-                "internalType": "address",
-                "name": "_protReceiver",
-                "type": "address"
+                "internalType": "uint256",
+                "name": "high",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getEpochConfig",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "epochId",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "start",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "duration",
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -782,26 +987,31 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "idx",
+                "name": "start",
                 "type": "uint256"
-            }
-        ],
-        "name": "getTrancheInfo",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "tranche",
-                "type": "address"
             },
             {
                 "internalType": "uint256",
-                "name": "weightBps",
+                "name": "count",
                 "type": "uint256"
+            }
+        ],
+        "name": "getTranches",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "tranche",
+                "type": "address[]"
             },
             {
-                "internalType": "bool",
+                "internalType": "uint16[]",
+                "name": "riskPremiumBpsArr",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
                 "name": "enabled",
-                "type": "bool"
+                "type": "bool[]"
             }
         ],
         "stateMutability": "view",
@@ -836,50 +1046,29 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "_mzusd",
-                "type": "address"
+                "internalType": "uint16",
+                "name": "_performanceFeeBps",
+                "type": "uint16"
             },
             {
                 "internalType": "address",
-                "name": "_reservoir",
+                "name": "_performanceFeeReceiver",
                 "type": "address"
             },
             {
+                "internalType": "uint16",
+                "name": "_protocolFeeBps",
+                "type": "uint16"
+            },
+            {
                 "internalType": "address",
-                "name": "accessManager",
+                "name": "_protocolFeeReceiver",
                 "type": "address"
             }
         ],
         "name": "initialize",
         "outputs": [],
         "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "insurance",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "insuranceBps",
-        "outputs": [
-            {
-                "internalType": "uint16",
-                "name": "",
-                "type": "uint16"
-            }
-        ],
-        "stateMutability": "view",
         "type": "function"
     },
     {
@@ -916,12 +1105,64 @@
     },
     {
         "inputs": [],
+        "name": "lossManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "mzusd",
         "outputs": [
             {
                 "internalType": "contract IMZUSD",
                 "name": "",
                 "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pendingEpochDuration",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -1000,24 +1241,6 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "rescueETH",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
         "inputs": [],
         "name": "reservoir",
         "outputs": [
@@ -1051,9 +1274,9 @@
                 "type": "uint256"
             },
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "bandBps",
-                "type": "uint256"
+                "type": "uint16"
             }
         ],
         "name": "setBuffer",
@@ -1064,14 +1287,9 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "_epochDuration",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "resetStart",
-                "type": "bool"
+                "type": "uint64"
             }
         ],
         "name": "setEpochConfig",
@@ -1082,19 +1300,27 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint16",
                 "name": "_performanceFeeBps",
-                "type": "uint256"
+                "type": "uint16"
             },
+            {
+                "internalType": "uint16",
+                "name": "_protocolFeeBps",
+                "type": "uint16"
+            }
+        ],
+        "name": "setFeeRates",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
             {
                 "internalType": "address",
                 "name": "_performanceFeeReceiver",
                 "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "_protocolFeeBps",
-                "type": "uint256"
             },
             {
                 "internalType": "address",
@@ -1102,7 +1328,7 @@
                 "type": "address"
             }
         ],
-        "name": "setFees",
+        "name": "setFeeReceivers",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1111,42 +1337,47 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "_insurance",
+                "name": "_lossManager",
                 "type": "address"
+            }
+        ],
+        "name": "setLossManager",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_navOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setNavOracle",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint16",
+                "name": "_baseRewardBps",
+                "type": "uint16"
             },
             {
-                "internalType": "uint256",
-                "name": "bps",
-                "type": "uint256"
-            }
-        ],
-        "name": "setInsurance",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
+                "internalType": "uint16[]",
+                "name": "_riskPremiumsBps",
+                "type": "uint16[]"
+            },
             {
-                "internalType": "address",
-                "name": "_mzusd",
-                "type": "address"
+                "internalType": "bool[]",
+                "name": "_enabled",
+                "type": "bool[]"
             }
         ],
-        "name": "setMZUSD",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_reservoir",
-                "type": "address"
-            }
-        ],
-        "name": "setReservoir",
+        "name": "setYieldDistribution",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1168,7 +1399,7 @@
             },
             {
                 "internalType": "uint16",
-                "name": "weightBps",
+                "name": "riskPremiumBps",
                 "type": "uint16"
             },
             {
@@ -1186,34 +1417,11 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "length",
                 "type": "uint256"
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "idx",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "weightBps",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            }
-        ],
-        "name": "updateTranche",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

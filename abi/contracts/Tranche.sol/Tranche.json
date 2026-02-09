@@ -2,6 +2,11 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            },
+            {
                 "internalType": "bool",
                 "name": "_directWithdrawEnabled",
                 "type": "bool"
@@ -60,8 +65,14 @@
         "type": "error"
     },
     {
-        "inputs": [],
-        "name": "AlreadyFinalized",
+        "inputs": [
+            {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
         "type": "error"
     },
     {
@@ -282,22 +293,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "attemptedAmount",
-                "type": "uint256"
-            }
-        ],
-        "name": "EthTransferFailed",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "FailedCall",
         "type": "error"
@@ -339,6 +334,16 @@
     },
     {
         "inputs": [],
+        "name": "NotLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotVault",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NothingToClaim",
         "type": "error"
     },
@@ -349,7 +354,23 @@
     },
     {
         "inputs": [],
-        "name": "ReentrancyGuardReentrantCall",
+        "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "bits",
+                "type": "uint8"
+            },
+            {
+                "internalType": "uint256",
+                "name": "value",
+                "type": "uint256"
+            }
+        ],
+        "name": "SafeCastOverflowedUintDowncast",
         "type": "error"
     },
     {
@@ -382,6 +403,22 @@
             }
         ],
         "name": "UUPSUnsupportedProxiableUUID",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "requested",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxAllowed",
+                "type": "uint256"
+            }
+        ],
+        "name": "UnstakeDelayTooLarge",
         "type": "error"
     },
     {
@@ -539,6 +576,19 @@
             }
         ],
         "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
+            }
+        ],
+        "name": "PauseManagerUpdated",
         "type": "event"
     },
     {
@@ -714,12 +764,6 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "epochId",
-                "type": "uint256"
-            },
-            {
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "yieldAmount",
@@ -744,6 +788,19 @@
     {
         "inputs": [],
         "name": "BASIS_POINTS",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_UNSTAKE_DELAY_EPOCHS",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -808,7 +865,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -858,6 +915,19 @@
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "burnMZUSD",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -959,7 +1029,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "shares",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1024,11 +1094,34 @@
                 "internalType": "uint256",
                 "name": "totalAssets",
                 "type": "uint256"
-            },
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getDepositLimitInfo",
+        "outputs": [
             {
                 "internalType": "bool",
-                "name": "isFinalized",
+                "name": "enabled",
                 "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "limit",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "limitByTvl",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "cap",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -1089,21 +1182,6 @@
                 "type": "uint256"
             },
             {
-                "internalType": "bool",
-                "name": "isFinalized",
-                "type": "bool"
-            },
-            {
-                "internalType": "uint256",
-                "name": "totalShares",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "totalAssets_",
-                "type": "uint256"
-            },
-            {
                 "internalType": "uint256",
                 "name": "claimableAssets",
                 "type": "uint256"
@@ -1114,16 +1192,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "contract IERC20",
-                "name": "assetToken",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "vaultAddress",
-                "type": "address"
-            },
             {
                 "internalType": "uint256",
                 "name": "trancheIdentifier",
@@ -1143,11 +1211,6 @@
                 "internalType": "string",
                 "name": "symbol_",
                 "type": "string"
-            },
-            {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
             }
         ],
         "name": "initialize",
@@ -1287,7 +1350,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1318,6 +1381,19 @@
         "name": "notifyYield",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {
@@ -1402,7 +1478,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "pricePerShare_",
                 "type": "uint256"
             }
         ],
@@ -1444,7 +1520,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1465,21 +1541,16 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            },
+        "inputs": [],
+        "name": "reservedAssets",
+        "outputs": [
             {
                 "internalType": "uint256",
-                "name": "amount",
+                "name": "",
                 "type": "uint256"
             }
         ],
-        "name": "rescueETH",
-        "outputs": [],
-        "stateMutability": "nonpayable",
+        "stateMutability": "view",
         "type": "function"
     },
     {
@@ -1501,7 +1572,15 @@
                 "internalType": "bool",
                 "name": "enabled",
                 "type": "bool"
-            },
+            }
+        ],
+        "name": "setDepositLimitEnabled",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
             {
                 "internalType": "uint256",
                 "name": "cap",
@@ -1550,7 +1629,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "",
+                "name": "totalAssets_",
                 "type": "uint256"
             }
         ],
@@ -1657,6 +1736,19 @@
     },
     {
         "inputs": [],
+        "name": "unaccruedYield",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "unaccrued",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "unstakeDelayEpochs",
         "outputs": [
             {
@@ -1745,7 +1837,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "shares",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1757,9 +1849,9 @@
         "name": "yieldStreamEnd",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -1770,9 +1862,9 @@
         "name": "yieldStreamStart",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
