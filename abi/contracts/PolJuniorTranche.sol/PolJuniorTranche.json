@@ -108,50 +108,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "actual",
-                "type": "address"
-            }
-        ],
-        "name": "InvalidMZUSDPauseManager",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "actual",
-                "type": "address"
-            }
-        ],
-        "name": "InvalidMZUSDVault",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "payout",
-                "type": "address"
-            }
-        ],
-        "name": "InvalidPolPayout",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "vaultAddress",
-                "type": "address"
-            }
-        ],
-        "name": "InvalidVault",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "NotInitializing",
         "type": "error"
@@ -345,26 +301,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "contract IMZUSD",
-                "name": "assetToken",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "vaultAddress",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "pauseManager_",
-                "type": "address"
-            },
             {
                 "internalType": "address",
                 "name": "polPayoutAddress",

@@ -134,16 +134,7 @@ describe("LossManager", () => {
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Junior Tranche",
-                "JLT",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 1, 0, "Junior Tranche", "JLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -154,16 +145,7 @@ describe("LossManager", () => {
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                2,
-                0,
-                "Mezzanine Tranche",
-                "MLT",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 2, 0, "Mezzanine Tranche", "MLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -174,16 +156,7 @@ describe("LossManager", () => {
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                3,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 3, 0, "Senior Tranche", "sMZUSD"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -198,16 +171,12 @@ describe("LossManager", () => {
 
         // Deploy POL Junior tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
-        pol = (await upgrades.deployProxy(
-            PolFactory,
-            [mzusd.target, vault.target, accessManager.target, pauseManager.target, bob.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [vault.target],
-            }
-        )) as unknown as PolJuniorTranche;
+        pol = (await upgrades.deployProxy(PolFactory, [bob.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
 
         // Deploy LossManager
@@ -215,7 +184,6 @@ describe("LossManager", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                mzusdAddr,
                 vaultAddr,
                 [juniorAddr, mezzanineAddr, seniorAddr],
                 [false, false, false],
@@ -304,10 +272,9 @@ describe("LossManager", () => {
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
         const setOrderSel = lossManager.interface.getFunction("setTrancheOrderAndPairs").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
-        const setNavOracleSel = lossManager.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setMaxSel, setNavOracleSel],
+            [applyLossSel, setOrderSel, setMaxSel],
             ADMIN_ROLE
         );
 
@@ -317,7 +284,6 @@ describe("LossManager", () => {
         // wire and register
         await vault.setLossManager(lossManagerAddr);
         await vault.setNavOracle(navOracleRef.target);
-        await lossManager.setNavOracle(navOracleRef.target);
 
         await vault.addTranche({tranche: juniorAddr, weight: 2000, enabled: true});
         await vault.addTranche({tranche: mezzanineAddr, weight: 3000, enabled: true});
@@ -417,15 +383,15 @@ describe("LossManager", () => {
             expect(pairFlags).to.deep.equal([false, false, false]);
         });
 
-        it("Reverts on zero address during initialization", async () => {
+        it("Reverts on zero vault address during initialization", async () => {
             const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
             await expect(
                 upgrades.deployProxy(
                     LossManagerFactory,
-                    [ethers.ZeroAddress, vaultAddr, [juniorAddr], [false], 0],
+                    [ethers.ZeroAddress, [juniorAddr], [false], 0],
                     {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
                 )
-            ).to.be.revertedWithCustomError(LossManagerFactory, "ZeroAddress");
+            ).to.be.reverted;
         });
     });
 

@@ -122,16 +122,7 @@ describe("Tranche claim solvency", () => {
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -148,7 +139,7 @@ describe("Tranche claim solvency", () => {
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
-            [mzusdAddr, vaultAddr, [trancheAddr], [false], 0],
+            [vaultAddr, [trancheAddr], [false], 0],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as LossManager;
 
@@ -189,19 +180,13 @@ describe("Tranche claim solvency", () => {
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
-        const setNavOracleSel = lossManager.interface.getFunction("setNavOracle").selector;
-        await accessManager.setTargetFunctionRole(
-            lossManagerAddr,
-            [applyLossSel, setNavOracleSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(lossManagerAddr, [applyLossSel], ADMIN_ROLE);
 
         // Wire contracts
         await mzusd.setVault(vaultAddr);
         await mzusd.setLossManager(lossManagerAddr);
         await vault.setLossManager(lossManagerAddr);
         await vault.setNavOracle(navOracleRef.target);
-        await lossManager.setNavOracle(navOracleRef.target);
 
         // Register tranche (100% weight)
         await vault.addTranche({tranche: trancheAddr, weight: 10_000, enabled: true});

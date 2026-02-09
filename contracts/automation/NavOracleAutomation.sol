@@ -5,6 +5,7 @@ import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/autom
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILossManager} from "../interfaces/ILossManager.sol";
+import {IMZUSD} from "../interfaces/IMZUSD.sol";
 import {IVault} from "../interfaces/IVault.sol";
 
 /// @title NAV oracle automation
@@ -51,24 +52,23 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error ZeroAddress();
 
     constructor(
-        address accessManager,
-        address mzusd_,
-        address vault_,
         address lossManager_,
         uint256 vetoPeriod_
-    ) AccessManaged(accessManager) {
-        if (
-            accessManager == address(0) ||
-            mzusd_ == address(0) ||
-            vault_ == address(0) ||
-            lossManager_ == address(0)
-        ) {
-            revert ZeroAddress();
-        }
+    ) AccessManaged(_resolveAuthority(lossManager_)) {
+        ILossManager manager = ILossManager(lossManager_);
+        address vault_ = manager.vault();
+        address mzusd_ = manager.mzusd();
+
         mzusd = IERC20(mzusd_);
         vault = vault_;
         lossManager = lossManager_;
         _setVetoPeriod(vetoPeriod_);
+    }
+
+    function _resolveAuthority(address lossManager_) private view returns (address accessManager) {
+        address mzusd_ = ILossManager(lossManager_).mzusd();
+        accessManager = IMZUSD(mzusd_).authority();
+        if (accessManager == address(0)) revert ZeroAddress();
     }
 
     /// @notice Submit a NAV snapshot (USDC 6 decimals) and record total supply.

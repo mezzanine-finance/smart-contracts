@@ -26,8 +26,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     uint256 public maxLossPerTxUSDC;
     /// @notice Vault reference used for mandatory epoch advancement on every loss apply.
     address public vault;
-    /// @notice Canonical NAV automation address allowed to call `applyLoss`.
-    address public navOracle;
 
     /// @notice Pairing lookup. If non-zero, tranche shares loss with the paired tranche.
     mapping(address => address) public tranchePairedTo;
@@ -56,9 +54,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @notice Emitted when max loss per transaction is updated.
     /// @param newLimitUSDC New max loss value in USDC 6 decimals.
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
-    /// @notice Emitted when NAV oracle address is updated.
-    /// @param newNavOracle New NAV oracle automation address.
-    event NavOracleUpdated(address newNavOracle);
 
     /// @notice Thrown when an address argument is zero.
     error ZeroAddress();
@@ -66,8 +61,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error ZeroAmount();
     /// @notice Thrown when tranche order is empty.
     error ZeroLength();
-    /// @notice Thrown when trying to set a value equal to the current one.
-    error SameValue();
     /// @notice Thrown when tranche order contains duplicate addresses.
     error DuplicateTranche(address tranche);
     /// @notice Thrown when configured max per tx limit is exceeded.
@@ -88,26 +81,20 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Initialize LossManager.
     /// @dev AccessManager and PauseManager are sourced from the provided MZUSD contract.
-    /// @param _mzusd MZUSD contract address.
     /// @param _vault Vault address used to advance epochs.
     /// @param order Tranche burn order.
     /// @param isPairedWithNext Pairing flags aligned with `order`.
     /// @param _maxLossPerTxUSDC Max loss per tx in USDC 6d (0 disables the limit).
     function initialize(
-        address _mzusd,
         address _vault,
         address[] memory order,
         bool[] memory isPairedWithNext,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
-        if (_mzusd == address(0) || _vault == address(0)) {
-            revert ZeroAddress();
-        }
-
-        IMZUSD token = IMZUSD(_mzusd);
+        IMZUSD token = IMZUSD(IVault(_vault).mzusd());
         address accessManager = token.authority();
         address pauseManager_ = token.pauseManager();
-        if (accessManager == address(0) || pauseManager_ == address(0)) revert ZeroAddress();
+        if (accessManager == address(0)) revert ZeroAddress();
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
@@ -120,7 +107,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Restricts access to the configured NAV oracle.
     modifier onlyNavOracle() {
-        if (msg.sender != navOracle) revert NotNavOracle();
+        if (msg.sender != IVault(vault).navOracle()) revert NotNavOracle();
         _;
     }
 
@@ -164,18 +151,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         bool[] memory isPairedWithNext
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         _setTrancheOrderAndPairs(order, isPairedWithNext);
-    }
-
-    /// @notice Update NAV oracle automation address.
-    /// @param _navOracle NAV oracle automation address.
-    /// @dev Reverts for zero address or if trying to set the same value.
-    function setNavOracle(
-        address _navOracle
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_navOracle == address(0)) revert ZeroAddress();
-        if (navOracle == _navOracle) revert SameValue();
-        navOracle = _navOracle;
-        emit NavOracleUpdated(_navOracle);
     }
 
     /// @notice Set max loss per tx in USDC 6d; 0 disables the limit.

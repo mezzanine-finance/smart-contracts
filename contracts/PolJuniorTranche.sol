@@ -36,10 +36,6 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     error NotVault();
     error NotLossManager();
     error InvalidMZUSDAccessManager(address actual);
-    error InvalidMZUSDPauseManager(address actual);
-    error InvalidMZUSDVault(address actual);
-    error InvalidPolPayout(address payout);
-    error InvalidVault(address vaultAddress);
 
     constructor(address vaultAddress) {
         if (vaultAddress == address(0)) revert ZeroAddress();
@@ -47,19 +43,16 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         _disableInitializers();
     }
 
-    function initialize(
-        IMZUSD assetToken,
-        address vaultAddress,
-        address accessManager,
-        address pauseManager_,
-        address polPayoutAddress
-    ) external initializer {
-        _validateInit(assetToken, vaultAddress, accessManager, pauseManager_, polPayoutAddress);
+    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
+    function initialize(address polPayoutAddress) external initializer {
+        (IMZUSD mzusdToken, address accessManager, address pauseManager_) = _resolveCoreContracts(
+            polPayoutAddress
+        );
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
 
-        mzusd = assetToken;
+        mzusd = mzusdToken;
         polPayout = polPayoutAddress;
     }
 
@@ -117,41 +110,19 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         emit PolPayoutUpdated(payout);
     }
 
-    function _validateInit(
-        IMZUSD assetToken,
-        address vaultAddress,
-        address accessManager,
-        address pauseManager_,
+    function _resolveCoreContracts(
         address polPayoutAddress
-    ) internal view {
-        if (
-            accessManager == address(0) ||
-            address(assetToken) == address(0) ||
-            vaultAddress == address(0)
-        ) {
-            revert ZeroAddress();
-        }
+    ) internal view returns (IMZUSD mzusdToken, address accessManager, address pauseManager_) {
         if (polPayoutAddress == address(0)) revert ZeroAddress();
-        if (vaultAddress != vault) revert InvalidVault(vaultAddress);
 
-        address mzusdAccessManager = assetToken.authority();
-        if (mzusdAccessManager != accessManager) {
-            revert InvalidMZUSDAccessManager(mzusdAccessManager);
+        mzusdToken = IMZUSD(IVault(vault).mzusd());
+
+        accessManager = mzusdToken.authority();
+        if (accessManager == address(0)) {
+            revert InvalidMZUSDAccessManager(accessManager);
         }
 
-        address mzusdPauseManager = assetToken.pauseManager();
-        if (mzusdPauseManager != pauseManager_) {
-            revert InvalidMZUSDPauseManager(mzusdPauseManager);
-        }
-
-        address mzusdVault = assetToken.vault();
-        if (mzusdVault != address(0) && mzusdVault != vault) {
-            revert InvalidMZUSDVault(mzusdVault);
-        }
-
-        if (polPayoutAddress == accessManager || polPayoutAddress == address(assetToken)) {
-            revert InvalidPolPayout(polPayoutAddress);
-        }
+        pauseManager_ = mzusdToken.pauseManager();
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.

@@ -113,16 +113,7 @@ describe("NavSubmitterAutomation", () => {
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -134,7 +125,7 @@ describe("NavSubmitterAutomation", () => {
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
-            [mzusd.target, vault.target, [tranche.target], [false], 0],
+            [vault.target, [tranche.target], [false], 0],
             {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as LossManager;
 
@@ -143,9 +134,6 @@ describe("NavSubmitterAutomation", () => {
             deployer
         );
         navAutomation = (await NavAutomationFactory.deploy(
-            accessManager.target,
-            mzusd.target,
-            vault.target,
             lossManager.target,
             0
         )) as unknown as NavOracleAutomation;
@@ -200,10 +188,9 @@ describe("NavSubmitterAutomation", () => {
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManager.target as string, 0);
 
         const applyLossSelector = lossManager.interface.getFunction("applyLoss").selector;
-        const setNavOracleLossSelector = lossManager.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             lossManager.target,
-            [applyLossSelector, setNavOracleLossSelector],
+            [applyLossSelector],
             ADMIN_ROLE
         );
 
@@ -225,7 +212,6 @@ describe("NavSubmitterAutomation", () => {
 
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
-        await lossManager.setNavOracle(navAutomation.target);
         await vault.addTranche({
             tranche: tranche.target,
             weight: 10_000,

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {ethers} from "hardhat";
-import {assert, parseBps, parseUSDC, requireAddress} from "./helpers";
+import {assert, parseBps, parseMZUSD, parseUSDC, requireAddress} from "./helpers";
 
 export interface RoleIdsConfig {
     PAUSER_ROLE: number;
@@ -70,7 +70,8 @@ export interface VaultConfig {
 
 export interface TrancheConfig {
     key: string;
-    id: number;
+    trancheId?: number;
+    id?: number; // deprecated alias for trancheId
     name: string;
     symbol: string;
     weight: number;
@@ -79,7 +80,8 @@ export interface TrancheConfig {
     unstakeDelayEpochs?: number;
     depositLimits?: {
         enabled: boolean;
-        capUSDC?: string;
+        capMZUSD?: string;
+        capUSDC?: string; // deprecated alias; interpreted as USDC and converted to MZUSD
         tvlBps?: number;
     };
 }
@@ -118,7 +120,8 @@ export interface VerifyConfig {
 
 export interface TrancheSeedConfig {
     key: string;
-    amountUSDC: string;
+    amountMZUSD?: string;
+    amountUSDC?: string; // deprecated alias; interpreted as USDC and converted to MZUSD
     receiver: string;
 }
 
@@ -229,8 +232,24 @@ function validateConfig(config: DeployConfig, filePath: string) {
         assert(!keys.has(tranche.key), `Duplicate tranche key: ${tranche.key}`);
         keys.add(tranche.key);
         assert(tranche.weight <= 10_000, `Tranche weight too large: ${tranche.key}`);
-        assert(tranche.id > 0, `Tranche id must be > 0: ${tranche.key}`);
+        const trancheId = tranche.trancheId ?? tranche.id;
+        assert(trancheId !== undefined, `Tranche trancheId is required: ${tranche.key}`);
+        assert(trancheId > 0, `Tranche trancheId must be > 0: ${tranche.key}`);
         if (tranche.depositLimits?.enabled) {
+            if (
+                tranche.depositLimits.capMZUSD !== undefined &&
+                tranche.depositLimits.capUSDC !== undefined
+            ) {
+                throw new Error(
+                    `Tranche ${tranche.key}: specify only one of depositLimits.capMZUSD or depositLimits.capUSDC`
+                );
+            }
+            if (tranche.depositLimits.capMZUSD !== undefined) {
+                parseMZUSD(tranche.depositLimits.capMZUSD);
+            }
+            if (tranche.depositLimits.capUSDC !== undefined) {
+                parseUSDC(tranche.depositLimits.capUSDC);
+            }
             if (tranche.depositLimits.tvlBps !== undefined) {
                 parseBps(tranche.depositLimits.tvlBps);
             }
@@ -320,7 +339,20 @@ function validateConfig(config: DeployConfig, filePath: string) {
                 `seed.trancheDeposits references unknown tranche: ${deposit.key}`
             );
             requireAddress(deposit.receiver, "seed.trancheDeposits.receiver");
-            parseUSDC(deposit.amountUSDC);
+            if (deposit.amountMZUSD !== undefined && deposit.amountUSDC !== undefined) {
+                throw new Error(
+                    `seed.trancheDeposits for ${deposit.key}: specify only one of amountMZUSD or amountUSDC`
+                );
+            }
+            if (deposit.amountMZUSD !== undefined) {
+                parseMZUSD(deposit.amountMZUSD);
+            } else if (deposit.amountUSDC !== undefined) {
+                parseUSDC(deposit.amountUSDC);
+            } else {
+                throw new Error(
+                    `seed.trancheDeposits for ${deposit.key}: amountMZUSD is required (amountUSDC is deprecated)`
+                );
+            }
         }
     }
 

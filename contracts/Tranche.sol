@@ -126,32 +126,28 @@ contract Tranche is
     }
 
     /// @notice Initialize the tranche.
-    /// @param assetToken Underlying asset token (MZUSD).
     /// @param vaultAddress Vault address.
     /// @param trancheIdentifier Tranche identifier within the vault.
     /// @param initialUnstakeDelayEpochs Initial unstake delay in epochs.
     /// @param name_ Tranche name.
     /// @param symbol_ Tranche symbol.
-    /// @param accessManager AccessManager address.
-    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
     function initialize(
-        IERC20 assetToken,
         address vaultAddress,
         uint256 trancheIdentifier,
         uint256 initialUnstakeDelayEpochs,
         string memory name_,
-        string memory symbol_,
-        address accessManager,
-        address pauseManager_
+        string memory symbol_
     ) external initializer {
-        if (
-            vaultAddress == address(0) ||
-            accessManager == address(0) ||
-            address(assetToken) == address(0)
-        ) revert ZeroAddress();
+        address mzusdAddress = IVault(vaultAddress).mzusd();
+
+        IMZUSD mzusdToken = IMZUSD(mzusdAddress);
+        address accessManager = mzusdToken.authority();
+        address pauseManager_ = mzusdToken.pauseManager();
+        if (accessManager == address(0)) revert ZeroAddress();
 
         __ERC20_init(name_, symbol_);
-        __ERC4626_init(assetToken);
+        __ERC4626_init(IERC20(mzusdAddress));
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
 
@@ -517,6 +513,7 @@ contract Tranche is
         if (!depositLimitEnabled) {
             limit = type(uint256).max;
             limitByTvl = type(uint256).max;
+            // TODO: fix the cap, add option to disable it
             return (limit, limitByTvl, cap);
         }
 

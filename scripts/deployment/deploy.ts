@@ -21,7 +21,15 @@ import {
     getLatestDeployment,
 } from "./lib/deployments";
 import {log, format} from "./lib/logger";
-import {assert, getArg, hasFlag, isLocalNetwork, parseUSDC, requireAddress} from "./lib/helpers";
+import {
+    assert,
+    getArg,
+    hasFlag,
+    isLocalNetwork,
+    parseMZUSD,
+    parseUSDC,
+    requireAddress,
+} from "./lib/helpers";
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
 
@@ -283,6 +291,8 @@ async function main() {
     const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
     const trancheByKey = new Map<string, DeployResult<Tranche>>();
     for (const tranche of config.tranches) {
+        const trancheId = tranche.trancheId ?? tranche.id;
+        assert(trancheId !== undefined, `Missing trancheId for tranche key: ${tranche.key}`);
         const key = `Tranche.${tranche.key}`;
         const result = await ensureProxyDeployment<Tranche>(
             key,
@@ -291,14 +301,11 @@ async function main() {
                 upgrades.deployProxy(
                     TrancheFactory,
                     [
-                        mzusd.address,
                         vault.address,
-                        tranche.id,
+                        trancheId,
                         tranche.unstakeDelayEpochs ?? 0,
                         tranche.name,
                         tranche.symbol,
-                        accessManager.address,
-                        pauseManager.address,
                     ],
                     {
                         kind: "uups",
@@ -320,22 +327,12 @@ async function main() {
             "PolJuniorTranche",
             PolFactory,
             async () =>
-                upgrades.deployProxy(
-                    PolFactory,
-                    [
-                        mzusd.address,
-                        vault.address,
-                        accessManager.address,
-                        pauseManager.address,
-                        config.polJunior!.polPayout,
-                    ],
-                    {
-                        kind: "uups",
-                        initializer: "initialize",
-                        unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [vault.address],
-                    }
-                ),
+                upgrades.deployProxy(PolFactory, [config.polJunior!.polPayout], {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [vault.address],
+                }),
             fresh,
             deployments
         );
@@ -359,7 +356,6 @@ async function main() {
             upgrades.deployProxy(
                 LossManagerFactory,
                 [
-                    mzusd.address,
                     vault.address,
                     orderAddresses,
                     config.lossManager.isPairedWithNext,
@@ -375,14 +371,7 @@ async function main() {
     const navOracle = await ensureDeployment<NavOracleAutomation>(
         "NavOracleAutomation",
         NavFactory,
-        async () =>
-            NavFactory.deploy(
-                accessManager.address,
-                mzusd.address,
-                vault.address,
-                lossManager.address,
-                config.navOracle.vetoPeriodSec
-            ),
+        async () => NavFactory.deploy(lossManager.address, config.navOracle.vetoPeriodSec),
         fresh,
         deployments
     );
@@ -473,14 +462,8 @@ async function main() {
         log.success("Vault.setNavOracle wired");
     }
 
-    if ((await lossManager.contract.navOracle()) !== navOracle.address) {
-        await (await lossManagerAdmin.setNavOracle(navOracle.address)).wait();
-        log.success("LossManager.setNavOracle wired");
-    }
-
     if ((await mzusd.contract.lossManager()) === ethers.ZeroAddress) {
-        await (await mzusdAdmin.setLossManager(lossManager.address)).wait();
-        log.success("MZUSD.setLossManager wired");
+        log.info("Skipping MZUSD.setLossManager: LossManager is resolved from Vault wiring");
     }
 
     // === Register tranches ===
@@ -564,7 +547,12 @@ async function main() {
             const tvl = await trancheContract.contract.maxDepositTvlBps();
 
             const targetEnabled = tranche.depositLimits.enabled;
-            const targetCap = BigInt(parseUSDC(tranche.depositLimits.capUSDC ?? "0"));
+            const targetCap =
+                tranche.depositLimits.capMZUSD !== undefined
+                    ? parseMZUSD(tranche.depositLimits.capMZUSD)
+                    : tranche.depositLimits.capUSDC !== undefined
+                      ? parseUSDC(tranche.depositLimits.capUSDC) * MZUSD_SCALE
+                      : 0n;
             const targetTvl = BigInt(tranche.depositLimits.tvlBps ?? 0);
 
             if (enabled !== targetEnabled || cap !== targetCap || tvl !== targetTvl) {
@@ -629,8 +617,10 @@ async function main() {
             for (const deposit of seed.trancheDeposits) {
                 const tranche = trancheByKey.get(deposit.key);
                 assert(tranche !== undefined, `Unknown tranche key in seed: ${deposit.key}`);
-                const amountUsdc = parseUSDC(deposit.amountUSDC);
-                const amountMzusd = amountUsdc * MZUSD_SCALE;
+                const amountMzusd =
+                    deposit.amountMZUSD !== undefined
+                        ? parseMZUSD(deposit.amountMZUSD)
+                        : parseUSDC(deposit.amountUSDC ?? "0") * MZUSD_SCALE;
                 const mzBalance = await mzusd.contract.balanceOf(seedAddress);
                 assert(
                     mzBalance >= amountMzusd,
@@ -642,7 +632,9 @@ async function main() {
                         .connect(seedSigner)
                         .deposit(amountMzusd, deposit.receiver)
                 ).wait();
-                log.success(`Tranche.seed ${deposit.key} ${deposit.amountUSDC}`);
+                log.success(
+                    `Tranche.seed ${deposit.key} ${deposit.amountMZUSD ?? `${deposit.amountUSDC} USDC eq`}`
+                );
             }
         }
     }
@@ -875,7 +867,6 @@ async function main() {
         lossManager.address,
         [
             lossManager.contract.interface.getFunction("setTrancheOrderAndPairs").selector,
-            lossManager.contract.interface.getFunction("setNavOracle").selector,
             lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector,
         ],
         adminRole
@@ -1043,14 +1034,13 @@ async function main() {
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
         "Vault.navOracle mismatch"
     );
-    assert(
-        (await lossManager.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
-        "LossManager.navOracle mismatch"
-    );
-    assert(
-        (await mzusd.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
-        "MZUSD.lossManager mismatch"
-    );
+    if ((await mzusd.contract.lossManager()) !== ethers.ZeroAddress) {
+        assert(
+            (await mzusd.contract.lossManager()).toLowerCase() ===
+                lossManager.address.toLowerCase(),
+            "MZUSD.lossManager mismatch"
+        );
+    }
 
     for (const tranche of trancheByKey.values()) {
         const trancheVault = await tranche.contract.vault();
@@ -1074,8 +1064,7 @@ async function main() {
     log.step("Verification");
     await verifyContract(accessManager.address, [devDeployer], shouldVerify);
     if (mockUsdc) {
-        const mock = config.usdc.mock!;
-        await verifyContract(mockUsdc.address, [mock.name, mock.symbol, devDeployer], shouldVerify);
+        await verifyContract(mockUsdc.address, [], shouldVerify);
     }
     if (pauseManager.implementation) {
         await verifyContract(pauseManager.implementation, [], shouldVerify);
@@ -1111,13 +1100,7 @@ async function main() {
     }
     await verifyContract(
         navOracle.address,
-        [
-            accessManager.address,
-            mzusd.address,
-            vault.address,
-            lossManager.address,
-            config.navOracle.vetoPeriodSec,
-        ],
+        [lossManager.address, config.navOracle.vetoPeriodSec],
         shouldVerify
     );
 

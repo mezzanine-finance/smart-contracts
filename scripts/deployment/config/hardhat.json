@@ -1,124 +1,142 @@
 {
-  "version": 1,
-  "dev": {
-    "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "grantRoles": true
-  },
-  "roleIds": {
-    "PAUSER_ROLE": 1,
-    "UNPAUSER_ROLE": 2,
-    "UPGRADER_ROLE": 3,
-    "RESERVOIR_WITHDRAW_ROLE": 4,
-    "BURNER_ROLE": 5,
-    "ORACLE_ROLE": 6,
-    "KEEPER_ROLE": 7
-  },
-  "roles": {
-    "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "pauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "unpauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "upgrader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "reservoirWithdrawers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
-    "keepers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
-    "oracles": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
-    "roleDelays": {
-      "unpauser": 0,
-      "upgrader": 0,
-      "keeper": 0
-    }
-  },
-  "usdc": {
-    "deployMock": true,
-    "mock": {
-      "name": "Mock USDC",
-      "symbol": "mUSDC",
-      "decimals": 6,
-      "initialMints": [
-        {
-          "to": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "amount": "1000000000"
+    "version": 1,
+    "dev": {
+        "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "grantRoles": true
+    },
+    "roleIds": {
+        "PAUSER_ROLE": 1,
+        "UNPAUSER_ROLE": 2,
+        "UPGRADER_ROLE": 3,
+        "RESERVOIR_WITHDRAW_ROLE": 4,
+        "BURNER_ROLE": 5,
+        "ORACLE_ROLE": 6,
+        "KEEPER_ROLE": 7
+    },
+    "roles": {
+        "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "pauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "unpauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "upgrader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "reservoirWithdrawers": [
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        ],
+        "keepers": [
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        ],
+        "oracles": [
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        ],
+        "roleDelays": {
+            "unpauser": 0,
+            "upgrader": 0,
+            "keeper": 0
         }
-      ]
-    }
-  },
-  "mzusd": {
-    "redemptionCapUSDC": "1000000",
-    "redemptionWindowDurationSec": 3600
-  },
-  "vault": {
-    "performanceFeeBps": 1000,
-    "protocolFeeBps": 1000,
-    "performanceFeeReceiver": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "protocolFeeReceiver": "0x1111111111111111111111111111111111111111",
-    "idleBufferUSDC": "1000000",
-    "hysteresisBps": 500,
-    "epochDurationSec": 86400
-  },
-  "seed": {
-    "mzusdDepositUSDC": "1000000"
-  },
-  "tranches": [
-    {
-      "key": "senior",
-      "id": 1,
-      "name": "Senior Tranche",
-      "symbol": "sMZUSD",
-      "weight": 1000,
-      "enabled": true,
-      "directWithdrawEnabled": true
     },
-    {
-      "key": "mezzanine",
-      "id": 2,
-      "name": "Mezzanine Tranche",
-      "symbol": "MLT",
-      "weight": 3000,
-      "enabled": true,
-      "directWithdrawEnabled": false,
-      "unstakeDelayEpochs": 2,
-      "depositLimits": {
-        "enabled": true,
-        "capUSDC": "0",
-        "tvlBps": 3000
-      }
+    "usdc": {
+        "deployMock": true,
+        "mock": {
+            "name": "Mock USDC",
+            "symbol": "mUSDC",
+            "decimals": 6,
+            "initialMints": [
+                {
+                    "to": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+                    "amount": "1000000000"
+                }
+            ]
+        }
     },
-    {
-      "key": "junior",
-      "id": 3,
-      "name": "Junior Tranche",
-      "symbol": "JLT",
-      "weight": 4000,
-      "enabled": true,
-      "directWithdrawEnabled": false,
-      "unstakeDelayEpochs": 4,
-      "depositLimits": {
+    "mzusd": {
+        "redemptionCapUSDC": "1000000",
+        "redemptionWindowDurationSec": 3600
+    },
+    "vault": {
+        "performanceFeeBps": 1000,
+        "protocolFeeBps": 1000,
+        "performanceFeeReceiver": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "protocolFeeReceiver": "0x1111111111111111111111111111111111111111",
+        "idleBufferUSDC": "1000000",
+        "hysteresisBps": 500,
+        "epochDurationSec": 86400
+    },
+    "seed": {
+        "mzusdDepositUSDC": "1000000"
+    },
+    "tranches": [
+        {
+            "key": "senior",
+            "trancheId": 1,
+            "name": "Senior Tranche",
+            "symbol": "sMZUSD",
+            "weight": 1000,
+            "enabled": true,
+            "directWithdrawEnabled": true
+        },
+        {
+            "key": "mezzanine",
+            "trancheId": 2,
+            "name": "Mezzanine Tranche",
+            "symbol": "MLT",
+            "weight": 3000,
+            "enabled": true,
+            "directWithdrawEnabled": false,
+            "unstakeDelayEpochs": 2,
+            "depositLimits": {
+                "enabled": true,
+                "capMZUSD": "0",
+                "tvlBps": 3000
+            }
+        },
+        {
+            "key": "junior",
+            "trancheId": 3,
+            "name": "Junior Tranche",
+            "symbol": "JLT",
+            "weight": 4000,
+            "enabled": true,
+            "directWithdrawEnabled": false,
+            "unstakeDelayEpochs": 4,
+            "depositLimits": {
+                "enabled": true,
+                "capMZUSD": "0",
+                "tvlBps": 1000
+            }
+        }
+    ],
+    "polJunior": {
         "enabled": true,
-        "capUSDC": "0",
-        "tvlBps": 1000
-      }
+        "polPayout": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "registerInVault": false
+    },
+    "lossManager": {
+        "order": [
+            "polJunior",
+            "junior",
+            "mezzanine",
+            "senior"
+        ],
+        "isPairedWithNext": [
+            true,
+            true,
+            false,
+            false
+        ],
+        "maxLossPerTxUSDC": "10000000"
+    },
+    "navOracle": {
+        "vetoPeriodSec": 600,
+        "oracles": [
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        ]
+    },
+    "umbrellaFinalizer": {
+        "enabled": true
+    },
+    "postDeploy": {
+        "renounceDeployerRoles": false
+    },
+    "verify": {
+        "enabled": false
     }
-  ],
-  "polJunior": {
-    "enabled": true,
-    "polPayout": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-    "registerInVault": false
-  },
-  "lossManager": {
-    "order": ["polJunior", "junior", "mezzanine", "senior"],
-    "isPairedWithNext": [true, true, false, false],
-    "maxLossPerTxUSDC": "10000000"
-  },
-  "navOracle": {
-    "vetoPeriodSec": 600,
-    "oracles": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"]
-  },
-  "umbrellaFinalizer": {
-    "enabled": true
-  },
-  "postDeploy": {
-    "renounceDeployerRoles": false
-  },
-  "verify": {
-    "enabled": false
-  }
 }

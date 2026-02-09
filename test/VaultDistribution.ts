@@ -115,16 +115,7 @@ describe("Vault Yield Distribution", () => {
 
         junior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Junior Tranche",
-                "JLT",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 1, 0, "Junior Tranche", "JLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -135,16 +126,7 @@ describe("Vault Yield Distribution", () => {
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                2,
-                0,
-                "Mezzanine Tranche",
-                "MLT",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 2, 0, "Mezzanine Tranche", "MLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -155,16 +137,7 @@ describe("Vault Yield Distribution", () => {
 
         senior = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                3,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 3, 0, "Senior Tranche", "sMZUSD"],
             {
                 kind: "uups",
                 initializer: "initialize",

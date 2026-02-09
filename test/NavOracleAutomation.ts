@@ -120,14 +120,11 @@ describe("NavOracleAutomation", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                mzusd.target, // assetToken (MZUSD as IERC20)
                 vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
-                accessManager.target, // accessManager
-                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",
@@ -141,7 +138,6 @@ describe("NavOracleAutomation", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                mzusd.target,
                 vault.target,
                 [tranche.target],
                 [false],
@@ -155,9 +151,6 @@ describe("NavOracleAutomation", () => {
             deployer
         );
         navAutomation = (await NavAutomationFactory.deploy(
-            accessManager.target,
-            mzusd.target,
-            vault.target,
             lossManager.target,
             DAY
         )) as unknown as NavOracleAutomation;
@@ -204,10 +197,9 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManager.target, 0);
 
         const applyLossSelector = lossManager.interface.getFunction("applyLoss").selector;
-        const setNavOracleLossSelector = lossManager.interface.getFunction("setNavOracle").selector;
         await accessManager.setTargetFunctionRole(
             lossManager.target,
-            [applyLossSelector, setNavOracleLossSelector],
+            [applyLossSelector],
             ADMIN_ROLE
         );
 
@@ -231,7 +223,6 @@ describe("NavOracleAutomation", () => {
         // Wire protocol and register tranche in Vault
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
-        await lossManager.setNavOracle(navAutomation.target);
         await vault.addTranche({
             tranche: tranche.target,
             weight: 10_000,
@@ -532,9 +523,6 @@ describe("NavOracleAutomation", () => {
             deployer
         );
         const navAutomation2 = (await NavAutomationFactory.deploy(
-            accessManager.target,
-            mzusd.target,
-            vault.target,
             lossManager.target,
             DAY
         )) as unknown as NavOracleAutomation;
@@ -557,7 +545,6 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(ADMIN_ROLE, navAutomation2.target, 0);
 
         await vault.setNavOracle(navAutomation2.target);
-        await lossManager.setNavOracle(navAutomation2.target);
 
         await accessManager.revokeRole(ORACLE_ROLE, oracle.address);
         await accessManager.revokeRole(ADMIN_ROLE, navAutomation.target);

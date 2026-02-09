@@ -1188,11 +1188,6 @@
     {
         "inputs": [
             {
-                "internalType": "contract IERC20",
-                "name": "assetToken",
-                "type": "address"
-            },
-            {
                 "internalType": "address",
                 "name": "vaultAddress",
                 "type": "address"
@@ -1216,16 +1211,6 @@
                 "internalType": "string",
                 "name": "symbol_",
                 "type": "string"
-            },
-            {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "pauseManager_",
-                "type": "address"
             }
         ],
         "name": "initialize",

@@ -17,8 +17,7 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
 ## Required wiring (direct checks)
 
 - `Vault.navOracle` must be set to the `NavOracleAutomation` address (gates `distributeYield`).
-- `LossManager.navOracle` must be set to the `NavOracleAutomation` address (gates `applyLoss`).
-- `MZUSD.lossManager` must be set to the `LossManager` address (gates `burn`).
+- `LossManager.vault` must point to the same `Vault`; `applyLoss` checks `Vault.navOracle` dynamically.
 - `MZUSD.vault` must be set once to the `Vault` address (gates `mint`).
 - `Tranche.vault` is set at initialization (gates `notifyYield`).
 
@@ -31,16 +30,13 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
 - `newOracle.mzusd()` must equal current `Vault.mzusd`.
 - Address must be a contract (`code.length > 0`), non-zero, and different from current.
 
-`LossManager.setNavOracle` is also updatable (non-zero + not same address).
-
 Recommended rotation sequence:
 
 1. Resolve pending NAV on old oracle first (`performUpkeep` when ready or `rejectPendingNav`).
-2. Deploy new `NavOracleAutomation` with the same `accessManager`, `mzusd`, `vault`, `lossManager`.
+2. Deploy new `NavOracleAutomation` with the same `lossManager` (other refs are derived on-chain).
 3. Grant/migrate `ORACLE_ROLE` and automation permissions for the new oracle.
 4. Call `Vault.setNavOracle(newOracle)`.
-5. Call `LossManager.setNavOracle(newOracle)`.
-6. Revoke old oracle permissions and decommission old automation job.
+5. Revoke old oracle permissions and decommission old automation job.
 
 ## Chainlink Automation
 

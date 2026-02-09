@@ -102,16 +102,7 @@ describe("Tranche finalization solvency", () => {
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
-            [
-                mzusd.target,
-                vault.target,
-                1,
-                0,
-                "Senior Tranche",
-                "sMZUSD",
-                accessManager.target,
-                pauseManager.target,
-            ],
+            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
             {
                 kind: "uups",
                 initializer: "initialize",

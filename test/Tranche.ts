@@ -111,14 +111,11 @@ describe("Tranche", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                mzusd.target, // assetToken (MZUSD as IERC20)
                 vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
-                accessManager.target, // accessManager
-                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",
@@ -419,16 +416,7 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [
-                    mzusd.target,
-                    vault.target,
-                    2,
-                    0,
-                    "Direct Tranche",
-                    "dMZUSD",
-                    accessManager.target,
-                    pauseManager.target,
-                ],
+                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
@@ -455,14 +443,11 @@ describe("Tranche", () => {
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
                 [
-                    mzusd.target, // assetToken (MZUSD as IERC20)
                     vault.target, // vaultAddress
                     2, // trancheIdentifier
                     0, // initialUnstakeDelayEpochs
                     "Direct Tranche", // name
                     "dMZUSD", // symbol
-                    accessManager.target, // accessManager
-                    pauseManager.target, // pauseManager
                 ],
                 {
                     kind: "uups",
@@ -501,16 +486,7 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [
-                    mzusd.target,
-                    vault.target,
-                    2,
-                    0,
-                    "Direct Tranche",
-                    "dMZUSD",
-                    accessManager.target,
-                    pauseManager.target,
-                ],
+                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
@@ -544,16 +520,7 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [
-                    mzusd.target,
-                    vault.target,
-                    2,
-                    0,
-                    "Direct Tranche",
-                    "dMZUSD",
-                    accessManager.target,
-                    pauseManager.target,
-                ],
+                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
@@ -588,16 +555,7 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [
-                    mzusd.target,
-                    vault.target,
-                    2,
-                    0,
-                    "Direct Tranche",
-                    "dMZUSD",
-                    accessManager.target,
-                    pauseManager.target,
-                ],
+                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",

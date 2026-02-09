@@ -119,16 +119,12 @@ describe("PolJuniorTranche", () => {
 
         // Deploy POL tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
-        pol = (await upgrades.deployProxy(
-            PolFactory,
-            [mzusd.target, vault.target, accessManager.target, pauseManager.target, bob.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [vault.target],
-            }
-        )) as unknown as PolJuniorTranche;
+        pol = (await upgrades.deployProxy(PolFactory, [bob.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
 
         const MockLossManagerFactory = await ethers.getContractFactory(

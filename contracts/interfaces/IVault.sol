@@ -8,4 +8,6 @@ interface IVault {
     function currentEpochId() external view returns (uint64 epochId);
     function epochDuration() external view returns (uint64 duration);
     function lossManager() external view returns (address lossManager);
+    function navOracle() external view returns (address navOracleAddress);
+    function mzusd() external view returns (address mzusdAddress);
 }

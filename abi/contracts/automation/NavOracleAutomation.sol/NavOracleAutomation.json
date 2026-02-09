@@ -3,21 +3,6 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "mzusd_",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "vault_",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
                 "name": "lossManager_",
                 "type": "address"
             },

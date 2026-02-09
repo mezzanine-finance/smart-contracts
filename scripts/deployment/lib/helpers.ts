@@ -28,6 +28,10 @@ export function parseUSDC(value: string | number | bigint): bigint {
     return parseUnits(value.toString(), 6);
 }
 
+export function parseMZUSD(value: string | number | bigint): bigint {
+    return parseUnits(value.toString(), 18);
+}
+
 export function parseBps(value: number): number {
     if (value < 0 || value > 10_000) {
         throw new Error(`Invalid bps value: ${value}`);

@@ -116,14 +116,11 @@ describe("UmbrellaEpochFinalizer", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                mzusd.target, // assetToken (MZUSD as IERC20)
                 vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
                 "sMZUSD", // symbol
-                accessManager.target, // accessManager
-                pauseManager.target, // pauseManager
             ],
             {
                 kind: "uups",

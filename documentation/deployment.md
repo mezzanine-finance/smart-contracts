@@ -43,7 +43,6 @@ Use this checklist in scripts after deploying all components.
 - `MZUSD.setLossManager(LossManager)` (one-time).
 - `Vault.setLossManager(LossManager)` (one-time).
 - `Vault.setNavOracle(NavOracleAutomation)` (updatable, with strict reference checks).
-- `LossManager.setNavOracle(NavOracleAutomation)` (updatable).
 
 **Vault configuration**
 
@@ -57,7 +56,7 @@ Use this checklist in scripts after deploying all components.
 **Tranche configuration**
 
 - `Tranche.setUnstakeDelayEpochs()` for umbrella tranches.
-- `Tranche.setDepositLimits(enabled, capUSDC, tvlBps)` for Mezzanine/Junior.
+- `Tranche.setDepositLimits(enabled, capMZUSD, tvlBps)` for Mezzanine/Junior.
 - Senior tranche should be deployed with `directWithdrawEnabled = true`.
 - Mezzanine/Junior should be deployed with `directWithdrawEnabled = false`.
 
@@ -84,7 +83,7 @@ Use this checklist in scripts after deploying all components.
     - Choose `umbrellaFinalizer.startEpoch` carefully: if it is set above the oldest unfinalized epoch, older epochs can be skipped by this helper.
 - For NAV oracle rotations, follow `integration-docs/NAV_AUTOMATION.md`:
     - settle/reject pending NAV on old oracle first,
-    - then update `Vault.setNavOracle(new)` and `LossManager.setNavOracle(new)`,
+    - then update `Vault.setNavOracle(new)`,
     - then revoke old oracle permissions.
 
 **Access control**
@@ -154,7 +153,7 @@ avoid “magic defaults” in scripts.
 | `seed.vaultUSDC`                    | uint (6d) | no                             | Direct USDC transfer to Vault.                                                                                                            |
 | `seed.reservoirUSDC`                | uint (6d) | no                             | USDC deposit into Reservoir.                                                                                                              |
 | `seed.trancheDeposits[].key`        | string    | no                             | Tranche key to seed.                                                                                                                      |
-| `seed.trancheDeposits[].amountUSDC` | uint (6d) | no                             | MZUSD amount (expressed in USDC units) to deposit into tranche.                                                                           |
+| `seed.trancheDeposits[].amountMZUSD` | uint (18d) | no                             | MZUSD amount to deposit into tranche.                                                                           |
 | `seed.trancheDeposits[].receiver`   | address   | no                             | Receiver of tranche shares.                                                                                                               |
 | `postDeploy.renounceDeployerRoles`  | bool      | no                             | If `true`, run renounce workflow after deployment.                                                                                        |
 | `verify.enabled`                    | bool      | no                             | Enable Etherscan verification (auto-skipped locally).                                                                                     |
@@ -164,7 +163,7 @@ avoid “magic defaults” in scripts.
 | Key                     | Type      | Required | Meaning / Impact                                             |
 | ----------------------- | --------- | -------- | ------------------------------------------------------------ |
 | `key`                   | string    | yes      | Unique tranche key used in `lossManager.order`.              |
-| `id`                    | uint      | yes      | Tranche id for Vault registration.                           |
+| `trancheId`              | uint      | yes      | Tranche id for Vault registration.                           |
 | `name`                  | string    | yes      | ERC20 name.                                                  |
 | `symbol`                | string    | yes      | ERC20 symbol.                                                |
 | `weight`                | uint16    | yes      | Weight in Vault yield distribution.                          |
@@ -172,7 +171,7 @@ avoid “magic defaults” in scripts.
 | `directWithdrawEnabled` | bool      | yes      | Immutable; `true` for Senior, `false` for umbrella tranches. |
 | `unstakeDelayEpochs`    | uint      | no       | Umbrella delay (ignored for direct mode).                    |
 | `depositLimits.enabled` | bool      | no       | Enables deposit caps.                                        |
-| `depositLimits.capUSDC` | uint (6d) | no       | Absolute deposit cap.                                        |
+| `depositLimits.capMZUSD` | uint (18d) | no       | Absolute deposit cap in MZUSD units.                         |
 | `depositLimits.tvlBps`  | uint16    | no       | Max TVL vs Vault TVL in bps.                                 |
 
 ### LossManager tranche order config
