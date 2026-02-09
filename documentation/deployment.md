@@ -57,6 +57,7 @@ Use this checklist in scripts after deploying all components.
 
 - `Tranche.setUnstakeDelayEpochs()` for umbrella tranches.
 - `Tranche.setDepositLimits(enabled, capMZUSD, tvlBps)` for Mezzanine/Junior.
+- `Tranche.setDepositLimitEnabled(enabled)` to toggle both limits without changing cap/tvl settings.
 - Senior tranche should be deployed with `directWithdrawEnabled = true`.
 - Mezzanine/Junior should be deployed with `directWithdrawEnabled = false`.
 

@@ -65,7 +65,7 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `DEPOSITS`: `deposit`, `mint`
 - `WITHDRAWALS`: `requestWithdrawal`, `cancelUnstake`, `claim`, `withdraw`, `redeem`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setDepositLimits`, `setUnstakeDelayEpochs`
+- `ADMIN`: `setDepositLimits`, `setDepositLimitEnabled`, `setUnstakeDelayEpochs`
 - `PROTOCOL`: `notifyYield`, `finalizeEpoch`
 
 ### Vault

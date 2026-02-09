@@ -1572,6 +1572,19 @@
                 "internalType": "bool",
                 "name": "enabled",
                 "type": "bool"
+            }
+        ],
+        "name": "setDepositLimitEnabled",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bool",
+                "name": "enabled",
+                "type": "bool"
             },
             {
                 "internalType": "uint256",

@@ -41,9 +41,9 @@ From Tranche:
 - `unaccruedYield()` (yield not yet reflected in NAV)
 - `totalSupply()` (shares)
 - `depositLimitEnabled()`
-- `maxDepositCap()`
+- `maxDepositCap()` (configured value; `0` means cap is not configured)
 - `maxDepositTvlBps()`
-- `getDepositLimitInfo()` (enabled, limit, limitByTvl, cap)
+- `getDepositLimitInfo()` (enabled, limit, limitByTvl, capEffective)
 - `unstakeDelayEpochs()`
 - `pauseManager()` (read PauseManager for category pauses)
 
@@ -68,6 +68,11 @@ User-specific:
 Optional for UI lists:
 
 - `getEpochInfo(epochId)` (global umbrella totals for an epoch)
+
+Admin-only (ops panels):
+
+- `setDepositLimits(enabled, cap, tvlBps)` (full config update)
+- `setDepositLimitEnabled(enabled)` (toggle both limits only)
 
 Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
 
@@ -96,6 +101,11 @@ Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
     - `finalLimit = min(limitByTvl, limitByCap)`
     - `finalLimit` is remaining capacity (global cap), not a per-transaction limit.
     - If `amount > finalLimit`, deposit will revert.
+
+`getDepositLimitInfo().cap` returns the effective cap:
+
+- `MAX_UINT` when limits are disabled, or when configured `maxDepositCap == 0`.
+- otherwise the configured absolute cap value.
 
 ### On user input
 

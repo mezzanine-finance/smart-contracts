@@ -309,7 +309,7 @@ describe("Tranche", () => {
 
             const [enabled, limit, limitByTvl, cap] = await tranche.getDepositLimitInfo();
             expect(enabled).to.equal(true);
-            expect(cap).to.equal(0n);
+            expect(cap).to.equal(ethers.MaxUint256);
             expect(limitByTvl).to.equal(0n);
             expect(limit).to.equal(0n);
         });
@@ -350,9 +350,11 @@ describe("Tranche", () => {
             const setUnstakeDelaySel =
                 tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
             const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
             await accessManager.setTargetFunctionRole(
                 tranche.target,
-                [setUnstakeDelaySel, setDepositLimitsSel],
+                [setUnstakeDelaySel, setDepositLimitsSel, setDepositLimitEnabledSel],
                 ADMIN_ROLE
             );
             const vaultSigner = await imp(vault.target as string);
@@ -405,6 +407,9 @@ describe("Tranche", () => {
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
             await expect(tranche.setDepositLimits(true, 1n, 1n))
+                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
+            await expect(tranche.setDepositLimitEnabled(true))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
         });
@@ -1517,7 +1522,7 @@ describe("Tranche", () => {
             await (await tranche.connect(carol).deposit(small, carol.address)).wait();
 
             // Phase 4: disable limits mid-stream, deposits should proceed
-            const txOff = await tranche.connect(deployer).setDepositLimits(false, 0n, tvlBps4);
+            const txOff = await tranche.connect(deployer).setDepositLimitEnabled(false);
             await expect(txOff)
                 .to.emit(tranche, "DepositLimitUpdated")
                 .withArgs(false, 0n, tvlBps4);

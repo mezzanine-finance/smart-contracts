@@ -331,6 +331,14 @@ contract Tranche is
         emit DepositLimitUpdated(enabled, cap, tvlBps);
     }
 
+    /// @notice Enable/disable both deposit limits without changing cap and tvlBps values.
+    function setDepositLimitEnabled(
+        bool enabled
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        depositLimitEnabled = enabled;
+        emit DepositLimitUpdated(enabled, maxDepositCap, maxDepositTvlBps);
+    }
+
     // GETTERS
     // ERC4626 overrides (NAV with linear yield)
     /// @notice Virtual total assets backing tranche shares.
@@ -362,7 +370,7 @@ contract Tranche is
     /// @return enabled Whether deposit limits are enabled.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Absolute deposit cap.
+    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
     function getDepositLimitInfo()
         external
         view
@@ -502,18 +510,16 @@ contract Tranche is
     /// @notice Computes the effective deposit limit from cap and TVL constraints.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Absolute deposit cap.
+    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
     function _computeDepositLimit()
         internal
         view
         returns (uint256 limit, uint256 limitByTvl, uint256 cap)
     {
-        cap = maxDepositCap;
-
         if (!depositLimitEnabled) {
+            cap = type(uint256).max;
             limit = type(uint256).max;
             limitByTvl = type(uint256).max;
-            // TODO: fix the cap, add option to disable it
             return (limit, limitByTvl, cap);
         }
 
@@ -527,7 +533,10 @@ contract Tranche is
         }
 
         uint256 limitByCap = type(uint256).max;
-        if (cap != 0) {
+        cap = maxDepositCap;
+        if (cap == 0) {
+            cap = type(uint256).max;
+        } else {
             if (cap <= trancheAssets) {
                 limitByCap = 0;
             } else {

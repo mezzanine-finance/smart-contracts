@@ -76,7 +76,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 ### Tranche (UUPS)
 
 - `notifyYield` → only the configured `vault` address
-- `setUnstakeDelayEpochs`, `setDepositLimits` → `ADMIN_ROLE`
+- `setUnstakeDelayEpochs`, `setDepositLimits`, `setDepositLimitEnabled` → `ADMIN_ROLE`
 - `finalizeEpoch` → public (no AccessManager role; paused via `PROTOCOL` category)
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
