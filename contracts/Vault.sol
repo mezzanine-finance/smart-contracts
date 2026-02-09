@@ -28,7 +28,7 @@ contract Vault is
     /// @notice Info for each registered tranche.
     struct TrancheInfo {
         address tranche;
-        uint16 weight;
+        uint16 riskPremiumBps;
         bool enabled;
     }
 
@@ -63,6 +63,7 @@ contract Vault is
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
     uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
+    uint16 public baseRewardBps; // portion of yield allocated to the base reward pool
     address public lossManager; // canonical loss manager (set once)
     address public navOracle; // canonical NAV automation address
     uint64 public pendingEpochDuration; // queued duration to apply on next epoch
@@ -76,8 +77,8 @@ contract Vault is
     event FeesPaid(uint256 performanceMZUSD, uint256 protocolMZUSD, uint256 epochId);
     event Rebalanced(uint256 sent, uint256 pulled, uint256 idleAfter);
     event YieldDistributed(uint256 usdcUsed, uint256 mintedMZUSD, uint256 epochId);
-    event TrancheRegistered(address tranche, uint256 weight, bool enabled);
-    event TrancheUpdated(uint256 idx, uint256 weight, bool enabled);
+    event TrancheRegistered(address tranche);
+    event TrancheUpdated(uint256 idx, uint256 riskPremiumBps, bool enabled);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event LossManagerUpdated(address newLossManager);
@@ -85,6 +86,7 @@ contract Vault is
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
     event EpochDurationQueued(uint256 epochDuration);
+    event YieldDistributionUpdated(uint16 baseRewardBps, uint16[] riskPremiumsBps, bool[] enabled);
 
     error AllocationMismatch(uint256 allocated, uint256 expected);
     error ZeroAmount();
@@ -118,6 +120,8 @@ contract Vault is
     error AddressHasNoCode(address candidate);
     error InvalidReservoirUSDC(address actualUSDC);
     error ReservoirEmpty();
+    error InvalidYieldDistribution();
+    error LengthMismatch();
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -201,7 +205,7 @@ contract Vault is
     /// @notice Distribute yield (reported in USDC) to tranches.
     /// @param usdcReported USDC yield to distribute (6 decimals).
     /// @dev Mints MZUSD 1:1 with reported USDC, advances epoch, mints fees,
-    ///      and allocates by weight and TVL.
+    ///      and allocates by TVL and risk premium.
     function distributeYield(
         uint256 usdcReported
     ) external nonReentrant onlyNavOracle whenNotPaused(PauseCategory.PROTOCOL) {
@@ -310,33 +314,56 @@ contract Vault is
     }
 
     /// @notice Register a new tranche.
-    function addTranche(
-        TrancheInfo calldata info
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (info.tranche == address(0)) revert ZeroAddress();
-        if (isTranche[info.tranche]) revert TrancheExists();
+    /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setYieldDistribution().
+    function addTranche(address _tranche) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_tranche == address(0)) revert ZeroAddress();
+        if (isTranche[_tranche]) revert TrancheExists();
         if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
-        if (info.weight > TRANCHE_WEIGHT_LIMIT) revert TooBigBps();
 
-        tranches.push(TrancheInfo(info.tranche, info.weight, info.enabled));
-        isTranche[info.tranche] = true;
-        emit TrancheRegistered(info.tranche, info.weight, info.enabled);
+        tranches.push(TrancheInfo(_tranche, 0, false));
+        isTranche[_tranche] = true;
+        emit TrancheRegistered(_tranche);
     }
 
-    /// @notice Update tranche info.
-    /// @param idx Tranche index in `tranches`.
-    /// @param weight New weight for yield allocation.
-    /// @param enabled Whether the tranche receives allocations.
-    function updateTranche(
-        uint256 idx,
-        uint16 weight,
-        bool enabled
+    // /// @notice Update tranche info.
+    // /// @param idx Tranche index in `tranches`.
+    // /// @param riskPremiumBps New riskPremiumBps for yield allocation.
+    // /// @param enabled Whether the tranche receives allocations.
+    // function updateTranche(
+    //     uint256 idx,
+    //     uint16 riskPremiumBps,
+    //     bool enabled
+    // ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+    //     if (idx >= tranches.length) revert TrancheIndexOOB();
+    //     tranches[idx].riskPremiumBps = riskPremiumBps;
+    //     tranches[idx].enabled = enabled;
+    //     emit TrancheUpdated(idx, riskPremiumBps, enabled);
+    // }
+
+    /// @notice Update base reward and risk premium distribution across all tranches.
+    /// @param _baseRewardBps Base reward pool share in bps.
+    /// @param _riskPremiumsBps Risk premium in bps for each tranche (length must match tranches array).
+    /// @param _enabled Whether each tranche receives allocations (length must match tranches array).
+    /// @dev Enforces invariant: _baseRewardBps + sum(_riskPremiumsBps) == BPS (10_000).
+    function setYieldDistribution(
+        uint16 _baseRewardBps,
+        uint16[] calldata _riskPremiumsBps,
+        bool[] calldata _enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (idx >= tranches.length) revert TrancheIndexOOB();
-        if (weight > TRANCHE_WEIGHT_LIMIT) revert TooBigBps();
-        tranches[idx].weight = weight;
-        tranches[idx].enabled = enabled;
-        emit TrancheUpdated(idx, weight, enabled);
+        uint256 len = tranches.length;
+        if (_riskPremiumsBps.length != len || _enabled.length != len) revert LengthMismatch();
+
+        uint256 total = _baseRewardBps;
+        for (uint256 i; i < len; ++i) {
+            tranches[i].riskPremiumBps = _riskPremiumsBps[i];
+            tranches[i].enabled = _enabled[i];
+            total += _riskPremiumsBps[i];
+        }
+        if (total != BPS) revert InvalidYieldDistribution();
+
+        baseRewardBps = _baseRewardBps;
+
+        emit YieldDistributionUpdated(_baseRewardBps, _riskPremiumsBps, _enabled);
     }
 
     /// @notice Update idle USDC buffer and hysteresis band.
@@ -393,7 +420,7 @@ contract Vault is
     /// @param start The starting tranche index.
     /// @param count The number of tranches to return.
     /// @return tranche The tranche addresses.
-    /// @return weights The tranche weights (bps).
+    /// @return riskPremiumBpsArr The tranche risk premium (bps).
     /// @return enabled The tranche enabled flags.
     function getTranches(
         uint256 start,
@@ -401,7 +428,7 @@ contract Vault is
     )
         external
         view
-        returns (address[] memory tranche, uint16[] memory weights, bool[] memory enabled)
+        returns (address[] memory tranche, uint16[] memory riskPremiumBpsArr, bool[] memory enabled)
     {
         uint256 len = tranches.length;
         if (start >= len || count == 0) {
@@ -415,13 +442,13 @@ contract Vault is
         uint256 size = end - start;
 
         tranche = new address[](size);
-        weights = new uint16[](size);
+        riskPremiumBpsArr = new uint16[](size);
         enabled = new bool[](size);
 
         for (uint256 i; i < size; ++i) {
             TrancheInfo memory t = tranches[start + i];
             tranche[i] = t.tranche;
-            weights[i] = t.weight;
+            riskPremiumBpsArr[i] = t.riskPremiumBps;
             enabled[i] = t.enabled;
         }
     }
@@ -593,56 +620,53 @@ contract Vault is
         IMZUSD mzusdToken = mzusd;
 
         uint256 trancheCount = tranches.length;
-        uint256 totalScore;
-        uint256 totalWeight; // keep separate from totalScore to preserve precise revert reason
-        uint256[] memory scores = new uint256[](trancheCount);
+        uint256 basePool = (allocatableMZUSD * baseRewardBps) / BPS;
+        uint256[] memory trancheTvls = new uint256[](trancheCount);
+        uint256 totalTvl;
         uint256 lastNonZeroIndex;
-        bool foundNonZero;
 
         TrancheInfo memory t;
+        uint256 trancheTvl;
 
-        uint256 score;
-        uint256 part;
-
-        // calculate scores for each tranche and total score
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
-            if (!t.enabled || t.weight == 0) continue;
-
-            // score = weight * TVL
-            score = uint256(t.weight) * ITranche(t.tranche).totalAssets();
-            scores[i] = score;
-            totalScore += score;
-            totalWeight += t.weight;
-            if (score != 0) {
-                // Track the last tranche that actually participates in allocation.
-                // Dust will be assigned there to avoid leftover MZUSD on the Vault.
-                lastNonZeroIndex = i;
-                foundNonZero = true;
-            }
+            // score = TVL
+            trancheTvl = ITranche(t.tranche).totalAssets();
+            if (!t.enabled || trancheTvl == 0) continue;
+            trancheTvls[i] = trancheTvl;
+            totalTvl += trancheTvl;
+            // Track the last tranche that actually participates in allocation.
+            // Dust will be assigned there to avoid leftover MZUSD on the Vault.
+            lastNonZeroIndex = i;
         }
 
-        if (totalWeight == 0) revert WeightsZero();
-        if (totalScore == 0 || !foundNonZero) revert TVLZero();
+        if (totalTvl == 0) revert TVLZero();
 
-        // allocate yield based on scores
+        // allocate yield based on TVL and Risk premium
         uint256 allocated;
-        for (uint256 i; i < trancheCount; ++i) {
-            score = scores[i];
-            if (score == 0) continue;
+        uint256 baseShare;
+        uint256 riskPremiumShare;
+        uint256 totalShare;
 
+        for (uint256 i; i < trancheCount; ++i) {
+            trancheTvl = trancheTvls[i];
             t = tranches[i];
-            part = (allocatableMZUSD * score) / totalScore;
+            if (trancheTvl == 0) continue;
+
+            baseShare = (basePool * trancheTvl) / totalTvl;
+            riskPremiumShare = (allocatableMZUSD * t.riskPremiumBps) / BPS;
+            totalShare = baseShare + riskPremiumShare;
+
             if (i == lastNonZeroIndex) {
                 // Assign any rounding dust to the last participating tranche.
-                part = allocatableMZUSD - allocated;
+                totalShare = allocatableMZUSD - allocated;
             }
-            if (part == 0) {
+            if (totalShare == 0) {
                 continue;
             }
-            mzusdToken.transfer(t.tranche, part);
-            ITranche(t.tranche).notifyYield(part);
-            allocated += part;
+            mzusdToken.transfer(t.tranche, totalShare);
+            ITranche(t.tranche).notifyYield(totalShare);
+            allocated += totalShare;
         }
 
         // Defensive check: allocation should consume the full allocatable amount.

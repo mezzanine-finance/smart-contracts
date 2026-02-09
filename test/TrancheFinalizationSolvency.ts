@@ -161,7 +161,8 @@ describe("Tranche finalization solvency", () => {
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche({tranche: tranche.target, weight: 10_000, enabled: true});
+        await vault.addTranche(tranche);
+        await vault.setYieldDistribution(7000, [3000], [true]);
 
         snapshot = await takeSnapshot();
     });

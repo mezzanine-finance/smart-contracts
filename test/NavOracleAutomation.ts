@@ -181,6 +181,8 @@ describe("NavOracleAutomation", () => {
         // Admin-only functions on MZUSD & Vault
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const setYieldDistributionSelector =
+            vault.interface.getFunction("setYieldDistribution").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const setVaultLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
@@ -189,6 +191,7 @@ describe("NavOracleAutomation", () => {
             [
                 distributeYieldSelector,
                 addTrancheSelector,
+                setYieldDistributionSelector,
                 setVaultLossManagerSelector,
                 setNavOracleSelector,
             ],
@@ -232,11 +235,8 @@ describe("NavOracleAutomation", () => {
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
         await lossManager.setNavOracle(navAutomation.target);
-        await vault.addTranche({
-            tranche: tranche.target,
-            weight: 10_000,
-            enabled: true,
-        });
+        await vault.addTranche(tranche.target);
+        await vault.setYieldDistribution(0, [10_000], [true]);
 
         snapshot = await takeSnapshot();
     });

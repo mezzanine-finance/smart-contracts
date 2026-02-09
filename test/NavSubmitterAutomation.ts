@@ -226,11 +226,8 @@ describe("NavSubmitterAutomation", () => {
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
         await lossManager.setNavOracle(navAutomation.target);
-        await vault.addTranche({
-            tranche: tranche.target,
-            weight: 10_000,
-            enabled: true,
-        });
+        await vault.addTranche(tranche);
+        await vault.setYieldDistribution(7000, [3000], [true]);
 
         snapshot = await takeSnapshot();
     });

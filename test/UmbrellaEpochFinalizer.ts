@@ -158,6 +158,8 @@ describe("UmbrellaEpochFinalizer", () => {
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const setYieldDistributionSelector =
+            vault.interface.getFunction("setYieldDistribution").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
@@ -166,6 +168,7 @@ describe("UmbrellaEpochFinalizer", () => {
             [
                 distributeYieldSelector,
                 addTrancheSelector,
+                setYieldDistributionSelector,
                 setLossManagerSelector,
                 setNavOracleSelector,
             ],
@@ -187,11 +190,8 @@ describe("UmbrellaEpochFinalizer", () => {
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche({
-            tranche: tranche.target,
-            weight: 10_000,
-            enabled: true,
-        });
+        await vault.addTranche(tranche.target);
+        await vault.setYieldDistribution(0, [10_000], [true]);
 
         snapshot = await takeSnapshot();
     });
