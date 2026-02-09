@@ -7,7 +7,7 @@
         "gen:docs": "rm -rf docs && npx hardhat docgen",
         "gen:abi": "rm -rf abi && npx hardhat export-abi",
         "coverage": "npx hardhat coverage",
-        "slither": "npm run clean:build && slither .",
+        "slither": "npm run clean:build && slither . --config-file ./slither.config.json",
         "aderyn": "bash scripts/commands/aderyn.sh",
         "slither:md": "npm run clean:build && bash scripts/commands/slither.sh",
         "slither:md:strict": "npm run clean:build && cross-env SLITHER_STRICT=true bash scripts/commands/slither.sh",
