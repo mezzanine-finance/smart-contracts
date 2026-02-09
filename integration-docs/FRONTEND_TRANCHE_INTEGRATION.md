@@ -51,6 +51,7 @@ From PauseManager:
 
 - `isPaused(tranche, PauseCategory.DEPOSITS)`
 - `isPaused(tranche, PauseCategory.WITHDRAWALS)`
+- `isPaused(tranche, PauseCategory.TRANSFERS)` (also affects share mint/burn internals, see note below)
 
 From Vault:
 
@@ -129,6 +130,11 @@ Optional for MZUSD (if you show mint/redeem widgets on tranche pages):
 Read `directWithdrawEnabled()` to pick the correct UX. `withdraw()` / `redeem()` revert when direct
 withdraw is disabled.
 
+Note on `PauseCategory.TRANSFERS`:
+- In `Tranche`, the transfer pause is enforced in ERC20 `_update`.
+- `_update` is used by mint/burn/transfer internals, so when `TRANSFERS` is paused the following are also blocked:
+  `deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal`, `cancelUnstake`, `finalizeEpoch`.
+
 ### Step 1: Request withdrawal
 
 Users request in **shares**, not assets. Behavior depends on `directWithdrawEnabled()`:
@@ -172,6 +178,10 @@ You can show a "pending" state until the target epoch is finalized.
 Once finalized, the user claims actual MZUSD:
 
 - `Tranche.claim(epochId)`
+
+Rounding behavior:
+- Claims are pro-rata with floor division for each user.
+- Rounding dust may remain in `reservedAssets` after all users claim for that epoch.
 
 #### Errors to handle
 
@@ -242,7 +252,7 @@ Notes:
 4. Load epoch data: `currentEpochId`, `unstakeDelayEpochs`, `epochDuration`.
 5. Optional: `getDepositLimitInfo` to show remaining capacity.
 6. User state: `balanceOf`, `getUserEpochInfo` for pending epochs.
-7. Read `PauseManager.isPaused` for deposits/withdrawals and disable buttons.
+7. Read `PauseManager.isPaused` for deposits/withdrawals/transfers and disable buttons.
 8. Wire deposit flow with allowance check and limit enforcement.
 9. Wire request-withdrawal flow (shares-based).
 10. Wire cancel + claim actions with proper eligibility checks.

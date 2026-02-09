@@ -58,7 +58,7 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `mint` → only the configured Vault address
 - `burn` → `BURNER_ROLE` (typically tranche contracts that LossManager burns through)
 - `setGlobalRedemptionCap`, `setRedemptionWindowDuration` → `ADMIN_ROLE`
-- `setVault` (one-time, not pausable), `setLossManager` (one-time, not pausable) → `ADMIN_ROLE`
+- `setVault` (one-time, not pausable) → `ADMIN_ROLE`
 - `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
 
 ### Vault (UUPS)
@@ -118,7 +118,6 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `Vault.navOracle` is updatable via `setNavOracle` and gates `Vault.distributeYield`.
   Update requires the new oracle to reference the same `vault`, `lossManager`, and `mzusd`.
 - `LossManager.navOracle` is set via `setNavOracle` and gates `LossManager.applyLoss`.
-- `MZUSD.lossManager` is set once via `setLossManager` and gates `MZUSD.burn`.
 - `MZUSD.vault` is set once via `setVault` and gates `MZUSD.mint`.
 - `Tranche.vault` is an immutable constructor param and gates `Tranche.notifyYield`.
 - `LossManager.vault` is an immutable constructor param and is used by `LossManager.applyLoss`.
@@ -137,4 +136,4 @@ If possible, separate `PAUSER_ROLE` to a faster-acting guardian.
 - AccessManager configuration is the source of truth for `restricted` functions; avoid
   granting `ADMIN_ROLE` to automation or oracle actors unless strictly necessary.
 - Core wiring is fixed: `Vault.mzusd`/`Vault.reservoir` are immutable and
-  `Vault.lossManager`/`MZUSD.lossManager` are one-time assignments; updates require an upgrade.
+  `Vault.lossManager` is a one-time assignment; updates require an upgrade.

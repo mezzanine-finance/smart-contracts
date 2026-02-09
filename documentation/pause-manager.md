@@ -68,6 +68,11 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `ADMIN`: `setDepositLimits`, `setDepositLimitEnabled`, `setUnstakeDelayEpochs`
 - `PROTOCOL`: `notifyYield`, `finalizeEpoch`
 
+Important implementation detail:
+- `Tranche` applies the `TRANSFERS` pause check in ERC20 `_update`. Because `_update` is used by
+  mint/burn/transfer internals, pausing `TRANSFERS` also blocks share mint/burn paths
+  (`deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal`, `cancelUnstake`, `finalizeEpoch`).
+
 ### Vault
 
 - `ADMIN`: `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`,

@@ -40,7 +40,6 @@ Use this checklist in scripts after deploying all components.
 
 - `MZUSD.setVault(Vault)` (one-time).
 - `ReservoirUSDC.setVault(Vault)` (one-time, used for tracking).
-- `MZUSD.setLossManager(LossManager)` (one-time).
 - `Vault.setLossManager(LossManager)` (one-time).
 - `Vault.setNavOracle(NavOracleAutomation)` (updatable, with strict reference checks).
 

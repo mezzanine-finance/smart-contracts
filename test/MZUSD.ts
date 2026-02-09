@@ -135,18 +135,12 @@ describe("MZUSD <-> USDC conversion", () => {
         nettingHelper = await NettingHelperFactory.deploy();
         await nettingHelper.waitForDeployment();
 
-        const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const burnSelector = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [setLossManagerSelector, setVaultSelector],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(mzusd.target, [burnSelector], BURNER_ROLE);
         await accessManager.grantRole(BURNER_ROLE, deployer.address, 0);
         await mzusd.setVault(vault.target);
-        await mzusd.setLossManager(deployer.address);
 
         await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
             .to.emit(mzusd, "GlobalRedemptionCapUpdated")

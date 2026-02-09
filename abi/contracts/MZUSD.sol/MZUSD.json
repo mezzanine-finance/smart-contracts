@@ -221,17 +221,7 @@
     },
     {
         "inputs": [],
-        "name": "LossManagerAlreadySet",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "NotInitializing",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NotLossManager",
         "type": "error"
     },
     {
@@ -392,19 +382,6 @@
             }
         ],
         "name": "Initialized",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "lossManager",
-                "type": "address"
-            }
-        ],
-        "name": "LossManagerUpdated",
         "type": "event"
     },
     {
@@ -796,19 +773,6 @@
         "type": "function"
     },
     {
-        "inputs": [],
-        "name": "lossManager",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [
             {
                 "internalType": "address",
@@ -926,19 +890,6 @@
             }
         ],
         "name": "setGlobalRedemptionCap",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_lossManager",
-                "type": "address"
-            }
-        ],
-        "name": "setLossManager",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

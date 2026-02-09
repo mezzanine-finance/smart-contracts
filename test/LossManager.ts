@@ -199,17 +199,11 @@ describe("LossManager", () => {
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
-        const setLossManagerSel = mzusd.interface.getFunction("setLossManager").selector;
         const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         const burnSel = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusdAddr,
-            [setLossManagerSel, setVaultSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(mzusdAddr, [burnSel], BURNER_ROLE);
         await mzusd.setVault(vaultAddr);
-        await mzusd.setLossManager(lossManagerAddr);
         await accessManager.grantRole(BURNER_ROLE, juniorAddr, 0);
         await accessManager.grantRole(BURNER_ROLE, mezzanineAddr, 0);
         await accessManager.grantRole(BURNER_ROLE, seniorAddr, 0);

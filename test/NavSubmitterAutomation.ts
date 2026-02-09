@@ -151,17 +151,11 @@ describe("NavSubmitterAutomation", () => {
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
-        const setLossManagerSelector = mzusd.interface.getFunction("setLossManager").selector;
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const burnSelector = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusd.target,
-            [setLossManagerSelector, setVaultSelector],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(mzusd.target, [burnSelector], BURNER_ROLE);
         await mzusd.setVault(vault.target);
-        await mzusd.setLossManager(lossManager.target);
         await accessManager.grantRole(BURNER_ROLE, tranche.target as string, 0);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 

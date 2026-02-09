@@ -12,6 +12,7 @@ import "./interfaces/IVault.sol";
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
 /// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
 /// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
+/// @dev Burn authorization is delegated to AccessManager (BURNER_ROLE), usually granted to tranche contracts.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract MZUSD is
@@ -30,7 +31,6 @@ contract MZUSD is
     uint32 public constant MAX_REDEMPTION_WINDOW_DURATION = 30 days;
 
     IVault public vault;
-    address public lossManager;
     /// @notice Start timestamp of current redemption window.
     uint40 public windowStartTimestamp;
     /// @notice Duration of redemption window in seconds (e.g. 1 hours).
@@ -50,7 +50,6 @@ contract MZUSD is
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
-    event LossManagerUpdated(address indexed lossManager);
     event VaultUpdated(address indexed vault);
 
     error ZeroAmount();
@@ -60,9 +59,7 @@ contract MZUSD is
     error SameValue();
     error VaultAlreadySet();
     error VaultNotSet();
-    error LossManagerAlreadySet();
     error NotVault();
-    error NotLossManager();
     error InvalidRedemptionWindowDuration();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
@@ -81,11 +78,6 @@ contract MZUSD is
 
     modifier onlyVault() {
         if (msg.sender != address(vault)) revert NotVault();
-        _;
-    }
-
-    modifier onlyLossManager() {
-        if (msg.sender != lossManager) revert NotLossManager();
         _;
     }
 
@@ -232,15 +224,8 @@ contract MZUSD is
         emit RedemptionWindowDurationQueued(newDuration);
     }
 
-    /// @notice Set LossManager address (one-time).
-    function setLossManager(address _lossManager) external restricted {
-        if (_lossManager == address(0)) revert ZeroAddress();
-        if (lossManager != address(0)) revert LossManagerAlreadySet();
-        lossManager = _lossManager;
-        emit LossManagerUpdated(_lossManager);
-    }
-
     /// @notice Set Vault address (one-time).
+    /// @dev Vault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (address(vault) != address(0)) revert VaultAlreadySet();
