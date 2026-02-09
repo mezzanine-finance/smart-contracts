@@ -58,9 +58,10 @@ Notes:
 
 - `setUnstakeDelayEpochs` for umbrella tranches.
 - `setDepositLimits(enabled, capMZUSD, tvlBps)` where needed.
+- `setDepositLimitEnabled(enabled)` to toggle limits without changing `capMZUSD`/`tvlBps`.
 - Deployment-time immutable:
   - Senior usually `directWithdrawEnabled = true`
-  - umbrella tranches usually `directWithdrawEnabled = false`
+  - umbrella tranches (Mezzanine/Junior) usually `directWithdrawEnabled = false`
 
 ### LossManager configuration
 

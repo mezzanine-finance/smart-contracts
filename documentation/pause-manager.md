@@ -66,7 +66,7 @@ Note: `setVault` and `setLossManager` are `restricted` but not pause-gated.
 - `DEPOSITS`: `deposit`, `mint` (via ERC4626 overrides)
 - `WITHDRAWALS`: `requestWithdrawal`, `cancelUnstake`, `claim`, `withdraw`, `redeem`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setDepositLimits`, `setUnstakeDelayEpochs`
+- `ADMIN`: `setDepositLimits`, `setDepositLimitEnabled`, `setUnstakeDelayEpochs`
 - `PROTOCOL`: `notifyYield`, `finalizeEpoch`, `burnMZUSD`
 
 ### Vault

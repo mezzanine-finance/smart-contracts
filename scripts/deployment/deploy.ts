@@ -913,6 +913,7 @@ async function main() {
             [
                 tranche.contract.interface.getFunction("setUnstakeDelayEpochs").selector,
                 tranche.contract.interface.getFunction("setDepositLimits").selector,
+                tranche.contract.interface.getFunction("setDepositLimitEnabled").selector,
             ],
             adminRole
         );

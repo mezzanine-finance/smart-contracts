@@ -31,14 +31,16 @@ POL page (if any):
 
 ### From Tranche
 
-- `name()`, `symbol()`, `decimals()`
-- `directWithdrawEnabled()`
-- `totalAssets()`
-- `pricePerShare()`
-- `unaccruedYield()`
-- `totalSupply()`
-- `depositLimitEnabled()`, `maxDepositCap()`, `maxDepositTvlBps()`
-- `getDepositLimitInfo()` -> `(enabled, limit, limitByTvl, cap)`
+- `name()` / `symbol()` / `decimals()` (share token display)
+- `directWithdrawEnabled()` (direct vs umbrella flow)
+- `totalAssets()` (TVL in MZUSD, 18d)
+- `pricePerShare()` (MZUSD per share, 18d)
+- `unaccruedYield()` (yield not yet reflected in NAV)
+- `totalSupply()` (shares)
+- `depositLimitEnabled()`
+- `maxDepositCap()` (configured value; `0` means cap is not configured)
+- `maxDepositTvlBps()`
+- `getDepositLimitInfo()` (enabled, limit, limitByTvl, capEffective)
 - `unstakeDelayEpochs()`
 - `pauseManager()`
 - User-specific:
@@ -65,6 +67,11 @@ POL page (if any):
 - `getRemainingRedemptionCap()` -> `(capUSDC, usedUSDC, remainingUSDC)`
 - `getRedemptionWindow()` -> `(windowStart, windowEnd, duration)`
 
+Admin-only (ops panels):
+
+- `setDepositLimits(enabled, cap, tvlBps)` (full config update)
+- `setDepositLimitEnabled(enabled)` (toggle both limits only)
+
 ## Deposit flow
 
 ### Pre-checks
@@ -78,6 +85,10 @@ POL page (if any):
 
 When `depositLimitEnabled == false`, effective limit is `MAX_UINT`.
 
+`getDepositLimitInfo().cap` returns the effective cap:
+
+- `MAX_UINT` when limits are disabled, or when configured `maxDepositCap == 0`.
+- otherwise the configured absolute cap value.
 When enabled:
 
 - `tvl = totalAssets()`
