@@ -272,6 +272,16 @@
     },
     {
         "inputs": [],
+        "name": "InvalidYieldDistribution",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LengthMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "LossManagerAlreadySet",
         "type": "error"
     },
@@ -599,18 +609,6 @@
                 "internalType": "address",
                 "name": "tranche",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "weight",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
             }
         ],
         "name": "TrancheRegistered",
@@ -628,7 +626,7 @@
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "weight",
+                "name": "riskPremiumBps",
                 "type": "uint256"
             },
             {
@@ -696,6 +694,31 @@
             }
         ],
         "name": "YieldDistributed",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint16",
+                "name": "baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint16[]",
+                "name": "riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "YieldDistributionUpdated",
         "type": "event"
     },
     {
@@ -805,26 +828,9 @@
     {
         "inputs": [
             {
-                "components": [
-                    {
-                        "internalType": "address",
-                        "name": "tranche",
-                        "type": "address"
-                    },
-                    {
-                        "internalType": "uint16",
-                        "name": "weight",
-                        "type": "uint16"
-                    },
-                    {
-                        "internalType": "bool",
-                        "name": "enabled",
-                        "type": "bool"
-                    }
-                ],
-                "internalType": "struct Vault.TrancheInfo",
-                "name": "info",
-                "type": "tuple"
+                "internalType": "address",
+                "name": "_tranche",
+                "type": "address"
             }
         ],
         "name": "addTranche",
@@ -853,6 +859,19 @@
                 "internalType": "address",
                 "name": "",
                 "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "baseRewardBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -996,7 +1015,7 @@
             },
             {
                 "internalType": "uint16[]",
-                "name": "weights",
+                "name": "riskPremiumBpsArr",
                 "type": "uint16[]"
             },
             {
@@ -1353,6 +1372,29 @@
     {
         "inputs": [
             {
+                "internalType": "uint16",
+                "name": "_baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint16[]",
+                "name": "_riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "_enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "setYieldDistribution",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
@@ -1367,7 +1409,7 @@
             },
             {
                 "internalType": "uint16",
-                "name": "weight",
+                "name": "riskPremiumBps",
                 "type": "uint16"
             },
             {
@@ -1390,29 +1432,6 @@
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "idx",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint16",
-                "name": "weight",
-                "type": "uint16"
-            },
-            {
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            }
-        ],
-        "name": "updateTranche",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

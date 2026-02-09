@@ -189,7 +189,7 @@ describe("Tranche claim solvency", () => {
         await vault.setNavOracle(navOracleRef.target);
 
         // Register tranche (100% weight)
-        await vault.addTranche({tranche: trancheAddr, weight: 10_000, enabled: true});
+        await vault.addTranche(trancheAddr);
 
         snapshot = await takeSnapshot();
     });
