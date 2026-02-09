@@ -225,6 +225,9 @@ contract Tranche is
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
     /// @param epochId The epoch for which to claim assets.
+    /// @dev Claims use floor pro-rata math:
+    ///      userAssets = floor(userShares * totalAssets / totalShares).
+    ///      Rounding dust can remain in `reservedAssets` after all claims for an epoch.
     function claim(
         uint256 epochId
     ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
@@ -384,7 +387,7 @@ contract Tranche is
     /// @param user User address.
     /// @param epochId Epoch to query.
     /// @return pendingShares Shares pending under umbrella for that epoch.
-    /// @return claimableAssets Assets user can claim (0 if not finalized).
+    /// @return claimableAssets Assets user can claim (0 if not finalized), computed with floor division.
     function getUserEpochInfo(
         address user,
         uint256 epochId

@@ -381,6 +381,8 @@ describe("Tranche", () => {
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
 
             await tranche.connect(alice).approve(deployer, 1n);
+            await (await mzusd.connect(vaultSigner).mint(alice.address, 1n)).wait();
+            await mzusd.connect(alice).approve(tranche.target, 1n);
             await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
             await expect(tranche.transfer(bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
@@ -391,6 +393,7 @@ describe("Tranche", () => {
             await expect(tranche.transferFrom(alice.address, bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.TRANSFERS);
+            await expect(tranche.connect(alice).deposit(1n, alice.address)).to.be.reverted;
             await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
 
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
@@ -1416,8 +1419,10 @@ describe("Tranche", () => {
             await (await tranche.connect(alice).claim(2n)).wait();
             await (await tranche.connect(bob).claim(2n)).wait();
 
-            expect(await mzusd.balanceOf(alice.address)).to.equal(aBalBefore + expectedA);
-            expect(await mzusd.balanceOf(bob.address)).to.equal(bBalBefore + expectedB);
+            const aPaid = (await mzusd.balanceOf(alice.address)) - aBalBefore;
+            const bPaid = (await mzusd.balanceOf(bob.address)) - bBalBefore;
+            expect(aPaid).to.equal(expectedA);
+            expect(bPaid).to.equal(expectedB);
 
             // Clean-up - userSharesByEpoch for epoch 2 cleared
             expect(await tranche.userSharesByEpoch(alice.address, 2n)).to.equal(0n);
