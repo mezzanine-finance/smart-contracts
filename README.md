@@ -16,7 +16,7 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
 
  `contracts/Tranche.sol` - ERC4626 tranche, epoch-based yield streaming.
 
- `contracts/PolJuniorTranche.sol` - POL tranche with restricted withdraw/redeem.
+ `contracts/PolJuniorTranche.sol` - POL tranche with restricted admin withdrawals.
 
  `contracts/ReservoirUSDC.sol` - USDC liquidity buffer for rebalancing.
 
@@ -72,7 +72,7 @@ npm run compile
 npm run test:fork
 ```
 
-Environment requirements: Node `>=24.11.1`, npm `>=11.6.2`.
+Environment requirements: Node `>=22.21.1`, npm `>=11.6.2`.
 
 ## Scripts and commands
 

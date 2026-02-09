@@ -2,55 +2,54 @@
 
 ## Overview
 
-PauseManager is a centralized registry that controls whether a category of actions is paused.
-Contracts that should respect pauses inherit PauseManagedUpgradeable and wrap functions with
-`whenNotPaused(category)`. All categories are enabled by default and can be disabled explicitly.
+`PauseManager` is a centralized registry for category-based pause switches.
+Contracts inheriting `PauseManagedUpgradeable` use `whenNotPaused(category)` checks.
+
+All categories are enabled by default and can be paused explicitly.
+
+Effective pause for a call is:
+
+- `globalPaused(category) || contractPaused(target, category)`
 
 Design goals:
 
-- Simple mental model (no scopes, no bitmasks, one category per function).
+- Simple mental model (one category per function path).
 - Easy to audit and document.
 - Minimal storage and no loops in hot paths.
 
 ## Categories
 
-The protocol uses the following categories:
+- `DEPOSITS`
+- `WITHDRAWALS`
+- `TRANSFERS`
+- `ADMIN`
+- `PROTOCOL`
 
-- `DEPOSITS`: user ingress and minting of receipt shares.
-- `WITHDRAWALS`: user egress flows and claims.
-- `TRANSFERS`: ERC20 transfer/approve/transferFrom.
-- `ADMIN`: configuration and parameter updates.
-- `PROTOCOL`: yield distribution, loss handling, epoch maintenance, and other protocol flows.
-
-## How PauseManager works
-
-- Global pause: disables a category for all contracts.
-- Contract pause: disables a category only for one contract address.
-- Effective pause is `globalPaused || contractPaused`.
-
-PauseManager is AccessManager-controlled; only authorized callers can pause/unpause.
-Pause and unpause are separate methods so AccessManager can enforce an execution delay
-specifically for unpause operations.
-
-### Core methods
+## PauseManager methods
 
 - `pauseGlobal(category)`
-- `unpauseGlobal(category)` (configure AccessManager to apply a delay)
+- `unpauseGlobal(category)`
 - `pauseContract(target, category)`
-- `unpauseContract(target, category)` (configure AccessManager to apply a delay)
+- `unpauseContract(target, category)`
 - `isPaused(target, category)`
 - `globalPaused(category)`
 - `contractPaused(target, category)`
 
-## How PauseManaged works
+Pause/unpause are separate functions so AccessManager can apply stricter delays on unpause.
 
-Contracts call `whenNotPaused(category)` in the target functions. The modifier
-calls `PauseManager.isPaused(address(this), category)` and reverts with
-`CategoryPaused(category)` if the category is disabled.
+## How PauseManager works
 
-## Intended category mapping
+- Global pause disables a category for all protocol contracts.
+- Contract pause disables a category for a specific contract address only.
+- Effective result combines both checks (`global || contract`).
+- Calls that mutate pause state are `restricted` and should be role-mapped in AccessManager.
 
-This mapping is the intended target for core contracts once PauseManaged is wired in.
+## PauseManaged behavior
+
+`whenNotPaused(category)` calls `PauseManager.isPaused(address(this), category)`.
+If paused, call reverts with `CategoryPaused(category)`.
+
+## Current category mapping (as implemented)
 
 ### MZUSD
 
@@ -60,19 +59,22 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`
 - `PROTOCOL`: `mint`, `burn`
 
+Note: `setVault` and `setLossManager` are `restricted` but not pause-gated.
+
 ### Tranche
 
-- `DEPOSITS`: `deposit`, `mint`
+- `DEPOSITS`: `deposit`, `mint` (via ERC4626 overrides)
 - `WITHDRAWALS`: `requestWithdrawal`, `cancelUnstake`, `claim`, `withdraw`, `redeem`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
 - `ADMIN`: `setDepositLimits`, `setUnstakeDelayEpochs`
-- `PROTOCOL`: `notifyYield`, `finalizeEpoch`
+- `PROTOCOL`: `notifyYield`, `finalizeEpoch`, `burnMZUSD`
 
 ### Vault
 
-- `ADMIN`: `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`,
-  `addTranche`, `updateTranche`
-- `PROTOCOL`: `distributeYield`, `rebalance`, `withdraw`, `advanceEpoch`
+- `WITHDRAWALS`: `withdraw`
+- `ADMIN`: `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
+  `setBuffer`, `setEpochConfig`, `addTranche`, `setYieldDistribution`
+- `PROTOCOL`: `distributeYield`, `rebalance`, `advanceEpoch`
 
 ### LossManager
 
@@ -83,8 +85,10 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 
 - `PROTOCOL`: `deposit`, `withdraw`
 
+Note: `setVault` is `restricted` but not pause-gated.
+
 ### PolJuniorTranche
 
 - `WITHDRAWALS`: `withdraw`
 - `ADMIN`: `setPolPayout`
-- `PROTOCOL`: `notifyYield`
+- `PROTOCOL`: `notifyYield`, `burnMZUSD`

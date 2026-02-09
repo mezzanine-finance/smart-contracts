@@ -2,139 +2,122 @@
 
 ## Overview
 
-Access control is centralized in OpenZeppelin `AccessManager` for all functions that use
-the `restricted` modifier. Some critical flows are **not** AccessManager-gated and instead
-use direct address checks (e.g. `onlyVault`, `onlyMZUSD`, `onlyLossManager`, `onlyNavOracle`).
-This document captures the current access surface and the recommended separation for
-safe operations.
+Access control is centered in OpenZeppelin `AccessManager` for all functions marked `restricted`.
+Some protocol-critical paths additionally use direct caller checks (`onlyVault`, `onlyMZUSD`, etc).
 
-Pause behavior is handled separately by PauseManager. See `documentation/pause-manager.md`
-for categories and pause rules.
+Pause behavior is handled separately via `PauseManager` categories.
 
 ## Design goals
 
 - Keep the role set minimal while enforcing least privilege.
 - Allow fast emergency pauses, but require a delay before unpausing.
-- Avoid giving automation/oracle actors full admin permissions.
+- Avoid giving automation/oracle actors broad admin permissions.
 
-## Roles (logical)
+## Logical roles
 
-Role IDs can be any `uint64`; names below are logical groupings.
+Role IDs are configurable `uint64` values in deployment config.
 
-- `ADMIN_ROLE` (governance multisig)
-    - Protocol config, upgrades, and sensitive settings.
+- `ADMIN_ROLE`
+  - Governance multisig role for core configuration and sensitive admin actions.
+- `PAUSER_ROLE`
+  - Can pause categories globally/per-contract (typically guardian or multisig).
+- `UNPAUSER_ROLE`
+  - Can unpause categories (recommended with execution delay and stricter governance path).
+- `UPGRADER_ROLE`
+  - Can call `upgradeToAndCall` on UUPS contracts (recommended with delay).
+- `KEEPER_ROLE`
+  - Calls `Vault.rebalance()` to move idle USDC between Vault and Reservoir.
+- `RESERVOIR_WITHDRAW_ROLE`
+  - Can call `ReservoirUSDC.withdraw` (Vault + approved operators).
+- `ORACLE_ROLE`
+  - Can call `NavOracleAutomation.submitNav`.
+- `BURNER_ROLE`
+  - Can call `MZUSD.burn` (typically Tranche and PolJuniorTranche contracts).
 
-- `PAUSER_ROLE` (guardian or same multisig)
-    - Can pause categories (global or per-contract).
-    - No unpause permissions.
-
-- `UNPAUSER_ROLE` (multisig)
-    - Can unpause categories.
-    - Recommended: execution delay enforced via AccessManager.
-
-- `ORACLE_ROLE` (oracle EOAs)
-    - Lets oracles submit NAV snapshots to NavOracleAutomation.
-
-- `UPGRADER_ROLE` (governance multisig)
-    - Restricts `upgradeToAndCall` on UUPS contracts.
-    - Recommended: execution delay enforced via AccessManager.
-
-- `KEEPER_ROLE` (keeper / automation bot)
-    - Calls `Vault.rebalance()` to move idle USDC between Vault and Reservoir.
-
-- `RESERVOIR_WITHDRAW_ROLE` (Vault + curators addresses)
-    - Lets Vault and designated protocol operators call `ReservoirUSDC.withdraw`.
-
-## Role mapping by contract
+## Contract-level mapping
 
 ### PauseManager (UUPS)
 
-- `pauseGlobal`, `pauseContract` → `PAUSER_ROLE`
-- `unpauseGlobal`, `unpauseContract` → `UNPAUSER_ROLE` (delayed)
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `pauseGlobal`, `pauseContract` -> `PAUSER_ROLE`
+- `unpauseGlobal`, `unpauseContract` -> `UNPAUSER_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### MZUSD (UUPS)
 
-- `mint` → only the configured Vault address
-- `burn` → `BURNER_ROLE` (typically tranche contracts that LossManager burns through)
-- `setGlobalRedemptionCap`, `setRedemptionWindowDuration` → `ADMIN_ROLE`
-- `setVault` (one-time, not pausable), `setLossManager` (one-time, not pausable) → `ADMIN_ROLE`
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `mint` -> only configured Vault (`onlyVault`)
+- `burn` -> `BURNER_ROLE` (`restricted`, plus `PROTOCOL` pause gate)
+- `setGlobalRedemptionCap`, `setRedemptionWindowDuration` -> `ADMIN_ROLE`
+- `setVault` (one-time), `setLossManager` (one-time) -> `ADMIN_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### Vault (UUPS)
 
-- `distributeYield` → only the configured `navOracle` address
-- `rebalance` → `KEEPER_ROLE`
-- `withdraw` → only the configured MZUSD address (no AccessManager role)
-- `advanceEpoch` → only the configured `lossManager` address
-- `setLossManager` (one-time), `setNavOracle` (updatable),
-  `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`, `addTranche`,
-  `updateTranche`
-  → `ADMIN_ROLE`
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `distributeYield` -> only configured `navOracle`
+- `withdraw` -> only configured MZUSD (`onlyMZUSD`)
+- `advanceEpoch` -> only configured `lossManager`
+- `rebalance` -> `KEEPER_ROLE`
+- `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`, `setBuffer`,
+  `setEpochConfig`, `addTranche`, `setYieldDistribution` -> `ADMIN_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### Tranche (UUPS)
 
-- `notifyYield` → only the configured `vault` address
-- `setUnstakeDelayEpochs`, `setDepositLimits` → `ADMIN_ROLE`
-- `finalizeEpoch` → public (no AccessManager role; paused via `PROTOCOL` category)
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `notifyYield` -> only configured `vault`
+- `burnMZUSD` -> only `IVault(vault).lossManager()`
+- `setUnstakeDelayEpochs`, `setDepositLimits` -> `ADMIN_ROLE`
+- `finalizeEpoch` -> public (pause-gated, not `restricted`)
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### PolJuniorTranche (UUPS)
 
-- `notifyYield` → only the configured `vault` address
-- `withdraw`, `setPolPayout` → `ADMIN_ROLE`
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `notifyYield` -> only configured `vault`
+- `burnMZUSD` -> only `IVault(vault).lossManager()`
+- `withdraw`, `setPolPayout` -> `ADMIN_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### ReservoirUSDC (UUPS)
 
-- `deposit` → not AccessManager-gated (PauseManager only)
-- `withdraw` → `RESERVOIR_WITHDRAW_ROLE` (Vault + curators/strategists)
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `deposit` -> open (pause-gated)
+- `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
+- `setVault` -> `ADMIN_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### LossManager (UUPS)
 
-- `applyLoss` → only the configured `navOracle` address
-- `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC`, `setNavOracle` → `ADMIN_ROLE`
-- `upgradeToAndCall` → `UPGRADER_ROLE` (delayed)
+- `applyLoss` -> only current `IVault(vault).navOracle()`
+- `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### NavOracleAutomation (non-upgradeable)
 
-- `submitNav` → `ORACLE_ROLE`
-- `rejectPendingNav`, `setVetoPeriod` → `ADMIN_ROLE`
+- `submitNav` -> `ORACLE_ROLE`
+- `rejectPendingNav`, `setVetoPeriod` -> `ADMIN_ROLE`
 
-## Cross-contract grants (must exist)
+## Cross-contract grants and wiring
 
-- Vault + designated operators must hold `RESERVOIR_WITHDRAW_ROLE` to call:
-  - `ReservoirUSDC.withdraw`
-- Keeper / automation bots must hold `KEEPER_ROLE` to call:
-  - `Vault.rebalance`
+- `Vault` and approved operators must hold `RESERVOIR_WITHDRAW_ROLE` for `ReservoirUSDC.withdraw`.
+- Keeper addresses must hold `KEEPER_ROLE` for `Vault.rebalance`.
+- Tranche/PolJuniorTranche addresses that burn on losses must hold `BURNER_ROLE` on MZUSD.
+- Oracle submitter addresses must hold `ORACLE_ROLE` on `NavOracleAutomation`.
 
-## Direct address checks (must be wired)
+Direct-check wiring:
 
-- `Vault.mzusd` is immutable (constructor param) and gates `Vault.withdraw`.
-- `Vault.reservoir` is immutable (constructor param) and used for rebalance/withdraw liquidity pulls.
-- `Vault.lossManager` is set once via `setLossManager` and gates `Vault.advanceEpoch`.
-- `Vault.navOracle` is updatable via `setNavOracle` and gates `Vault.distributeYield`.
-  Update requires the new oracle to reference the same `vault`, `lossManager`, and `mzusd`.
-- `LossManager.navOracle` is set via `setNavOracle` and gates `LossManager.applyLoss`.
-- `MZUSD.lossManager` is set once via `setLossManager` and gates `MZUSD.burn`.
-- `MZUSD.vault` is set once via `setVault` and gates `MZUSD.mint`.
-- `Tranche.vault` is an immutable constructor param and gates `Tranche.notifyYield`.
-- `LossManager.vault` is an immutable constructor param and is used by `LossManager.applyLoss`.
-- `PolJuniorTranche.vault` is an immutable constructor param and gates `PolJuniorTranche.notifyYield`.
+- `Vault.mzusd` and `Vault.reservoir` are immutable constructor params.
+- `Vault.lossManager` is one-time (`setLossManager`).
+- `Vault.navOracle` is updatable (`setNavOracle`) with strict cross-reference checks.
+- `LossManager.vault` is immutable; `applyLoss` resolves NAV authority from `Vault.navOracle()`.
+- `MZUSD.vault` is one-time and gates `mint`.
+- `MZUSD.lossManager` is one-time storage (currently not used as `burn` gate).
+- `Tranche.vault`, `PolJuniorTranche.vault` are immutable and gate `notifyYield`.
 
 ## Minimal separation recommendation
 
-If governance wants “one multisig”, keep `ADMIN_ROLE`, `UNPAUSER_ROLE`, and
-`PAUSER_ROLE` on the same multisig but enforce a delay on unpause and upgrades.
-If possible, separate `PAUSER_ROLE` to a faster-acting guardian.
+If governance operates with one multisig, keep `ADMIN_ROLE`, `UNPAUSER_ROLE`, and
+`UPGRADER_ROLE` on that multisig and enforce delays on unpause/upgrade actions.
+If possible, separate `PAUSER_ROLE` to a faster guardian path.
 
-## Notes
+## Operational notes
 
-- All user entry points (deposits, withdrawals, transfers) are not AccessManager-gated,
-  but are protected by PauseManager categories.
-- AccessManager configuration is the source of truth for `restricted` functions; avoid
-  granting `ADMIN_ROLE` to automation or oracle actors unless strictly necessary.
-- Core wiring is fixed: `Vault.mzusd`/`Vault.reservoir` are immutable and
-  `Vault.lossManager`/`MZUSD.lossManager` are one-time assignments; updates require an upgrade.
+- AccessManager target-function role mapping is the source of truth for `restricted` methods.
+- User entrypoints remain non-`restricted` but are pause-gated by category.
+- Recommended practice: keep delays on unpause and upgrade roles, and separate pauser from admin when possible.
