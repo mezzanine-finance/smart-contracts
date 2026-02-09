@@ -1,9 +1,0 @@
-// SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
-
-interface IStrategy {
-    function totalAssets() external view returns (uint256);
-    function invest(uint256 amount) external returns (bool);
-    function divest(uint256 amount) external returns (uint256);
-    function harvest() external;
-}
