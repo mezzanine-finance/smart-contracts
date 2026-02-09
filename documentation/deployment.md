@@ -120,66 +120,66 @@ avoid “magic defaults” in scripts.
 
 ### Global config
 
-| Key                                 | Type      | Required                       | Meaning / Impact                                                                                                                          |
-| ----------------------------------- | --------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `dev.deployer`                      | address   | yes                            | Deployment signer; used as initial AccessManager admin. Must match the deployer key.                                                      |
-| `dev.grantRoles`                    | bool      | no                             | If `true`, deploy script also grants all roles to dev for initial ops.                                                                    |
-| `roleIds.*`                         | uint64    | yes                            | Custom AccessManager role ids (`PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`, `RESERVOIR_WITHDRAW_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`). |
-| `roles.admin`                       | address   | yes                            | Final admin/multisig for AccessManager (client).                                                                                          |
-| `roles.pauser`                      | address   | yes                            | Address for PAUSER role.                                                                                                                  |
-| `roles.unpauser`                    | address   | yes                            | Address for UNPAUSER role.                                                                                                                |
-| `roles.upgrader`                    | address   | yes                            | Address for UPGRADER role.                                                                                                                |
-| `roles.reservoirWithdrawers`        | address[] | no                             | Additional withdrawers for Reservoir (Vault is auto-added).                                                                               |
-| `roles.roleDelays.unpauser`         | uint      | no                             | Execution delay for UNPAUSER role.                                                                                                        |
-| `roles.roleDelays.upgrader`         | uint      | no                             | Execution delay for UPGRADER role.                                                                                                        |
-| `usdc.deployMock`                   | bool      | yes                            | If `true`, deploy `MockUSDC`.                                                                                                             |
-| `usdc.address`                      | address   | required if `deployMock=false` | Real USDC address.                                                                                                                        |
-| `usdc.mock.*`                       | object    | required if `deployMock=true`  | Mock USDC metadata + initial mints.                                                                                                       |
-| `mzusd.redemptionCapUSDC`           | uint (6d) | yes                            | Global redemption cap (must be `> 0` and `<= USDC.totalSupply`).                                                                          |
-| `mzusd.redemptionWindowDurationSec` | uint      | no                             | Overrides default redemption window duration.                                                                                             |
-| `vault.performanceFeeBps`           | uint16    | yes                            | Performance fee in bps.                                                                                                                   |
-| `vault.protocolFeeBps`              | uint16    | yes                            | Protocol fee in bps.                                                                                                                      |
-| `vault.performanceFeeReceiver`      | address   | yes                            | Fee receiver (non-zero).                                                                                                                  |
-| `vault.protocolFeeReceiver`         | address   | yes                            | Fee receiver (non-zero, distinct).                                                                                                        |
-| `vault.idleBufferUSDC`              | uint (6d) | no                             | Idle buffer target (set together with `vault.hysteresisBps`).                                                                             |
-| `vault.hysteresisBps`               | uint16    | no                             | Idle buffer hysteresis (set together with `vault.idleBufferUSDC`).                                                                        |
-| `vault.epochDurationSec`            | uint      | no                             | Epoch duration for tranche streaming/umbrella.                                                                                            |
-| `lossManager.maxLossPerTxUSDC`      | uint (6d) | no                             | 0 disables the limit.                                                                                                                     |
-| `navOracle.vetoPeriodSec`           | uint      | yes                            | Veto window for NAV snapshots.                                                                                                            |
-| `navOracle.oracles`                 | address[] | yes                            | ORACLE_ROLE addresses.                                                                                                                    |
-| `umbrellaFinalizer.enabled`         | bool      | no                             | Enables deployment of `UmbrellaEpochFinalizer` for umbrella tranches.                                                                    |
-| `umbrellaFinalizer.startEpoch`      | uint      | no                             | Initial finalizer cursor (`>= 1`, default `1`). Set to the oldest epoch you want the helper to process; higher values can skip older epochs. |
-| `seed.mzusdDepositUSDC`             | uint (6d) | no                             | USDC amount to deposit into MZUSD (funds Vault + mints MZUSD).                                                                            |
-| `seed.vaultUSDC`                    | uint (6d) | no                             | Direct USDC transfer to Vault.                                                                                                            |
-| `seed.reservoirUSDC`                | uint (6d) | no                             | USDC deposit into Reservoir.                                                                                                              |
-| `seed.trancheDeposits[].key`        | string    | no                             | Tranche key to seed.                                                                                                                      |
-| `seed.trancheDeposits[].amountMZUSD` | uint (18d) | no                             | MZUSD amount to deposit into tranche.                                                                           |
-| `seed.trancheDeposits[].receiver`   | address   | no                             | Receiver of tranche shares.                                                                                                               |
-| `postDeploy.renounceDeployerRoles`  | bool      | no                             | If `true`, run renounce workflow after deployment.                                                                                        |
-| `verify.enabled`                    | bool      | no                             | Enable Etherscan verification (auto-skipped locally).                                                                                     |
+| Key                                  | Type       | Required                       | Meaning / Impact                                                                                                                             |
+| ------------------------------------ | ---------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dev.deployer`                       | address    | yes                            | Deployment signer; used as initial AccessManager admin. Must match the deployer key.                                                         |
+| `dev.grantRoles`                     | bool       | no                             | If `true`, deploy script also grants all roles to dev for initial ops.                                                                       |
+| `roleIds.*`                          | uint64     | yes                            | Custom AccessManager role ids (`PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`, `RESERVOIR_WITHDRAW_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`).    |
+| `roles.admin`                        | address    | yes                            | Final admin/multisig for AccessManager (client).                                                                                             |
+| `roles.pauser`                       | address    | yes                            | Address for PAUSER role.                                                                                                                     |
+| `roles.unpauser`                     | address    | yes                            | Address for UNPAUSER role.                                                                                                                   |
+| `roles.upgrader`                     | address    | yes                            | Address for UPGRADER role.                                                                                                                   |
+| `roles.reservoirWithdrawers`         | address[]  | no                             | Additional withdrawers for Reservoir (Vault is auto-added).                                                                                  |
+| `roles.roleDelays.unpauser`          | uint       | no                             | Execution delay for UNPAUSER role.                                                                                                           |
+| `roles.roleDelays.upgrader`          | uint       | no                             | Execution delay for UPGRADER role.                                                                                                           |
+| `usdc.deployMock`                    | bool       | yes                            | If `true`, deploy `MockUSDC`.                                                                                                                |
+| `usdc.address`                       | address    | required if `deployMock=false` | Real USDC address.                                                                                                                           |
+| `usdc.mock.*`                        | object     | required if `deployMock=true`  | Mock USDC metadata + initial mints.                                                                                                          |
+| `mzusd.redemptionCapUSDC`            | uint (6d)  | yes                            | Global redemption cap (must be `> 0` and `<= USDC.totalSupply`).                                                                             |
+| `mzusd.redemptionWindowDurationSec`  | uint       | no                             | Overrides default redemption window duration.                                                                                                |
+| `vault.performanceFeeBps`            | uint16     | yes                            | Performance fee in bps.                                                                                                                      |
+| `vault.protocolFeeBps`               | uint16     | yes                            | Protocol fee in bps.                                                                                                                         |
+| `vault.performanceFeeReceiver`       | address    | yes                            | Fee receiver (non-zero).                                                                                                                     |
+| `vault.protocolFeeReceiver`          | address    | yes                            | Fee receiver (non-zero, distinct).                                                                                                           |
+| `vault.idleBufferUSDC`               | uint (6d)  | no                             | Idle buffer target (set together with `vault.hysteresisBps`).                                                                                |
+| `vault.hysteresisBps`                | uint16     | no                             | Idle buffer hysteresis (set together with `vault.idleBufferUSDC`).                                                                           |
+| `vault.epochDurationSec`             | uint       | no                             | Epoch duration for tranche streaming/umbrella.                                                                                               |
+| `lossManager.maxLossPerTxUSDC`       | uint (6d)  | no                             | 0 disables the limit.                                                                                                                        |
+| `navOracle.vetoPeriodSec`            | uint       | yes                            | Veto window for NAV snapshots.                                                                                                               |
+| `navOracle.oracles`                  | address[]  | yes                            | ORACLE_ROLE addresses.                                                                                                                       |
+| `umbrellaFinalizer.enabled`          | bool       | no                             | Enables deployment of `UmbrellaEpochFinalizer` for umbrella tranches.                                                                        |
+| `umbrellaFinalizer.startEpoch`       | uint       | no                             | Initial finalizer cursor (`>= 1`, default `1`). Set to the oldest epoch you want the helper to process; higher values can skip older epochs. |
+| `seed.mzusdDepositUSDC`              | uint (6d)  | no                             | USDC amount to deposit into MZUSD (funds Vault + mints MZUSD).                                                                               |
+| `seed.vaultUSDC`                     | uint (6d)  | no                             | Direct USDC transfer to Vault.                                                                                                               |
+| `seed.reservoirUSDC`                 | uint (6d)  | no                             | USDC deposit into Reservoir.                                                                                                                 |
+| `seed.trancheDeposits[].key`         | string     | no                             | Tranche key to seed.                                                                                                                         |
+| `seed.trancheDeposits[].amountMZUSD` | uint (18d) | no                             | MZUSD amount to deposit into tranche.                                                                                                        |
+| `seed.trancheDeposits[].receiver`    | address    | no                             | Receiver of tranche shares.                                                                                                                  |
+| `postDeploy.renounceDeployerRoles`   | bool       | no                             | If `true`, run renounce workflow after deployment.                                                                                           |
+| `verify.enabled`                     | bool       | no                             | Enable Etherscan verification (auto-skipped locally).                                                                                        |
 
 ### Tranche config (array)
 
-| Key                     | Type      | Required | Meaning / Impact                                             |
-| ----------------------- | --------- | -------- | ------------------------------------------------------------ |
-| `key`                   | string    | yes      | Unique tranche key used in `lossManager.order`.              |
-| `trancheId`              | uint      | yes      | Tranche id for Vault registration.                           |
-| `name`                  | string    | yes      | ERC20 name.                                                  |
-| `symbol`                | string    | yes      | ERC20 symbol.                                                |
-| `weight`                | uint16    | yes      | Weight in Vault yield distribution.                          |
-| `enabled`               | bool      | yes      | Enabled flag for Vault distribution.                         |
-| `directWithdrawEnabled` | bool      | yes      | Immutable; `true` for Senior, `false` for umbrella tranches. |
-| `unstakeDelayEpochs`    | uint      | no       | Umbrella delay (ignored for direct mode).                    |
-| `depositLimits.enabled` | bool      | no       | Enables deposit caps.                                        |
-| `depositLimits.capMZUSD` | uint (18d) | no       | Absolute deposit cap in MZUSD units.                         |
-| `depositLimits.tvlBps`  | uint16    | no       | Max TVL vs Vault TVL in bps.                                 |
+| Key                      | Type       | Required | Meaning / Impact                                                  |
+| ------------------------ | ---------- | -------- | ----------------------------------------------------------------- |
+| `key`                    | string     | yes      | Unique tranche key used in `lossManager.order`.                   |
+| `trancheId`              | uint       | yes      | Tranche id for Vault registration.                                |
+| `name`                   | string     | yes      | ERC20 name.                                                       |
+| `symbol`                 | string     | yes      | ERC20 symbol.                                                     |
+| `riskPremiumBps`         | uint16     | yes      | Risk premium share for tranche in Vault yield distribution (bps). |
+| `enabled`                | bool       | yes      | Enabled flag for Vault distribution.                              |
+| `directWithdrawEnabled`  | bool       | yes      | Immutable; `true` for Senior, `false` for umbrella tranches.      |
+| `unstakeDelayEpochs`     | uint       | no       | Umbrella delay (ignored for direct mode).                         |
+| `depositLimits.enabled`  | bool       | no       | Enables deposit caps.                                             |
+| `depositLimits.capMZUSD` | uint (18d) | no       | Absolute deposit cap in MZUSD units.                              |
+| `depositLimits.tvlBps`   | uint16     | no       | Max TVL vs Vault TVL in bps.                                      |
 
 ### LossManager tranche order config
 
-| Key                    | Type     | Required | Meaning / Impact                                                                         |
-| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------- |
-| `lossManager.order`    | string[] | yes      | Burn order by tranche key (e.g. `polJunior`, `junior`, `mezzanine`, `senior`).           |
-| `lossManager.isPairedWithNext` | bool[] | yes      | Parallel array; contiguous `true,true` flags create proportional loss sharing pairs. |
+| Key                            | Type     | Required | Meaning / Impact                                                                     |
+| ------------------------------ | -------- | -------- | ------------------------------------------------------------------------------------ |
+| `lossManager.order`            | string[] | yes      | Burn order by tranche key (e.g. `polJunior`, `junior`, `mezzanine`, `senior`).       |
+| `lossManager.isPairedWithNext` | bool[]   | yes      | Parallel array; contiguous `true,true` flags create proportional loss sharing pairs. |
 
 ### PolJuniorTranche config
 
@@ -187,9 +187,10 @@ avoid “magic defaults” in scripts.
 | --------------------------- | ------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `polJunior.polPayout`       | address | yes                                | Address that receives all yield immediately.                                                          |
 | `polJunior.registerInVault` | bool    | no                                 | If `true`, add as tranche to Vault distribution. Decide whether POL should share yield and/or losses. |
-| `polJunior.weight`          | uint16  | required if `registerInVault=true` | Weight used in Vault distribution.                                                                    |
+| `polJunior.riskPremiumBps`  | uint16  | required if `registerInVault=true` | Risk premium share for POL tranche in Vault distribution (bps).                                       |
 
 Notes:
+
 - PolJuniorTranche is an admin-only escrow (no ERC4626 shares); withdrawals are restricted.
 - Admins fund it by transferring MZUSD directly to the tranche address.
 
@@ -207,5 +208,5 @@ Notes:
 - Access control roles and delays are documented in `documentation/access-control.md`.
 - Vault requires **distinct** performance/protocol fee receivers.
 - The deploy scripts assume `dev.deployer` is the deploying signer and initial admin.
-- Default configs use higher `weight` for Junior and lower for Senior to match risk.
+- Default configs use higher `riskPremiumBps` for Junior and lower for Senior to match risk.
 - The JSON configs include default fees, veto periods, buffer sizes, and seed amounts; review before mainnet.

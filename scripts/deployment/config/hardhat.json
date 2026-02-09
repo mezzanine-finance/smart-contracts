@@ -18,15 +18,9 @@
         "pauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
         "unpauser": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
         "upgrader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "reservoirWithdrawers": [
-            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-        ],
-        "keepers": [
-            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-        ],
-        "oracles": [
-            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-        ],
+        "reservoirWithdrawers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
+        "keepers": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
+        "oracles": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"],
         "roleDelays": {
             "unpauser": 0,
             "upgrader": 0,
@@ -69,7 +63,7 @@
             "trancheId": 1,
             "name": "Senior Tranche",
             "symbol": "sMZUSD",
-            "weight": 1000,
+            "riskPremiumBps": 1000,
             "enabled": true,
             "directWithdrawEnabled": true
         },
@@ -78,7 +72,7 @@
             "trancheId": 2,
             "name": "Mezzanine Tranche",
             "symbol": "MLT",
-            "weight": 3000,
+            "riskPremiumBps": 3000,
             "enabled": true,
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 2,
@@ -93,7 +87,7 @@
             "trancheId": 3,
             "name": "Junior Tranche",
             "symbol": "JLT",
-            "weight": 4000,
+            "riskPremiumBps": 4000,
             "enabled": true,
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 4,
@@ -110,25 +104,13 @@
         "registerInVault": false
     },
     "lossManager": {
-        "order": [
-            "polJunior",
-            "junior",
-            "mezzanine",
-            "senior"
-        ],
-        "isPairedWithNext": [
-            true,
-            true,
-            false,
-            false
-        ],
+        "order": ["polJunior", "junior", "mezzanine", "senior"],
+        "isPairedWithNext": [true, true, false, false],
         "maxLossPerTxUSDC": "10000000"
     },
     "navOracle": {
         "vetoPeriodSec": 600,
-        "oracles": [
-            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-        ]
+        "oracles": ["0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"]
     },
     "umbrellaFinalizer": {
         "enabled": true

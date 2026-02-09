@@ -92,13 +92,20 @@ async function ensureProxyDeployment<T extends BaseContract>(
     if (!fresh) {
         const existing = getLatestDeployment(deployments, network.name, name);
         if (existing && (await hasCode(existing.address))) {
-            const impl = await upgrades.erc1967.getImplementationAddress(existing.address);
-            log.info(`Reusing ${name} proxy at ${existing.address}`);
-            return {
-                contract: factory.attach(existing.address) as T,
-                address: existing.address,
-                implementation: impl,
-            };
+            try {
+                const impl = await upgrades.erc1967.getImplementationAddress(existing.address);
+                log.info(`Reusing ${name} proxy at ${existing.address}`);
+                return {
+                    contract: factory.attach(existing.address) as T,
+                    address: existing.address,
+                    implementation: impl,
+                };
+            } catch (error) {
+                log.warn(
+                    `Ignoring stale ${name} deployment at ${existing.address}: not an ERC1967 proxy`
+                );
+                void error;
+            }
         }
     }
 
@@ -468,64 +475,87 @@ async function main() {
 
     // === Register tranches ===
     log.step("Registering tranches");
+    const desiredYieldConfigByAddress = new Map<
+        string,
+        {key: string; riskPremiumBps: number; enabled: boolean}
+    >();
+
     for (const tranche of config.tranches) {
         const trancheContract = trancheByKey.get(tranche.key)!;
+        desiredYieldConfigByAddress.set(trancheContract.address.toLowerCase(), {
+            key: tranche.key,
+            riskPremiumBps: tranche.riskPremiumBps,
+            enabled: tranche.enabled,
+        });
+
         const isRegistered = await vault.contract.isTranche(trancheContract.address);
         if (!isRegistered) {
-            await (
-                await vaultAdmin.addTranche({
-                    tranche: trancheContract.address,
-                    weight: tranche.weight,
-                    enabled: tranche.enabled,
-                })
-            ).wait();
+            await (await vaultAdmin.addTranche(trancheContract.address)).wait();
             log.success(`Vault.addTranche ${tranche.key}`);
-        } else {
-            const len = Number(await vault.contract.tranchesLength());
-            for (let i = 0; i < len; i += 1) {
-                const info = await vault.contract.tranches(i);
-                if (info.tranche.toLowerCase() === trancheContract.address.toLowerCase()) {
-                    const desiredWeight = BigInt(tranche.weight);
-                    if (info.weight !== desiredWeight || info.enabled !== tranche.enabled) {
-                        await (
-                            await vaultAdmin.updateTranche(i, tranche.weight, tranche.enabled)
-                        ).wait();
-                        log.success(`Vault.updateTranche ${tranche.key}`);
-                    }
-                    break;
-                }
-            }
         }
     }
 
     if (config.polJunior?.enabled && config.polJunior.registerInVault) {
         assert(polJunior, "polJunior deployment missing");
         const enabled = config.polJunior.enabledInVault ?? true;
-        const weight = config.polJunior.weight ?? 0;
+        const riskPremiumBps = config.polJunior.riskPremiumBps ?? 0;
+
+        desiredYieldConfigByAddress.set(polJunior.address.toLowerCase(), {
+            key: "polJunior",
+            riskPremiumBps,
+            enabled,
+        });
+
         const isRegistered = await vault.contract.isTranche(polJunior.address);
         if (!isRegistered) {
-            await (
-                await vaultAdmin.addTranche({
-                    tranche: polJunior.address,
-                    weight,
-                    enabled,
-                })
-            ).wait();
+            await (await vaultAdmin.addTranche(polJunior.address)).wait();
             log.success("Vault.addTranche polJunior");
-        } else {
-            const len = Number(await vault.contract.tranchesLength());
-            for (let i = 0; i < len; i += 1) {
-                const info = await vault.contract.tranches(i);
-                if (info.tranche.toLowerCase() === polJunior.address.toLowerCase()) {
-                    const desiredWeight = BigInt(weight);
-                    if (info.weight !== desiredWeight || info.enabled !== enabled) {
-                        await (await vaultAdmin.updateTranche(i, weight, enabled)).wait();
-                        log.success("Vault.updateTranche polJunior");
-                    }
-                    break;
-                }
-            }
         }
+    }
+
+    // === Configure yield distribution on Vault (base reward + per-tranche risk premiums) ===
+    const trancheCount = Number(await vault.contract.tranchesLength());
+    const riskPremiumsBps: number[] = [];
+    const enabledFlags: boolean[] = [];
+    let riskPremiumSum = 0;
+    let distributionNeedsUpdate = false;
+
+    for (let i = 0; i < trancheCount; i += 1) {
+        const info = await vault.contract.tranches(i);
+        const trancheAddress = info.tranche.toLowerCase();
+        const desired = desiredYieldConfigByAddress.get(trancheAddress);
+
+        const desiredRiskPremium = desired?.riskPremiumBps ?? 0;
+        const desiredEnabled = desired?.enabled ?? false;
+        if (!desired) {
+            log.warn(
+                `Tranche ${info.tranche} has no config entry. Applying default yield settings: riskPremiumBps=0, enabled=false`
+            );
+        }
+
+        riskPremiumsBps.push(desiredRiskPremium);
+        enabledFlags.push(desiredEnabled);
+        riskPremiumSum += desiredRiskPremium;
+
+        if (info.riskPremiumBps !== BigInt(desiredRiskPremium) || info.enabled !== desiredEnabled) {
+            distributionNeedsUpdate = true;
+        }
+    }
+
+    assert(
+        riskPremiumSum <= Number(BPS),
+        `Configured tranche risk premiums exceed ${BPS.toString()} bps`
+    );
+    const baseRewardBps = Number(BPS) - riskPremiumSum;
+    if ((await vault.contract.baseRewardBps()) !== BigInt(baseRewardBps)) {
+        distributionNeedsUpdate = true;
+    }
+
+    if (distributionNeedsUpdate) {
+        await (
+            await vaultAdmin.setYieldDistribution(baseRewardBps, riskPremiumsBps, enabledFlags)
+        ).wait();
+        log.success("Vault.setYieldDistribution");
     }
 
     // === Apply tranche parameters ===
@@ -802,7 +832,7 @@ async function main() {
             vault.contract.interface.getFunction("setBuffer").selector,
             vault.contract.interface.getFunction("setEpochConfig").selector,
             vault.contract.interface.getFunction("addTranche").selector,
-            vault.contract.interface.getFunction("updateTranche").selector,
+            vault.contract.interface.getFunction("setYieldDistribution").selector,
         ],
         adminRole
     );

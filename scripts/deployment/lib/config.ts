@@ -74,7 +74,7 @@ export interface TrancheConfig {
     id?: number; // deprecated alias for trancheId
     name: string;
     symbol: string;
-    weight: number;
+    riskPremiumBps: number;
     enabled: boolean;
     directWithdrawEnabled: boolean;
     unstakeDelayEpochs?: number;
@@ -90,7 +90,7 @@ export interface PolJuniorConfig {
     enabled: boolean;
     polPayout: string;
     registerInVault?: boolean;
-    weight?: number;
+    riskPremiumBps?: number;
     enabledInVault?: boolean;
 }
 
@@ -231,7 +231,7 @@ function validateConfig(config: DeployConfig, filePath: string) {
         assert(tranche.key, "Tranche key is required");
         assert(!keys.has(tranche.key), `Duplicate tranche key: ${tranche.key}`);
         keys.add(tranche.key);
-        assert(tranche.weight <= 10_000, `Tranche weight too large: ${tranche.key}`);
+        parseBps(tranche.riskPremiumBps);
         const trancheId = tranche.trancheId ?? tranche.id;
         assert(trancheId !== undefined, `Tranche trancheId is required: ${tranche.key}`);
         assert(trancheId > 0, `Tranche trancheId must be > 0: ${tranche.key}`);
@@ -260,9 +260,10 @@ function validateConfig(config: DeployConfig, filePath: string) {
         requireAddress(config.polJunior.polPayout, "polJunior.polPayout");
         if (config.polJunior.registerInVault) {
             assert(
-                config.polJunior.weight !== undefined,
-                "polJunior.weight required when registerInVault = true"
+                config.polJunior.riskPremiumBps !== undefined,
+                "polJunior.riskPremiumBps required when registerInVault = true"
             );
+            parseBps(config.polJunior.riskPremiumBps);
         }
     }
 

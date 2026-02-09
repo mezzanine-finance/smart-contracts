@@ -292,6 +292,7 @@ describe("PolJuniorTranche", () => {
             await vault.setYieldDistribution(0, [10_000], [true]);
 
             const participants = [alice, ...users.slice(0, 8)];
+            const depositedByUser = new Map<string, bigint>();
 
             // Deposit varying sizes
             let totalDeposited = 0n;
@@ -300,27 +301,22 @@ describe("PolJuniorTranche", () => {
                 const usdcAmt = to6(BigInt((i + 1) * 5)); // 5,10,15,... USDC
                 const mzAmt = await mintMZUSDFor(u, usdcAmt);
                 totalDeposited += mzAmt;
+                depositedByUser.set(u.address.toLowerCase(), mzAmt);
 
                 await depositMZInto(u, mzAmt);
-
-                // Let admin operate on behalf of the owner (ERC4626 allowance path)
-                await (await pol.connect(u).approve(deployer.address, mzAmt)).wait();
             }
 
             expect(await pol.totalAssets()).to.equal(totalDeposited);
-            await assertPolInvariants(participants);
 
             // Admin withdraws half from each owner to the owner as receiver
             let totalWithdrawn = 0n;
             for (const u of participants) {
-                const sharesBal = await pol.balanceOf(u.address);
-                const assetsToWithdraw = sharesBal / 2n;
+                const deposited = depositedByUser.get(u.address.toLowerCase()) ?? 0n;
+                const assetsToWithdraw = deposited / 2n;
                 if (assetsToWithdraw === 0n) continue;
 
                 const mzBefore = await mzusd.balanceOf(u.address);
-                await (
-                    await pol.connect(deployer).withdraw(assetsToWithdraw, u.address, u.address)
-                ).wait();
+                await (await pol.connect(deployer).withdraw(assetsToWithdraw, u.address)).wait();
                 const mzAfter = await mzusd.balanceOf(u.address);
                 expect(mzAfter - mzBefore).to.equal(assetsToWithdraw);
 
@@ -329,16 +325,15 @@ describe("PolJuniorTranche", () => {
 
             const expectedLeft = totalDeposited - totalWithdrawn;
             expect(await pol.totalAssets()).to.equal(expectedLeft);
-            await assertPolInvariants(participants);
 
             // Distribute yield multiple times: payout increases, tranche accounting stays on principal only
             const payoutBefore = await mzusd.balanceOf(bob.address);
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(7n))).wait();
 
             // Vault enforces one distribution per epoch window.
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(13n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(13n))).wait();
             const payoutAfter = await mzusd.balanceOf(bob.address);
             expect(payoutAfter - payoutBefore).to.equal(to18(20n));
 
@@ -354,24 +349,18 @@ describe("PolJuniorTranche", () => {
             await mintMZUSDFor(alice, to6(200n));
             const startBal = await mzusd.balanceOf(alice.address);
 
-            // Allow admin to withdraw on behalf of alice for the whole test.
-            await (await pol.connect(alice).approve(deployer.address, ethers.MaxUint256)).wait();
-
             for (let i = 0; i < 25; i++) {
                 const amt = to18(BigInt((i % 5) + 1)); // 1-5 MZUSD
 
                 const aliceBefore = await mzusd.balanceOf(alice.address);
                 await depositMZInto(alice, amt);
 
-                await (
-                    await pol.connect(deployer).withdraw(amt, alice.address, alice.address)
-                ).wait();
+                await (await pol.connect(deployer).withdraw(amt, alice.address)).wait();
                 const aliceAfter = await mzusd.balanceOf(alice.address);
                 expect(aliceAfter).to.equal(aliceBefore);
             }
 
             expect(await pol.totalAssets()).to.equal(0n);
-            expect(await pol.totalSupply()).to.equal(0n);
             expect(await mzusd.balanceOf(polAddr)).to.equal(0n);
             expect(await mzusd.balanceOf(alice.address)).to.equal(startBal);
         });
