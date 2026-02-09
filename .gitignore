@@ -45,5 +45,4 @@ docs/mocks/
 docs/errors/
 docs/interfaces/
 
-# ABI
-abi
+.VSCodeCounter

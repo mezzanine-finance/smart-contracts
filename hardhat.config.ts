@@ -19,7 +19,8 @@ const envs = process.env;
 
 //The solc compiler optimizer is disabled by default to keep the Hardhat stack traces' line numbers the same.
 //To enable, set `RUN_OPTIMIZER` to `true` in the `.env` file.
-const optimizerRuns = isOptionTrue(envs.RUN_OPTIMIZER) || isOptionTrue(envs.REPORT_GAS);
+// const optimizerRuns = isOptionTrue(envs.RUN_OPTIMIZER) || isOptionTrue(envs.REPORT_GAS);
+const optimizerRuns = true;
 const optimizerRunNum = envs.OPTIMIZER_RUN_NUM ? +envs.OPTIMIZER_RUN_NUM : 200;
 const enableForking = isOptionTrue(envs.FORKING);
 
@@ -57,6 +58,15 @@ const config: HardhatUserConfig = {
                 enabled: enableForking,
             },
         },
+        mainnet: {
+            url: envs.MAINNET_RPC ?? envs.FORKING_URL ?? "",
+            chainId: 1,
+            accounts: envs.DEPLOYER_PK
+                ? [envs.DEPLOYER_PK]
+                : envs.DEV_ACCOUNT
+                  ? [envs.DEV_ACCOUNT]
+                  : [],
+        },
         buildbear: {
             url: "https://rpc.buildbear.io/mezzanine-dev",
             chainId: 1,
@@ -65,12 +75,17 @@ const config: HardhatUserConfig = {
         sepolia: {
             url: envs.SEPOLIA_RPC ?? "",
             chainId: 11155111,
-            accounts: envs.DEPLOYER_PK ? [envs.DEPLOYER_PK] : [],
+            accounts: envs.DEPLOYER_PK
+                ? [envs.DEPLOYER_PK]
+                : envs.DEV_ACCOUNT
+                  ? [envs.DEV_ACCOUNT]
+                  : [],
         },
     },
     etherscan: {
         apiKey: {
             buildbear: "verifyContract",
+            sepolia: envs.ETHERSCAN_API_KEY ?? "",
         },
         customChains: [
             {
@@ -79,6 +94,14 @@ const config: HardhatUserConfig = {
                 urls: {
                     apiURL: "https://rpc.buildbear.io/verify/etherscan/mezzanine-dev",
                     browserURL: "https://explorer.buildbear.io/mezzanine-dev",
+                },
+            },
+            {
+                network: "sepolia",
+                chainId: 11155111,
+                urls: {
+                    apiURL: "https://api.etherscan.io/v2/api?chainid=11155111",
+                    browserURL: "https://sepolia.etherscan.io",
                 },
             },
         ],
@@ -98,6 +121,9 @@ const config: HardhatUserConfig = {
         except: ["interfaces/", "mocks/", "deprecated/", "test/", "@openzeppelin/"],
         spacing: 4,
     },
+    gasReporter: {
+        enabled: isOptionTrue(envs.REPORT_GAS) || envs.REPORT_GAS_TO_FILE !== undefined,
+    },
     mocha: {
         timeout: 400000,
         parallel: false,
@@ -111,14 +137,14 @@ if (envs.FORKING_BLOCK_NUMBER)
 // Extra settings for `hardhat-gas-reporter`.
 if (envs.COINMARKETCAP_API_KEY) config.gasReporter!.coinmarketcap = envs.COINMARKETCAP_API_KEY;
 if (envs.REPORT_GAS_TO_FILE === "md") {
-    config.gasReporter!.outputFile = "gas-report.md";
+    config.gasReporter!.outputFile = "reports/gas-report.md";
     config.gasReporter!.reportFormat = "markdown";
     config.gasReporter!.forceTerminalOutput = true;
     config.gasReporter!.forceTerminalOutputFormat = "terminal";
 }
 if (envs.REPORT_GAS_TO_FILE === "json") {
     config.gasReporter!.outputJSON = true;
-    config.gasReporter!.outputJSONFile = "gas-report.json";
+    config.gasReporter!.outputJSONFile = "reports/gas-report.json";
     config.gasReporter!.includeBytecodeInJSON = true;
 }
 

@@ -1,0 +1,36 @@
+name: aderyn
+
+on:
+    pull_request:
+        branches: [main, dev]
+    workflow_dispatch:
+
+jobs:
+    aderyn:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            actions: read
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Use Node.js 22
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install deps
+              run: npm ci
+
+            - name: Compile
+              run: npm run compile
+
+            # Gate PRs based on severity thresholds.
+            - name: Aderyn Check
+              uses: Cyfrin/aderyn-ci@v0
+              with:
+                  fail-on: high
+                  warn-on: any

@@ -2,65 +2,72 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
-
-interface IVault {
-    function withdraw(address to, uint256 amountUSDC) external;
-}
+import "./pause/PauseManagedUpgradeable.sol";
+import "./pause/PauseCategory.sol";
+import "./interfaces/IVault.sol";
 
 /// @title MZUSD stablecoin
-/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals)
+/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
+/// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
+/// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
+/// @dev Burn authorization is delegated to AccessManager (BURNER_ROLE), usually granted to tranche contracts.
+// @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
+// aderyn-fp-next-line(contract-locks-ether)
 contract MZUSD is
-    Initializable,
     ERC20Upgradeable,
-    ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
-    AccessManagedUpgradeable
+    AccessManagedUpgradeable,
+    PauseManagedUpgradeable
 {
     IERC20 public immutable usdc;
-    IVault public vault;
 
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
+    /// @notice Decimal conversion scale between USDC (6d) and MZUSD (18d): 1 USDC = 1e12 MZUSD units.
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
-    uint256 public constant MAX_WITHDRAW_DUST_MZ = 1e6;
+    uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
+    uint32 public constant MAX_REDEMPTION_WINDOW_DURATION = 30 days;
 
-    /// @notice global hourly redemption cap in USDC (6 decimals); 0 = disabled (no redemptions)
-    uint256 public globalHourlyRedemptionCapUSDC;
-    uint64 public windowStartTimestamp;
+    IVault public vault;
+    /// @notice Start timestamp of current redemption window.
+    uint40 public windowStartTimestamp;
+    /// @notice Duration of redemption window in seconds (e.g. 1 hours).
+    uint32 public redemptionWindowDuration;
+    /// @notice Global redemption cap in USDC (6 decimals); must be > 0.
+    uint256 public globalRedemptionCapUSDC;
+    /// @notice USDC redeemed in current window.
     uint256 public windowUsedUSDC;
-    /// @notice duration of redemption window in seconds (e.g. 1 hours)
-    uint256 public redemptionWindowDuration;
 
-    /// @notice per-tx deposits for atomic netting
+    /// @notice Tracks USDC deposited in current tx; enables atomic netting so same-tx withdrawals bypass redemption cap for deposited amounts.
     uint256 transient _txDepositedUSDC;
+    /// @notice Next redemption window duration to apply when the window rolls.
+    uint32 public nextRedemptionWindowDuration;
 
-    event Deposit(address indexed user, uint256 usdcAmount, uint256 mzMinted);
-    event Withdrawal(address indexed user, uint256 mzBurned, uint256 usdcOut);
-    event GlobalHourlyRedemptionCapUpdated(uint256 newCapUSDC);
-    event SetVault(address vault);
-    event RedemptionWindowDurationUpdated(uint256 newDuration);
+    event Deposit(address indexed user, uint256 usdcAmount);
+    event Withdrawal(address indexed user, uint256 usdcOut);
+    event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
+    event RedemptionWindowDurationQueued(uint32 newDuration);
+    event RedemptionWindowDurationUpdated(uint32 newDuration);
+    event VaultUpdated(address indexed vault);
 
     error ZeroAmount();
     error ZeroAddress();
     error ZeroCap();
-    error ZeroDuration();
     error SameValue();
+    error VaultAlreadySet();
+    error VaultNotSet();
+    error NotVault();
+    error InvalidRedemptionWindowDuration();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
-    error NonIntegralWithdrawalAmount(uint256 amountMZ, uint256 usdcOut, uint256 dustMZ);
-    error SlippageTooHigh(uint256 actualOutUSDC, uint256 minAmountOutUSDC);
-    error GlobalHourlyCapExceeded(uint256 capUSDC, uint256 usedUSDC, uint256 attemptedUSDC);
+    error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
-    error EthTransferFailed(address to, uint256 attemptedAmount);
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
 
+        // aderyn-fp-next-line(reentrancy-state-change)
         uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
         if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
 
@@ -68,264 +75,255 @@ contract MZUSD is
         _disableInitializers();
     }
 
-    function initialize(address accessManager, uint256 _hourlyLimitUSDC) external initializer {
+    modifier onlyVault() {
+        if (msg.sender != address(vault)) revert NotVault();
+        _;
+    }
+
+    /// @param accessManager AccessManager address.
+    /// @param pauseManager_ PauseManager address for category-based pauses.
+    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals).
+    function initialize(
+        address accessManager,
+        address pauseManager_,
+        uint256 _initialCapUSDC
+    ) external initializer {
         if (accessManager == address(0)) {
             revert ZeroAddress();
         }
 
         __ERC20_init("MZUSD Token", "MZUSD");
         __AccessManaged_init(accessManager);
-        __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
+        __PauseManaged_init(pauseManager_);
 
-        globalHourlyRedemptionCapUSDC = _hourlyLimitUSDC;
-        windowStartTimestamp = uint64(block.timestamp);
+        _setGlobalRedemptionCap(_initialCapUSDC);
+        windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
+        nextRedemptionWindowDuration = redemptionWindowDuration;
     }
 
-    /// @notice deposit USDC and mint MZUSD 1:1
-    function deposit(uint256 amountUSDC) external nonReentrant restricted {
-        if (address(vault) == address(0)) revert ZeroAddress();
+    /// @notice Deposit USDC and mint MZUSD at fixed 1:1 notional value.
+    /// @param amountUSDC USDC amount in 6 decimals.
+    /// @dev Minted amount is amountUSDC * SCALE, so conversion is exact (no rounding loss on deposit).
+    /// @dev Example: deposit 15_000_000 (15 USDC in 6d) -> mint 15_000_000_000_000_000_000 (15 MZUSD in 18d).
+    /// @dev USDC is transferred directly to the Vault, MZUSD is minted to the depositor.
+    function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
-        address sender = _msgSender();
-
+        // Accumulate deposit for atomic netting; if user withdraws later in this tx, this amount won't count against redemption cap
         _txDepositedUSDC += amountUSDC;
 
         // USDC is a well-behaved ERC20; direct transferFrom is safe here.
-        usdc.transferFrom(sender, address(vault), amountUSDC);
+        usdc.transferFrom(msg.sender, address(vault), amountUSDC);
 
         uint256 mintAmount = amountUSDC * SCALE;
-        _mint(sender, mintAmount);
+        _mint(msg.sender, mintAmount);
 
-        emit Deposit(sender, amountUSDC, mintAmount);
+        emit Deposit(msg.sender, amountUSDC);
     }
 
-    /// @notice request withdrawal of MZUSD for USDC
+    /// @notice Burn MZUSD and withdraw USDC.
+    /// @param amountMZ MZUSD amount to burn (18 decimals).
     /// @dev v1: executes instantly if vault has liquidity (or can pull from Reservoir)
-    /// @dev v2: can be changed to enqueue
-    function requestWithdrawal(
-        uint256 amountMZ,
-        uint256 minAmountOutUSDC
-    ) external nonReentrant restricted {
-        if (amountMZ == 0) revert ZeroAmount();
-
-        address sender = _msgSender();
-
-        (uint256 usdcOut, uint256 dustMZ) = calculateWithdrawalAmounts(amountMZ);
-        if (dustMZ > MAX_WITHDRAW_DUST_MZ)
-            revert NonIntegralWithdrawalAmount(amountMZ, usdcOut, dustMZ);
-
+    /// @dev v2: might be changed to enqueue
+    /// @dev Applies atomic netting of deposits vs withdrawals within the same tx
+    /// @dev Enforces global redemption cap per window
+    /// @dev Withdrawal is quantized to full USDC units: usdcOut = floor(amountMZ / SCALE).
+    /// @dev Only burnAmount = usdcOut * SCALE is burned, any sub-SCALE remainder stays on user balance.
+    /// @dev Example: if amountMZ = SCALE + 123, then usdcOut = 1, burnAmount = SCALE, and 123 MZUSD-wei remain.
+    /// @dev If amountMZ < SCALE, tx reverts with `TooSmallWithdrawalAmount`.
+    function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
+        uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
-        if (usdcOut < minAmountOutUSDC) revert SlippageTooHigh(usdcOut, minAmountOutUSDC);
+        uint256 burnAmount = usdcOut * SCALE;
 
         uint256 effectiveForLimit = _applyAtomicNetting(usdcOut);
         if (effectiveForLimit != 0) {
             _checkAndConsumeGlobalCap(effectiveForLimit);
         }
 
-        _burn(sender, amountMZ);
+        _burn(msg.sender, burnAmount);
 
-        // Let Vault handle its own liquidity (including Reservoir pulls).
-        vault.withdraw(sender, usdcOut);
+        if (address(vault) == address(0)) revert VaultNotSet();
+        vault.withdraw(msg.sender, usdcOut);
 
-        emit Withdrawal(sender, amountMZ, usdcOut);
+        emit Withdrawal(msg.sender, usdcOut);
     }
 
-    //todo redo to mintFees or limits
-    function mint(address to, uint256 amount) external restricted {
+    function transfer(
+        address to,
+        uint256 value
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
+        return super.transfer(to, value);
+    }
+
+    function approve(
+        address spender,
+        uint256 value
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
+        return super.approve(spender, value);
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override whenNotPaused(PauseCategory.TRANSFERS) returns (bool success) {
+        return super.transferFrom(from, to, value);
+    }
+
+    //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
+
+    /// @notice Mint MZUSD to an address.
+    /// @dev Used by VAULT to mint MZUSD
+    function mint(
+        address to,
+        uint256 amount
+    ) external onlyVault whenNotPaused(PauseCategory.PROTOCOL) {
         _mint(to, amount);
     }
 
-    function setGlobalHourlyRedemptionCap(uint256 newCapUSDC) external restricted {
-        if (newCapUSDC == 0) revert ZeroCap();
-        if (globalHourlyRedemptionCapUSDC == newCapUSDC) revert SameValue();
-        globalHourlyRedemptionCapUSDC = newCapUSDC;
-        emit GlobalHourlyRedemptionCapUpdated(newCapUSDC);
+    /// @notice Burn MZUSD from caller balance.
+    /// @dev AccessManager should grant burn permission only to approved tranche contracts.
+    function burn(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
+        _burn(msg.sender, amount);
     }
 
+    //SETTERS
+
+    /// @notice Set global redemption cap in USDC (6 decimals).
+    /// @param newCapUSDC New cap value; must be > 0 and <= USDC total supply.
+    function setGlobalRedemptionCap(
+        uint256 newCapUSDC
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
+        _setGlobalRedemptionCap(newCapUSDC);
+    }
+
+    /// @notice Set the duration of the redemption window (how long a window lasts).
+    /// @param newDuration New duration in seconds.
+    /// @dev Validations: non-zero, within min/max bounds, different from current or pending value.
+    function setRedemptionWindowDuration(
+        uint32 newDuration
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (
+            newDuration < MIN_REDEMPTION_WINDOW_DURATION ||
+            newDuration > MAX_REDEMPTION_WINDOW_DURATION
+        ) {
+            revert InvalidRedemptionWindowDuration();
+        }
+
+        uint32 pending = nextRedemptionWindowDuration;
+        if (pending == 0) {
+            pending = redemptionWindowDuration;
+        }
+        if (pending == newDuration) revert SameValue();
+
+        nextRedemptionWindowDuration = newDuration;
+        emit RedemptionWindowDurationQueued(newDuration);
+    }
+
+    /// @notice Set Vault address (one-time).
+    /// @dev Vault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
-        if (address(vault) == _vault) revert SameValue();
+        if (address(vault) != address(0)) revert VaultAlreadySet();
         vault = IVault(_vault);
-        emit SetVault(address(vault));
+        emit VaultUpdated(_vault);
     }
 
-    function setRedemptionWindowDuration(uint256 newDuration) external restricted {
-        if (newDuration == 0) revert ZeroDuration();
-        if (redemptionWindowDuration == newDuration) revert SameValue();
+    //GETTERS
 
-        redemptionWindowDuration = newDuration;
-
-        // If the current window is already longer than the new duration,
-        // start a fresh window from "now" so that the shorter window
-        // semantics are applied immediately.
-        if (block.timestamp >= uint256(windowStartTimestamp) + newDuration) {
-            windowStartTimestamp = uint64(block.timestamp);
-            windowUsedUSDC = 0;
-        }
-        emit RedemptionWindowDurationUpdated(newDuration);
-    }
-
-    function getRemainingGlobalHourlyCap()
+    /// @notice View redemption cap usage for the current (or next) window
+    function getRemainingRedemptionCap()
         public
         view
-        returns (uint256 remainingUSDC, uint256 windowStart)
+        returns (uint256 capUSDC, uint256 usedUSDC, uint256 remainingUSDC)
     {
-        uint256 cap = globalHourlyRedemptionCapUSDC;
-
-        // If cap is explicitly zero, treat it as "no redemptions allowed" for this view:
-        // remaining = 0. For "no limit", callers should configure cap as type(uint256).max.
-        if (cap == 0) {
-            return (0, windowStartTimestamp);
+        capUSDC = globalRedemptionCapUSDC;
+        if (_isWindowExpired()) {
+            // Next withdrawal resets the window — full cap available
+            return (capUSDC, 0, capUSDC);
         }
-
-        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
-            // New window would start on next withdrawal; expose full cap and current timestamp.
-            return (cap, uint256(block.timestamp));
-        }
-
-        uint256 spent = windowUsedUSDC;
-        remainingUSDC = spent >= cap ? 0 : cap - spent;
-        return (remainingUSDC, windowStartTimestamp);
+        usedUSDC = windowUsedUSDC;
+        remainingUSDC = usedUSDC >= capUSDC ? 0 : capUSDC - usedUSDC;
     }
 
-    function calculateDeposit(uint256 amountUSDC) external pure returns (uint256 mintMZ) {
-        return amountUSDC * SCALE;
-    }
-
-    /// @notice Pure calculator - converts MZUSD amount to USDC and dust.
-    function calculateWithdrawalAmounts(
-        uint256 amountMZ
-    ) public pure returns (uint256 usdcOut, uint256 dustMZ) {
-        usdcOut = amountMZ / SCALE;
-        dustMZ = amountMZ % SCALE;
+    /// @notice View the current redemption window timing
+    function getRedemptionWindow()
+        external
+        view
+        returns (uint40 windowStart, uint40 windowEnd, uint32 duration)
+    {
+        duration = redemptionWindowDuration;
+        if (_isWindowExpired()) {
+            // Next withdrawal would reset — show projected window
+            uint32 pending = nextRedemptionWindowDuration;
+            if (pending != 0) duration = pending;
+            windowStart = uint40(block.timestamp);
+        } else {
+            windowStart = windowStartTimestamp;
+        }
+        windowEnd = windowStart + duration;
     }
 
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
     }
 
-    function previewWithdrawalFlat(
-        uint256 amountMZ
-    )
-        external
-        view
-        returns (
-            uint256 requestedMZ,
-            uint256 userBalanceMZ,
-            bool hasEnoughMZ,
-            uint256 usdcOut,
-            uint256 dustMZ,
-            uint256 vaultLiquidityUSDC,
-            bool hasSufficientLiquidity,
-            uint256 globalCapUSDC,
-            uint256 windowStart,
-            uint256 windowEnd,
-            uint256 windowUsedUSDC_,
-            uint256 windowRemainingUSDC,
-            bool isGlobalCapZero,
-            bool wouldExceedGlobalCap
-        )
-    {
-        requestedMZ = amountMZ;
+    ///INTERNAL HELPERS
 
-        userBalanceMZ = balanceOf(_msgSender());
-        hasEnoughMZ = userBalanceMZ >= amountMZ;
-
-        (usdcOut, dustMZ) = calculateWithdrawalAmounts(amountMZ);
-
-        if (address(vault) != address(0)) {
-            vaultLiquidityUSDC = usdc.balanceOf(address(vault));
-        } else {
-            vaultLiquidityUSDC = 0;
-        }
-        hasSufficientLiquidity = vaultLiquidityUSDC >= usdcOut;
-
-        globalCapUSDC = globalHourlyRedemptionCapUSDC;
-        isGlobalCapZero = (globalCapUSDC == 0);
-
-        (windowRemainingUSDC, windowStart) = getRemainingGlobalHourlyCap();
-
-        uint256 storedUsed = windowUsedUSDC;
-        if (
-            globalCapUSDC > 0 &&
-            globalCapUSDC != type(uint256).max &&
-            windowRemainingUSDC <= globalCapUSDC
-        ) {
-            windowUsedUSDC_ = globalCapUSDC - windowRemainingUSDC;
-        } else {
-            windowUsedUSDC_ = storedUsed;
-        }
-
-        if (redemptionWindowDuration == 0) {
-            windowEnd = windowStart;
-        } else {
-            windowEnd = windowStart + redemptionWindowDuration;
-        }
-
-        if (globalCapUSDC == 0) {
-            wouldExceedGlobalCap = (usdcOut > 0);
-        } else if (globalCapUSDC == type(uint256).max) {
-            wouldExceedGlobalCap = false;
-        } else {
-            wouldExceedGlobalCap = (usdcOut > windowRemainingUSDC);
-        }
+    /// @notice Whether the current redemption window has expired
+    function _isWindowExpired() private view returns (bool) {
+        return block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration;
     }
 
-    function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256) {
+    /// @notice Apply atomic netting of deposits against withdrawals within the same tx.
+    /// @param usdcOut USDC amount to withdraw (6 decimals).
+    /// @return adjustedUSDC USDC amount to withdraw after netting.
+    function _applyAtomicNetting(uint256 usdcOut) internal returns (uint256 adjustedUSDC) {
         uint256 txDeposited = _txDepositedUSDC;
-        if (txDeposited == 0) {
-            return usdcOut;
-        }
-        if (txDeposited >= usdcOut) {
-            _txDepositedUSDC = txDeposited - usdcOut;
-            return 0;
-        } else {
-            _txDepositedUSDC = 0;
-            return usdcOut - txDeposited;
-        }
+        uint256 coveredUSDC = txDeposited < usdcOut ? txDeposited : usdcOut;
+        _txDepositedUSDC = txDeposited - coveredUSDC;
+        // Return the portion that actually counts against the global redemption cap
+        adjustedUSDC = usdcOut - coveredUSDC;
     }
 
+    /// @notice Consume from the global redemption cap for the current window.
+    /// @dev Rolls the window forward and applies a queued duration if needed.
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
-        uint256 cap = globalHourlyRedemptionCapUSDC;
+        uint256 cap = globalRedemptionCapUSDC;
+        uint32 duration = redemptionWindowDuration;
 
-        // Cap == 0 now means "zero allowed" (hard stop). For "no limit", use type(uint256).max.
-        if (cap == 0) {
-            if (usdcAmount > 0) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
-            return;
-        }
-
-        if (block.timestamp >= uint256(windowStartTimestamp) + redemptionWindowDuration) {
-            windowStartTimestamp = uint64(block.timestamp);
+        if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
+            windowStartTimestamp = uint40(block.timestamp);
             windowUsedUSDC = 0;
+
+            uint32 pending = nextRedemptionWindowDuration;
+            if (pending != 0) {
+                redemptionWindowDuration = pending;
+                emit RedemptionWindowDurationUpdated(pending);
+            }
         }
 
         uint256 newTotal = windowUsedUSDC + usdcAmount;
-        if (newTotal > cap) revert GlobalHourlyCapExceeded(cap, windowUsedUSDC, usdcAmount);
+        if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, newTotal, usdcAmount);
 
         windowUsedUSDC = newTotal;
     }
 
-    /// @notice Emergency helper to recover ETH that might be accidentally sent to this contract.
-    /// @dev Due to inheriting UUPSUpgradeable, the implementation exposes a payable
-    ///      `upgradeToAndCall` function, so static analyzers treat this contract as
-    ///      capable of receiving ETH. In normal operation, `msg.value` is forwarded
-    ///      via the proxy and no ETH should remain here, but having an explicit
-    ///      withdrawal function avoids locking ETH that may arrive via selfdestruct
-    ///      or mistaken transfers. This function is not part of the normal protocol
-    ///      flow and is restricted to the admin role.
-    function rescueETH(address to, uint256 amount) external restricted {
-        if (to == address(0)) revert ZeroAddress();
-
-        uint256 bal = address(this).balance;
-        if (amount > bal) {
-            amount = bal;
+    /// @notice Set the global redemption cap in USDC (6 decimals).
+    function _setGlobalRedemptionCap(uint256 newCapUSDC) internal {
+        if (newCapUSDC == 0) {
+            revert ZeroCap();
         }
 
-        (bool ok, ) = to.call{value: amount}("");
-        if (!ok) revert EthTransferFailed(to, amount);
+        // Cap can be any non-zero value; admin is trusted to set a sensible limit
+        globalRedemptionCapUSDC = newCapUSDC;
+        emit GlobalRedemptionCapUpdated(newCapUSDC);
     }
 
+    /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
+    // aderyn-fp-next-line(empty-block)
     function _authorizeUpgrade(address) internal override restricted {}
 }

@@ -1,0 +1,1476 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_mzusd",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "_reservoir",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "authority",
+                "type": "address"
+            }
+        ],
+        "name": "AccessManagedInvalidAuthority",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "caller",
+                "type": "address"
+            },
+            {
+                "internalType": "uint32",
+                "name": "delay",
+                "type": "uint32"
+            }
+        ],
+        "name": "AccessManagedRequiredDelay",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "caller",
+                "type": "address"
+            }
+        ],
+        "name": "AccessManagedUnauthorized",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "target",
+                "type": "address"
+            }
+        ],
+        "name": "AddressEmptyCode",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "candidate",
+                "type": "address"
+            }
+        ],
+        "name": "AddressHasNoCode",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "allocated",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "expected",
+                "type": "uint256"
+            }
+        ],
+        "name": "AllocationMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "enum PauseCategory",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "CategoryPaused",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "implementation",
+                "type": "address"
+            }
+        ],
+        "name": "ERC1967InvalidImplementation",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ERC1967NonPayable",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "EpochTooSoon",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "FailedCall",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidEpochDuration",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidInitialization",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "actualDecimals",
+                "type": "uint8"
+            }
+        ],
+        "name": "InvalidMZUSDDecimals",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDUSDC",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualLossManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirUSDC",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidYieldDistribution",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LengthMismatch",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LossManagerAlreadySet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "LossManagerNotSet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NoTranchesAdded",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotInitializing",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotNavOracle",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PauseManagerZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ReentrancyGuardReentrantCall",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ReservoirEmpty",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SameValue",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TVLZero",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TooBigBps",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TooManyTranches",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TrancheExists",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "UUPSUnauthorizedCallContext",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "slot",
+                "type": "bytes32"
+            }
+        ],
+        "name": "UUPSUnsupportedProxiableUUID",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ZeroAddress",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ZeroAmount",
+        "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "authority",
+                "type": "address"
+            }
+        ],
+        "name": "AuthorityUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "buffer",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "hysteresisBps",
+                "type": "uint256"
+            }
+        ],
+        "name": "BufferUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "epochId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "startTs",
+                "type": "uint256"
+            }
+        ],
+        "name": "EpochAdvanced",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochDuration",
+                "type": "uint256"
+            }
+        ],
+        "name": "EpochDurationQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochDuration",
+                "type": "uint256"
+            }
+        ],
+        "name": "EpochDurationSet",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "performanceMZUSD",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "protocolMZUSD",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochId",
+                "type": "uint256"
+            }
+        ],
+        "name": "FeesPaid",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "performanceBps",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "performanceReceiver",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "protocolBps",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "protocolReceiver",
+                "type": "address"
+            }
+        ],
+        "name": "FeesUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint64",
+                "name": "version",
+                "type": "uint64"
+            }
+        ],
+        "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "newLossManager",
+                "type": "address"
+            }
+        ],
+        "name": "LossManagerUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "newNavOracle",
+                "type": "address"
+            }
+        ],
+        "name": "NavOracleUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newManager",
+                "type": "address"
+            }
+        ],
+        "name": "PauseManagerUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "sent",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "pulled",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "idleAfter",
+                "type": "uint256"
+            }
+        ],
+        "name": "Rebalanced",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            }
+        ],
+        "name": "TrancheRegistered",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "idx",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "riskPremiumBps",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool",
+                "name": "enabled",
+                "type": "bool"
+            }
+        ],
+        "name": "TrancheUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "implementation",
+                "type": "address"
+            }
+        ],
+        "name": "Upgraded",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "WithdrawnUSDCFromVault",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "usdcUsed",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "mintedMZUSD",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "epochId",
+                "type": "uint256"
+            }
+        ],
+        "name": "YieldDistributed",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint16",
+                "name": "baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint16[]",
+                "name": "riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "YieldDistributionUpdated",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_EPOCH_DURATION_LIMIT",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_TOTAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_TRANCHES",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MIN_EPOCH_DURATION_LIMIT",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MZUSD_SCALE",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "TRANCHE_WEIGHT_LIMIT",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "UPGRADE_INTERFACE_VERSION",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_tranche",
+                "type": "address"
+            }
+        ],
+        "name": "addTranche",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "advanceEpoch",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "newEpochId",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "authority",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "baseRewardBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "currentEpochId",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "currentIdleUSDC",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "idleUSDC",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "usdcReported",
+                "type": "uint256"
+            }
+        ],
+        "name": "distributeYield",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "epochDuration",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "epochStart",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getBufferConfig",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "buffer",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint16",
+                "name": "hysteresis",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint256",
+                "name": "low",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "high",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getEpochConfig",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "epochId",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "start",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "duration",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "start",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "count",
+                "type": "uint256"
+            }
+        ],
+        "name": "getTranches",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "tranche",
+                "type": "address[]"
+            },
+            {
+                "internalType": "uint16[]",
+                "name": "riskPremiumBpsArr",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "enabled",
+                "type": "bool[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "hysteresisBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "idleBufferUSDC",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint16",
+                "name": "_performanceFeeBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "address",
+                "name": "_performanceFeeReceiver",
+                "type": "address"
+            },
+            {
+                "internalType": "uint16",
+                "name": "_protocolFeeBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "address",
+                "name": "_protocolFeeReceiver",
+                "type": "address"
+            }
+        ],
+        "name": "initialize",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "isConsumingScheduledOp",
+        "outputs": [
+            {
+                "internalType": "bytes4",
+                "name": "",
+                "type": "bytes4"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "isTranche",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "lossManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "mzusd",
+        "outputs": [
+            {
+                "internalType": "contract IMZUSD",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pendingEpochDuration",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "performanceFeeBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "performanceFeeReceiver",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "protocolFeeBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "protocolFeeReceiver",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "proxiableUUID",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "rebalance",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "reservoir",
+        "outputs": [
+            {
+                "internalType": "contract IReservoir",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "newAuthority",
+                "type": "address"
+            }
+        ],
+        "name": "setAuthority",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "target",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint16",
+                "name": "bandBps",
+                "type": "uint16"
+            }
+        ],
+        "name": "setBuffer",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint64",
+                "name": "_epochDuration",
+                "type": "uint64"
+            }
+        ],
+        "name": "setEpochConfig",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint16",
+                "name": "_performanceFeeBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint16",
+                "name": "_protocolFeeBps",
+                "type": "uint16"
+            }
+        ],
+        "name": "setFeeRates",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_performanceFeeReceiver",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "_protocolFeeReceiver",
+                "type": "address"
+            }
+        ],
+        "name": "setFeeReceivers",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_lossManager",
+                "type": "address"
+            }
+        ],
+        "name": "setLossManager",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_navOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setNavOracle",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint16",
+                "name": "_baseRewardBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "uint16[]",
+                "name": "_riskPremiumsBps",
+                "type": "uint16[]"
+            },
+            {
+                "internalType": "bool[]",
+                "name": "_enabled",
+                "type": "bool[]"
+            }
+        ],
+        "name": "setYieldDistribution",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "tranches",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            },
+            {
+                "internalType": "uint16",
+                "name": "riskPremiumBps",
+                "type": "uint16"
+            },
+            {
+                "internalType": "bool",
+                "name": "enabled",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "tranchesLength",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "length",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "newImplementation",
+                "type": "address"
+            },
+            {
+                "internalType": "bytes",
+                "name": "data",
+                "type": "bytes"
+            }
+        ],
+        "name": "upgradeToAndCall",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "usdc",
+        "outputs": [
+            {
+                "internalType": "contract IERC20",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
