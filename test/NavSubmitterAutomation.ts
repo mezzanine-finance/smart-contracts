@@ -111,22 +111,23 @@ describe("NavSubmitterAutomation", () => {
         })) as unknown as Vault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-        tranche = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        tranche = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
-            [vault.target, [tranche.target], [false], 0],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [[tranche.target], [false], 0],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [vault.target],
+            }
         )) as unknown as LossManager;
 
         const NavAutomationFactory = await ethers.getContractFactory(

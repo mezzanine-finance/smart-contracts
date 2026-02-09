@@ -111,7 +111,6 @@ describe("Tranche", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
@@ -121,7 +120,7 @@ describe("Tranche", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false], //direct withdraw disabled
+                constructorArgs: [vault.target, false], //direct withdraw disabled
             }
         )) as unknown as Tranche;
 
@@ -416,12 +415,12 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
+                [2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [true],
+                    constructorArgs: [vault.target, true],
                 }
             )) as unknown as Tranche;
 
@@ -443,7 +442,6 @@ describe("Tranche", () => {
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
                 [
-                    vault.target, // vaultAddress
                     2, // trancheIdentifier
                     0, // initialUnstakeDelayEpochs
                     "Direct Tranche", // name
@@ -453,7 +451,7 @@ describe("Tranche", () => {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [true], // direct withdraw enabled
+                    constructorArgs: [vault.target, true], // direct withdraw enabled
                 }
             )) as unknown as Tranche;
 
@@ -486,12 +484,12 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
+                [2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [true],
+                    constructorArgs: [vault.target, true],
                 }
             )) as unknown as Tranche;
 
@@ -520,12 +518,12 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
+                [2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [true],
+                    constructorArgs: [vault.target, true],
                 }
             )) as unknown as Tranche;
 
@@ -555,12 +553,12 @@ describe("Tranche", () => {
             const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
             const directTranche = (await upgrades.deployProxy(
                 TrancheFactory,
-                [vault.target, 2, 0, "Direct Tranche", "dMZUSD"],
+                [2, 0, "Direct Tranche", "dMZUSD"],
                 {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [true],
+                    constructorArgs: [vault.target, true],
                 }
             )) as unknown as Tranche;
 

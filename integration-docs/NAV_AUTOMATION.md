@@ -19,7 +19,7 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
 - `Vault.navOracle` must be set to the `NavOracleAutomation` address (gates `distributeYield`).
 - `LossManager.vault` must point to the same `Vault`; `applyLoss` checks `Vault.navOracle` dynamically.
 - `MZUSD.vault` must be set once to the `Vault` address (gates `mint`).
-- `Tranche.vault` is set at initialization (gates `notifyYield`).
+- `Tranche.vault` is an immutable constructor param (gates `notifyYield`).
 
 ## Updating NAV oracle (rotation rules)
 

@@ -201,6 +201,8 @@ Notes:
 - `directWithdrawEnabled` is immutable and must be set at deploy time.
 - `Vault.mzusd`, `Vault.usdc`, and `Vault.reservoir` are immutable constructor params
   on the implementation and must be passed via proxy `constructorArgs` at deployment time.
+- `Tranche.vault` is an immutable constructor param (pass via proxy `constructorArgs`).
+- `LossManager.vault` is an immutable constructor param (pass via proxy `constructorArgs`).
 - `PolJuniorTranche.vault` is an immutable constructor param (pass via proxy `constructorArgs`).
 - PolJuniorTranche is **intended** for MZUSD and validates MZUSD authority/pause manager wiring on initialize.
 - PolJuniorTranche can be registered in Vault distribution via `polJunior.registerInVault`.

@@ -307,18 +307,12 @@ async function main() {
             async () =>
                 upgrades.deployProxy(
                     TrancheFactory,
-                    [
-                        vault.address,
-                        trancheId,
-                        tranche.unstakeDelayEpochs ?? 0,
-                        tranche.name,
-                        tranche.symbol,
-                    ],
+                    [trancheId, tranche.unstakeDelayEpochs ?? 0, tranche.name, tranche.symbol],
                     {
                         kind: "uups",
                         initializer: "initialize",
                         unsafeAllow: ["constructor", "state-variable-immutable"],
-                        constructorArgs: [tranche.directWithdrawEnabled],
+                        constructorArgs: [vault.address, tranche.directWithdrawEnabled],
                     }
                 ),
             fresh,
@@ -363,12 +357,16 @@ async function main() {
             upgrades.deployProxy(
                 LossManagerFactory,
                 [
-                    vault.address,
                     orderAddresses,
                     config.lossManager.isPairedWithNext,
                     parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0"),
                 ],
-                {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [vault.address],
+                }
             ),
         fresh,
         deployments
@@ -1117,7 +1115,7 @@ async function main() {
         if (tranche?.implementation) {
             await verifyContract(
                 tranche.implementation,
-                [trancheConfig.directWithdrawEnabled],
+                [vault.address, trancheConfig.directWithdrawEnabled],
                 shouldVerify
             );
         }
@@ -1126,7 +1124,7 @@ async function main() {
         await verifyContract(polJunior.implementation, [vault.address], shouldVerify);
     }
     if (lossManager.implementation) {
-        await verifyContract(lossManager.implementation, [], shouldVerify);
+        await verifyContract(lossManager.implementation, [vault.address], shouldVerify);
     }
     await verifyContract(
         navOracle.address,

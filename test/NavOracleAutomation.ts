@@ -120,7 +120,6 @@ describe("NavOracleAutomation", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
@@ -130,7 +129,7 @@ describe("NavOracleAutomation", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false], // direct withdraw disabled
+                constructorArgs: [vault.target, false], // direct withdraw disabled
             }
         )) as unknown as Tranche;
 
@@ -138,12 +137,16 @@ describe("NavOracleAutomation", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                vault.target,
                 [tranche.target],
                 [false],
                 0, // maxLossPerTxUSDC
             ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [vault.target],
+            }
         )) as unknown as LossManager;
 
         const NavAutomationFactory = await ethers.getContractFactory(

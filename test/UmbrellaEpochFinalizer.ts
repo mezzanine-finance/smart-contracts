@@ -116,7 +116,6 @@ describe("UmbrellaEpochFinalizer", () => {
         tranche = (await upgrades.deployProxy(
             TrancheFactory,
             [
-                vault.target, // vaultAddress
                 1, // trancheIdentifier
                 0, // initialUnstakeDelayEpochs
                 "Senior Tranche", // name
@@ -126,7 +125,7 @@ describe("UmbrellaEpochFinalizer", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false], // direct withdraw disabled
+                constructorArgs: [vault.target, false], // direct withdraw disabled
             }
         )) as unknown as Tranche;
 

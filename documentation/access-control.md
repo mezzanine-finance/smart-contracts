@@ -120,7 +120,8 @@ Role IDs can be any `uint64`; names below are logical groupings.
 - `LossManager.navOracle` is set via `setNavOracle` and gates `LossManager.applyLoss`.
 - `MZUSD.lossManager` is set once via `setLossManager` and gates `MZUSD.burn`.
 - `MZUSD.vault` is set once via `setVault` and gates `MZUSD.mint`.
-- `Tranche.vault` is set on initialization and gates `Tranche.notifyYield`.
+- `Tranche.vault` is an immutable constructor param and gates `Tranche.notifyYield`.
+- `LossManager.vault` is an immutable constructor param and is used by `LossManager.applyLoss`.
 - `PolJuniorTranche.vault` is an immutable constructor param and gates `PolJuniorTranche.notifyYield`.
 
 ## Minimal separation recommendation

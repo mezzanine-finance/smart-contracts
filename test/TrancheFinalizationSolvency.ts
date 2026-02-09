@@ -100,16 +100,12 @@ describe("Tranche finalization solvency", () => {
         })) as unknown as Vault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-        tranche = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        tranche = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         const MockLossManagerFactory = await ethers.getContractFactory(
             "MockLossManagerRef",

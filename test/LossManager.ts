@@ -132,38 +132,30 @@ describe("LossManager", () => {
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
 
-        junior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 1, 0, "Junior Tranche", "JLT"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        junior = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Junior Tranche", "JLT"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [vault.target, 2, 0, "Mezzanine Tranche", "MLT"],
+            [2, 0, "Mezzanine Tranche", "MLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
+                constructorArgs: [vault.target, false],
             }
         )) as unknown as Tranche;
 
-        senior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 3, 0, "Senior Tranche", "sMZUSD"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        senior = (await upgrades.deployProxy(TrancheFactory, [3, 0, "Senior Tranche", "sMZUSD"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         juniorAddr = await junior.getAddress();
         mezzanineAddr = await mezzanine.getAddress();
@@ -184,12 +176,16 @@ describe("LossManager", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                vaultAddr,
                 [juniorAddr, mezzanineAddr, seniorAddr],
                 [false, false, false],
                 0, // maxLossPerTxUSDC (0 = no limit)
             ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [vaultAddr],
+            }
         )) as unknown as LossManager;
         lossManagerAddr = await lossManager.getAddress();
 
@@ -389,11 +385,12 @@ describe("LossManager", () => {
         it("Reverts on zero vault address during initialization", async () => {
             const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
             await expect(
-                upgrades.deployProxy(
-                    LossManagerFactory,
-                    [ethers.ZeroAddress, [juniorAddr], [false], 0],
-                    {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
-                )
+                upgrades.deployProxy(LossManagerFactory, [[juniorAddr], [false], 0], {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [ethers.ZeroAddress],
+                })
             ).to.be.reverted;
         });
     });

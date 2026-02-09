@@ -25,7 +25,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault Yield Distribution", () => {
+describe("Vault Yield Integration", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -113,38 +113,30 @@ describe("Vault Yield Distribution", () => {
         // 3 tranches
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
 
-        junior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 1, 0, "Junior Tranche", "JLT"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        junior = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Junior Tranche", "JLT"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [vault.target, 2, 0, "Mezzanine Tranche", "MLT"],
+            [2, 0, "Mezzanine Tranche", "MLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
+                constructorArgs: [vault.target, false],
             }
         )) as unknown as Tranche;
 
-        senior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 3, 0, "Senior Tranche", "sMZUSD"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        senior = (await upgrades.deployProxy(TrancheFactory, [3, 0, "Senior Tranche", "sMZUSD"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         const MockLossManagerFactory = await ethers.getContractFactory(
             "MockLossManagerRef",

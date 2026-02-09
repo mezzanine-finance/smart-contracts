@@ -25,7 +25,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault Yield Distribution V2", () => {
+describe("Vault Yield Allocation Math", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -113,38 +113,30 @@ describe("Vault Yield Distribution V2", () => {
         // ── Tranches ────────────────────────────────────────────────
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
 
-        senior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 1, 0, "Senior Tranche", "sMZUSD"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        senior = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         mezzanine = (await upgrades.deployProxy(
             TrancheFactory,
-            [vault.target, 2, 0, "Mezzanine Tranche", "MLT"],
+            [2, 0, "Mezzanine Tranche", "MLT"],
             {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
+                constructorArgs: [vault.target, false],
             }
         )) as unknown as Tranche;
 
-        junior = (await upgrades.deployProxy(
-            TrancheFactory,
-            [vault.target, 3, 0, "Junior Tranche", "JLT"],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [false],
-            }
-        )) as unknown as Tranche;
+        junior = (await upgrades.deployProxy(TrancheFactory, [3, 0, "Junior Tranche", "JLT"], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, false],
+        })) as unknown as Tranche;
 
         const MockLossManagerFactory = await ethers.getContractFactory(
             "MockLossManagerRef",
@@ -269,7 +261,7 @@ describe("Vault Yield Distribution V2", () => {
     // ── Risk Premium Sheet scenarios ─────────────────────────────────
 
     describe("Risk Premium Sheet scenarios", () => {
-        it("Scenario 1: 30/30/10 TVL split, senior 0% / mezz 18% / junior 12% risk premium, 10% protocol fee", async () => {
+        it("Scenario 1: 30/30/10 TVL split, senior 0% / mezz 12% / junior 18% risk premium, 10% protocol fee", async () => {
             const TOTAL_USDC = to6(1_000_000);
             const YIELD_USDC = to6(100_000);
 
@@ -325,12 +317,12 @@ describe("Vault Yield Distribution V2", () => {
             // ┌───────────┬──────────────────────────────────┬──────────────┬────────────┐
             // │ Tranche   │ baseShare (pool×tvl/totalTvl)    │ riskPremium  │ total      │
             // ├───────────┼──────────────────────────────────┼──────────────┼────────────┤
-            // │ Senior    │ 63,000 × 300k/700k = 27,000     │ 90k×0% = 0   │ 27,000     │
-            // │ Mezzanine │ 63,000 × 300k/700k = 27,000     │ 90k×18%=16.2k│ 43,200     │
-            // │ Junior    │ remainder = 90k − 27k − 43.2k    │ (dust)       │ 19,800     │
+            // │ Senior    │ 63,000 × 300k/700k = 27,000      │ 90k×0% = 0   │ 27,000     │
+            // │ Mezzanine │ 63,000 × 300k/700k = 27,000      │90k×12%=10.8k │ 37,800     │
+            // │ Junior    │ remainder = 90k − 27k − 37.8k    │ (dust)       │ 25,200     │
             // └───────────┴──────────────────────────────────┴──────────────┴────────────┘
             //
-            // Junior dust check: baseShare 9,000 + riskPremium 10,800 = 19,800
+            // Junior cross-check: baseShare 9,000 + riskPremium 16,200 = 25,200
             // No rounding dust in this scenario (all divisions are exact).
 
             const allocatable = to18(90_000);
@@ -345,10 +337,10 @@ describe("Vault Yield Distribution V2", () => {
             // Mezzanine: base share + risk premium
             const mezzBaseShare = (basePool * mezzTVL) / totalTvl;
             const mezzRiskPremium = (allocatable * 1200n) / BPS;
-            const expectedMezzYield = mezzBaseShare + mezzRiskPremium; // 43,200
+            const expectedMezzYield = mezzBaseShare + mezzRiskPremium; // 37,800
 
             // Junior: dust catch-all (remainder after senior + mezzanine)
-            const expectedJuniorYield = allocatable - expectedSeniorYield - expectedMezzYield; // 19,800
+            const expectedJuniorYield = allocatable - expectedSeniorYield - expectedMezzYield; // 25,200
 
             // Verify human-readable values
             expect(basePool).to.equal(to18(63_000));
@@ -466,7 +458,7 @@ describe("Vault Yield Distribution V2", () => {
             // ┌───────────┬──────────────────────────────────┬────────────────┬──────────────┐
             // │ Tranche   │ baseShare (pool×tvl/totalTvl)    │ riskPremium    │ total        │
             // ├───────────┼──────────────────────────────────┼────────────────┼──────────────┤
-            // │ Senior    │ 50,400 × 450k/850k ≈ 26,682.35  │ 72k×0% = 0    │ ≈ 26,682.35  │
+            // │ Senior    │ 50,400 × 450k/850k ≈ 26,682.35   │ 72k×0% = 0     │ ≈ 26,682.35  │
             // │ Junior    │ remainder = 72k − senior         │ (dust)         │ ≈ 45,317.65  │
             // └───────────┴──────────────────────────────────┴────────────────┴──────────────┘
             //
@@ -583,7 +575,7 @@ describe("Vault Yield Distribution V2", () => {
             // ┌───────────┬──────────────────────────────────┬─────────────────┬──────────────┐
             // │ Tranche   │ baseShare (pool×tvl/totalTvl)    │ riskPremium     │ total        │
             // ├───────────┼──────────────────────────────────┼─────────────────┼──────────────┤
-            // │ Senior    │ 78,067 × 800k/1M ≈ 62,453.6     │ 110k×0% = 0    │ ≈ 62,453.6   │
+            // │ Senior    │ 78,067 × 800k/1M ≈ 62,453.6      │ 110k×0% = 0     │ ≈ 62,453.6   │
             // │ Junior    │ remainder = 110k − senior        │ (dust)          │ ≈ 47,546.4   │
             // └───────────┴──────────────────────────────────┴─────────────────┴──────────────┘
             //

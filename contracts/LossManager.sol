@@ -25,7 +25,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @notice Max loss allowed per transaction in USDC 6d (0 disables the limit).
     uint256 public maxLossPerTxUSDC;
     /// @notice Vault reference used for mandatory epoch advancement on every loss apply.
-    address public vault;
+    address public immutable vault;
 
     /// @notice Pairing lookup. If non-zero, tranche shares loss with the paired tranche.
     mapping(address => address) public tranchePairedTo;
@@ -74,24 +74,24 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @notice Thrown when requested loss exceeds current MZUSD total supply scaled to USDC.
     error LossExceedsTotalSupply(uint256 usdcLoss, uint256 totalSupplyUSDC);
 
-    /// @notice Disable initializer on implementation contract.
-    constructor() {
+    /// @notice Disable initializer on implementation contract and set immutable vault.
+    constructor(address vaultAddress) {
+        if (vaultAddress == address(0)) revert ZeroAddress();
+        vault = vaultAddress;
         _disableInitializers();
     }
 
     /// @notice Initialize LossManager.
     /// @dev AccessManager and PauseManager are sourced from the provided MZUSD contract.
-    /// @param _vault Vault address used to advance epochs.
     /// @param order Tranche burn order.
     /// @param isPairedWithNext Pairing flags aligned with `order`.
     /// @param _maxLossPerTxUSDC Max loss per tx in USDC 6d (0 disables the limit).
     function initialize(
-        address _vault,
         address[] memory order,
         bool[] memory isPairedWithNext,
         uint256 _maxLossPerTxUSDC
     ) external initializer {
-        IMZUSD token = IMZUSD(IVault(_vault).mzusd());
+        IMZUSD token = IMZUSD(IVault(vault).mzusd());
         address accessManager = token.authority();
         address pauseManager_ = token.pauseManager();
         if (accessManager == address(0)) revert ZeroAddress();
@@ -100,7 +100,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         __PauseManaged_init(pauseManager_);
 
         mzusd = token;
-        vault = _vault;
         _setTrancheOrderAndPairs(order, isPairedWithNext);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }

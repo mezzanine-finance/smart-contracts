@@ -1,6 +1,12 @@
 [
     {
-        "inputs": [],
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "constructor"
     },
@@ -395,11 +401,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "address",
-                "name": "_vault",
-                "type": "address"
-            },
             {
                 "internalType": "address[]",
                 "name": "order",

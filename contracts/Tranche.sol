@@ -41,13 +41,13 @@ contract Tranche is
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;
+    address public immutable vault;
     uint256 public trancheId;
 
     // unstake delay in epochs for umbrella withdrawals
     uint256 public unstakeDelayEpochs;
 
     bool public depositLimitEnabled;
-    address public vault;
     uint256 public maxDepositCap;
     /// @notice Limits how much the users can deposit into Tranche in total based on the asset's TVL and specified BPS.
     uint256 public maxDepositTvlBps;
@@ -109,8 +109,11 @@ contract Tranche is
     error NotVault();
     error NotLossManager();
 
+    /// @param vaultAddress Vault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
-    constructor(bool _directWithdrawEnabled) {
+    constructor(address vaultAddress, bool _directWithdrawEnabled) {
+        if (vaultAddress == address(0)) revert ZeroAddress();
+        vault = vaultAddress;
         directWithdrawEnabled = _directWithdrawEnabled;
         _disableInitializers();
     }
@@ -126,20 +129,18 @@ contract Tranche is
     }
 
     /// @notice Initialize the tranche.
-    /// @param vaultAddress Vault address.
     /// @param trancheIdentifier Tranche identifier within the vault.
     /// @param initialUnstakeDelayEpochs Initial unstake delay in epochs.
     /// @param name_ Tranche name.
     /// @param symbol_ Tranche symbol.
     /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
     function initialize(
-        address vaultAddress,
         uint256 trancheIdentifier,
         uint256 initialUnstakeDelayEpochs,
         string memory name_,
         string memory symbol_
     ) external initializer {
-        address mzusdAddress = IVault(vaultAddress).mzusd();
+        address mzusdAddress = IVault(vault).mzusd();
 
         IMZUSD mzusdToken = IMZUSD(mzusdAddress);
         address accessManager = mzusdToken.authority();
@@ -151,7 +152,6 @@ contract Tranche is
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
 
-        vault = vaultAddress;
         trancheId = trancheIdentifier;
         _setUnstakeDelayEpochs(initialUnstakeDelayEpochs);
     }
