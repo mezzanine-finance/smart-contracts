@@ -43,8 +43,8 @@ flowchart TB
   MZUSD -->|redeem USDC<br/>via Vault| Vault
   Vault -->|send yield<br/>to tranches| Tranches
   Vault -->|send yield<br/>to POL tranche| PolJunior
-  LossManager -->|burn MZUSD<br/>for losses| MZUSD
-  LossManager -->|reduce tranche<br/>balances| Tranches
+  LossManager -->|instruct burns<br/>by order/pairs| Tranches
+  Tranches -->|burn own MZUSD<br/>on losses| MZUSD
   Vault <--> |rebalance USDC| Reservoir
   Admin -->|configure<br/>access rules| Access
   Admin -->|toggle safety<br/>pauses| Pause
@@ -106,7 +106,8 @@ flowchart TB
 
   Vault -->|MZUSD yield<br/>allocation| Tranches
   Vault -->|MZUSD protocol/<br/>perf fees| FeeReceivers
-  LossManager -->|MZUSD burn from<br/>tranche balances| MZUSD
+  LossManager -->|loss instructions<br/>to tranches| Tranches
+  Tranches -->|MZUSD burn<br/>from tranche balances| MZUSD
 
   Vault -.->|buffer policy| VaultTarget
   Reservoir -.->|liquidity target| ReservoirTarget
@@ -183,8 +184,8 @@ sequenceDiagram
   NavAuto->>LossManager: Apply loss
   LossManager->>Vault: Advance epoch
   loop tranche order / pairs
-    LossManager->>MZUSD: Burn MZUSD from tranche
-    MZUSD-->>Tranche: Tranche balance reduced
+    LossManager->>Tranche: Request tranche burn
+    Tranche->>MZUSD: Burn tranche-held MZUSD
   end
 ```
 
@@ -212,12 +213,12 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  participant Admin
+  participant Keeper
   participant Vault
   participant Reservoir
   participant USDC
 
-  Admin->>Vault: Rebalance buffer
+  Keeper->>Vault: Rebalance buffer
   Vault->>Vault: Read idle balance and bounds
   alt idle above upper bound
     Vault->>USDC: Approve Reservoir
@@ -227,5 +228,5 @@ sequenceDiagram
   else within band
     Vault->>Vault: No action
   end
-  Vault-->>Admin: Rebalanced event
+  Vault-->>Keeper: Rebalanced event
 ```

@@ -1,170 +1,181 @@
 # Mezzanine Protocol (Phase 1) Overview
 
-This document describes the Phase 1 protocol architecture, core contracts, and
-the main user and operator flows. It is a technical overview intended for
-engineers, integrators, and auditors.
+This document describes the current Phase 1 protocol architecture, core contracts, and
+main user/operator flows as implemented in this repository.
+It is a technical overview intended for engineers, integrators, and auditors.
 
 ## Summary
 
-- The protocol accepts USDC and mints MZUSD (18 decimals) 1:1 with USDC (6 decimals).
-- Users interact with ERC4626 tranches that hold MZUSD and represent tranche shares.
-- Yield and losses are computed at the Vault level and then allocated to tranches.
-- Epochs coordinate yield streaming and delayed (umbrella) withdrawals.
-- AccessManager + PauseManager enforce admin control and emergency stops.
+- Protocol accepts USDC (6 decimals) and mints MZUSD (18 decimals) at `1e12` scale.
+- Users interact with ERC4626 `Tranche` contracts over MZUSD.
+- Yield/loss accounting is initiated from NAV snapshots through `NavOracleAutomation`.
+- Epochs coordinate tranche yield streaming and umbrella withdrawals.
+- Access control is selector-based via OpenZeppelin `AccessManager`; emergency controls use `PauseManager`.
 
 ## Core contracts
 
-### Vault (contracts/Vault.sol)
+### Vault (`contracts/Vault.sol`)
 
-- Not an ERC4626 vault. It is the protocol treasury and accounting hub.
-- Holds the USDC idle buffer and rebalances to the Reservoir.
-- Mints MZUSD for yield distribution and pays protocol/performance fees.
-- Tracks tranches and allocates yield based on weight \* TVL.
-- Advances epochs on yield or loss events to keep withdrawals moving.
-- Withdraws USDC to users when MZUSD redemptions occur.
+- Treasury/accounting hub (not ERC4626).
+- Holds idle USDC and rebalances against `ReservoirUSDC`.
+- Distributes yield by:
+  - base pool share distributed pro-rata by TVL;
+  - per-tranche risk premium shares (`riskPremiumBps`) from `setYieldDistribution`.
+- Mints MZUSD for fees and allocations during yield distribution.
+- Advances epoch on `distributeYield` and on `advanceEpoch` (called by `LossManager`).
+- Pays USDC redemptions on `withdraw` (callable only by MZUSD).
 
-### Tranche (contracts/Tranche.sol)
+### Tranche (`contracts/Tranche.sol`)
 
-- ERC4626 vault with MZUSD as the asset and tranche shares as the receipt token.
+- ERC4626 vault with MZUSD as underlying asset.
 - Two withdrawal modes:
-    - Direct: normal ERC4626 redeem/withdraw is enabled.
-    - Umbrella: user requests a withdrawal by shares, waits, then claims.
-- Yield is streamed linearly over the current epoch (virtual NAV).
-- Deposit limits can cap growth via absolute cap and % of MZUSD supply.
+  - direct mode (`directWithdrawEnabled = true`): `requestWithdrawal(shares)` redeems immediately;
+  - umbrella mode (`directWithdrawEnabled = false`): request -> finalize epoch -> claim.
+- Streams notified yield linearly over `Vault.epochDuration()`.
+- `totalAssets()` uses virtual NAV:
+  - `balance(asset) - unaccruedYield - reservedAssets`.
+- Optional deposit limits:
+  - absolute cap (`maxDepositCap`);
+  - TVL share cap vs `asset.totalSupply()` (`maxDepositTvlBps`).
 
-### PolJuniorTranche (contracts/PolJuniorTranche.sol)
+### PolJuniorTranche (`contracts/PolJuniorTranche.sol`)
 
-- Admin-only escrow-style tranche intended for protocol-owned liquidity (no ERC4626 shares).
-- Funded by direct MZUSD transfers; withdraw is AccessManager-restricted.
-- Yield is forwarded immediately to `polPayout` (no streaming, no umbrella).
-- Asset is **intended** to be MZUSD; initializer validates MZUSD authority/pause manager wiring.
-- Vault address is immutable (constructor param) and validated on initialize.
+- Admin-managed POL tranche (no ERC4626 shares).
+- Funded via direct MZUSD transfers.
+- `withdraw` is AccessManager-restricted.
+- `notifyYield` forwards yield immediately to `polPayout` (no streaming, no umbrella queue).
+- Participates in losses via `burnMZUSD` when selected by `LossManager`.
 
 Note (Phase 1 transfer safety):
-- We use direct ERC20 `transfer`/`transferFrom` calls for known tokens
-  (USDC + protocol ERC20s). ERC4626 still uses SafeERC20 internally for
-  asset transfers in deposit/mint/withdraw/redeem.
 
-### MZUSD (contracts/MZUSD.sol)
+- For known protocol tokens (USDC + protocol ERC20s), code uses direct ERC20 `transfer`/`transferFrom`.
+- ERC4626 internal flows still rely on OpenZeppelin ERC4626 behavior for deposit/mint/withdraw/redeem transfers.
 
-- ERC20 stablecoin, 18 decimals.
-- Deposit USDC -> mint MZUSD 1:1 (scaled by 1e12).
-- Withdrawal burns MZUSD and pulls USDC from the Vault.
-- Global redemption cap per time window, with atomic netting within a tx.
-- Mint is only callable by the Vault; burn is only callable by LossManager.
+### MZUSD (`contracts/MZUSD.sol`)
 
-### ReservoirUSDC (contracts/ReservoirUSDC.sol)
+- ERC20 with 18 decimals, USDC-backed mint/redeem interface.
+- `deposit(amountUSDC)`:
+  - transfers USDC to Vault;
+  - mints `amountUSDC * 1e12` MZUSD.
+- `requestWithdrawal(amountMZ)`:
+  - converts to USDC with floor rounding (`usdcOut = amountMZ / 1e12`);
+  - burns only `usdcOut * 1e12`;
+  - enforces redemption cap window (with same-tx deposit/withdraw netting);
+  - calls `Vault.withdraw` for USDC payout.
+- `mint` is gated by `onlyVault`.
+- `burn` is `restricted` (typically granted to tranche contracts via `BURNER_ROLE`).
 
-- Holds idle USDC for rebalancing and liquidity management.
-- Deposits are open (pause-gated); withdrawals are AccessManager-restricted.
+### ReservoirUSDC (`contracts/ReservoirUSDC.sol`)
 
-### LossManager (contracts/LossManager.sol)
+- USDC buffer for rebalancing/liquidity.
+- `deposit` is open (pause-gated).
+- `withdraw` is AccessManager-restricted.
 
-- Materializes losses by burning MZUSD from tranches in a configured order.
-- Optional paired tranches can share losses proportionally by TVL.
-- Forces an epoch advance on every loss application to avoid stuck withdrawals.
+### LossManager (`contracts/LossManager.sol`)
 
-### NavOracleAutomation (contracts/automation/NavOracleAutomation.sol)
+- Applies losses by burning MZUSD across configured tranche order.
+- Supports proportional paired burns via contiguous `isPairedWithNext` flags.
+- Always calls `Vault.advanceEpoch()` before applying burns.
+- `applyLoss` is callable only by the current `Vault.navOracle()` address.
 
-- Records NAV snapshots (USDC 6 decimals), enforces a veto window, and applies
-  yield or loss via Chainlink Automation.
-- If NAV >= MZUSD supply (scaled to USDC), it calls `Vault.distributeYield`.
-- If NAV < supply, it calls `LossManager.applyLoss`.
+### NavOracleAutomation (`contracts/automation/NavOracleAutomation.sol`)
+
+- Stores NAV deltas (USDC 6d) with optional veto window.
+- `submitNav` records delta vs MZUSD total supply at submission time.
+- `performUpkeep`:
+  - if yield delta: calls `Vault.distributeYield(deltaUSDC)`;
+  - if loss delta: calls `LossManager.applyLoss(deltaUSDC)`.
+- Zero-yield delta (`NAV == supply`) still calls `Vault.distributeYield(0)` (epoch advances if allowed by timing).
 
 ### Access + Pause
 
-- AccessManager gates all `restricted` functions by selector.
-- PauseManager enforces category-based emergency stops.
-- See `documentation/access-control.md` and `documentation/pause-manager.md`.
+- `restricted` functions are governed by `AccessManager` target function roles.
+- Category-based pause checks use `PauseManager` + `whenNotPaused`.
 
 ## Units and scaling
 
-- USDC uses 6 decimals.
-- MZUSD uses 18 decimals.
-- Scaling constant: `1 USDC (6d) = 1 MZUSD (18d) = 1e12`.
+- USDC: 6 decimals.
+- MZUSD: 18 decimals.
+- Scale: `1 USDC = 1e12 MZUSD units`.
 
 ## Core flows
 
-### MZUSD mint (user deposit)
+### MZUSD mint
 
 1. User calls `MZUSD.deposit(amountUSDC)`.
-2. USDC is transferred to the Vault.
-3. MZUSD is minted to the user at 1e12 scale.
+2. USDC is transferred to Vault.
+3. User receives `amountUSDC * 1e12` MZUSD.
 
-### MZUSD redemption (user withdrawal)
+### MZUSD redemption
 
 1. User calls `MZUSD.requestWithdrawal(amountMZ)`.
-2. MZUSD burns (rounded down to full USDC).
-3. Global redemption cap is checked and consumed.
-4. Vault sends USDC to the user, pulling from Reservoir if needed.
+2. Amount is quantized to full USDC units (`floor(amountMZ / 1e12)`).
+3. Redemption cap window is checked after atomic netting.
+4. Vault pays USDC (pulling from Reservoir when needed).
 
 Notes:
 
-- Deposits and withdrawals inside one tx are netted before caps are applied.
-- Redemption caps are enforced per time window (min 1 hour, max 30 days).
+- Same-transaction deposits/withdrawals are netted before cap consumption.
+- Redemption window duration is bounded by contract constants: min `1 hour`, max `30 days`.
 
 ### Tranche deposit
 
-1. User approves MZUSD to the tranche.
-2. User calls `Tranche.deposit(assets, receiver)` or `mint(shares, receiver)`.
-3. Deposit limits are checked (global cap and % of MZUSD total supply).
+1. User approves MZUSD to tranche.
+2. User calls `deposit` or `mint`.
+3. Deposit limits are checked if enabled.
 
-### Tranche withdrawal (direct mode)
+### Tranche withdrawal
 
-1. `directWithdrawEnabled` is true at deployment.
-2. User calls `requestWithdrawal(shares)`.
-3. Shares are redeemed immediately via ERC4626.
-
-### Tranche withdrawal (umbrella mode)
-
-1. User calls `requestWithdrawal(shares)`.
-2. Shares move into the tranche contract and are assigned to a target epoch:
-   `currentEpochId + unstakeDelayEpochs`.
-3. After the epoch has passed, an admin or automation calls
-   `finalizeEpoch(epochId)`.
-4. User calls `claim(epochId)` to receive MZUSD.
+- Direct mode:
+  1. User calls `requestWithdrawal(shares)`.
+  2. Shares are redeemed immediately.
+- Umbrella mode:
+  1. User calls `requestWithdrawal(shares)`.
+  2. Shares are escrowed to target epoch: `currentEpochId + unstakeDelayEpochs`.
+  3. Anyone (or automation) finalizes passed epoch via `finalizeEpoch(epochId)`.
+  4. User claims MZUSD via `claim(epochId)`.
 
 ### Yield distribution
 
-1. Oracle submits NAV (USDC) to NavOracleAutomation.
-2. After the veto period, automation applies the NAV.
-3. If NAV is higher than supply, the delta is yield:
-    - Vault advances the epoch.
-    - Vault mints MZUSD for fees and tranche allocation.
-    - Yield is split by tranche weight \* tranche TVL.
-    - Each tranche receives MZUSD and starts a linear stream over the epoch.
+1. Oracle submits NAV.
+2. After veto readiness, automation applies pending NAV.
+3. On yield:
+  - Vault advances epoch;
+  - mints MZUSD fees;
+  - allocates remaining MZUSD by base TVL share + risk premium shares;
+  - transfers to each enabled tranche and calls `notifyYield`.
 
 ### Loss application
 
-1. If NAV is lower than supply, the delta is loss.
-2. LossManager advances the epoch and burns MZUSD from tranches.
-3. Losses are applied sequentially, or proportionally within configured pairs.
-4. If TVL is insufficient, partial burn is applied and uncovered loss is accumulated on LossManager.
+1. On loss delta, automation calls `LossManager.applyLoss`.
+2. LossManager advances epoch via Vault.
+3. Burns are applied by configured order/pairs.
+4. Uncovered remainder is accumulated in `totalUncoveredLossMZ`.
 
 ### Rebalancing and idle buffer
 
-- Vault targets an idle USDC buffer with a hysteresis band.
-- If idle > upper bound: Vault deposits excess into Reservoir.
-- If idle < lower bound: Vault pulls from Reservoir (reverts if empty).
+- Vault keeps target idle buffer with hysteresis band.
+- Above upper bound: deposits excess into Reservoir.
+- Below lower bound: pulls from Reservoir (reverts if Reservoir has zero USDC).
 
 ## Epochs and yield streaming
 
-- Vault epochs are time-based, with configurable duration.
-- `Vault.distributeYield` advances the epoch every time it is called.
+- Epoch advancement is time-gated by `epochStart + epochDuration`.
+- `Vault.distributeYield` always attempts epoch advancement before allocation logic.
 - Tranches stream yield linearly between `yieldStreamStart` and `yieldStreamEnd`.
-- `Tranche.totalAssets()` uses a virtual NAV:
-  `balance - unaccruedYield - reservedAssets`.
+- `Tranche.totalAssets()` exposes virtual NAV:
+  - `assetBalance - unaccruedYield - reservedAssets`.
 
 ## Operational controls
 
-- All admin setters are AccessManager-restricted.
-- Category-based pauses can stop deposits, withdrawals, transfers, admin, or protocol flows.
-- Upgradeability is UUPS; restrict `upgradeToAndCall` via AccessManager.
+- Admin/config functions are `restricted`.
+- User/protocol actions are additionally pause-gated by category.
+- UUPS upgrades are exposed via `upgradeToAndCall`; access must be restricted in AccessManager.
 
-## Useful references
+## References
 
-- Access control and roles: `documentation/access-control.md`
+- Access roles: `documentation/access-control.md`
 - Pause categories: `documentation/pause-manager.md`
-- NAV automation setup: `integration-docs/NAV_AUTOMATION.md`
-- Tranche UI integration: `integration-docs/FRONTEND_TRANCHE_INTEGRATION.md`
+- NAV automation ops: `integration-docs/NAV_AUTOMATION.md`
+- Frontend tranche integration: `integration-docs/FRONTEND_TRANCHE_INTEGRATION.md`
 - Subgraph notes: `integration-docs/SUBGRAPH_VAULT_TRANCHE.md`

@@ -146,11 +146,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         return pendingReadyAt != 0;
     }
 
-    /// @dev External calls to Vault/LossManager; pending state cleared afterward.
+    /// @dev External calls to Vault/LossManager; pending state is cleared first
     function _applyPending() internal {
         bool isYield = pendingIsYield;
         uint256 deltaUSDC = pendingDeltaUSDC;
         uint256 readyAt = pendingReadyAt;
+
+        _clearPending();
 
         if (isYield) {
             IVault(vault).distributeYield(deltaUSDC);
@@ -159,7 +161,6 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         }
 
         emit NavApplied(isYield, deltaUSDC, readyAt);
-        _clearPending();
     }
 
     function _deltaUSDC(

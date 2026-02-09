@@ -297,11 +297,6 @@
         "type": "error"
     },
     {
-        "inputs": [],
-        "name": "ZeroDuration",
-        "type": "error"
-    },
-    {
         "anonymous": false,
         "inputs": [
             {

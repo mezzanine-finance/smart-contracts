@@ -55,7 +55,6 @@ contract MZUSD is
     error ZeroAmount();
     error ZeroAddress();
     error ZeroCap();
-    error ZeroDuration();
     error SameValue();
     error VaultAlreadySet();
     error VaultNotSet();

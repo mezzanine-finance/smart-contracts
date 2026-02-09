@@ -129,11 +129,6 @@
     },
     {
         "inputs": [],
-        "name": "PolPayoutNotSet",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },
