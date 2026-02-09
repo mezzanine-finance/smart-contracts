@@ -357,11 +357,6 @@
     },
     {
         "inputs": [],
-        "name": "TrancheIndexOOB",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },
@@ -374,11 +369,6 @@
             }
         ],
         "name": "UUPSUnsupportedProxiableUUID",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "WeightsZero",
         "type": "error"
     },
     {

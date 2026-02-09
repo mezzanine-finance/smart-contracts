@@ -92,10 +92,8 @@ contract Vault is
     error ZeroAmount();
     error NoTranchesAdded();
     error TVLZero();
-    error WeightsZero();
     error TooBigBps();
     error TrancheExists();
-    error TrancheIndexOOB();
     error ZeroAddress();
     error EpochTooSoon();
     error InvalidEpochDuration();

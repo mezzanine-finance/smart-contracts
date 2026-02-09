@@ -29,7 +29,6 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     event PolPayoutNotified(uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
 
-    error PolPayoutNotSet();
     error ZeroAddress();
     error ZeroAmount();
     error ZeroYieldPassed();
