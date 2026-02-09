@@ -70,8 +70,8 @@ POL page (if any):
 
 Admin-only (ops panels):
 
-- `setDepositLimits(enabled, cap, tvlBps)` (full config update)
-- `setDepositLimitEnabled(enabled)` (toggle both limits only)
+- `setDepositLimits(cap, tvlBps)` (config update only)
+- `setDepositLimitEnabled(enabled)` (toggle limits without changing cap/tvlBps)
 
 ## Deposit flow
 

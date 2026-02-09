@@ -299,13 +299,16 @@ describe("Tranche", () => {
 
             const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
             const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
             await accessManager.setTargetFunctionRole(
                 tranche.target,
-                [setDepositLimitsSel],
+                [setDepositLimitsSel, setDepositLimitEnabledSel],
                 ADMIN_ROLE
             );
 
-            await (await tranche.connect(deployer).setDepositLimits(true, 0n, 1n)).wait();
+            await (await tranche.connect(deployer).setDepositLimits(0n, 1n)).wait();
+            await (await tranche.connect(deployer).setDepositLimitEnabled(true)).wait();
 
             const [enabled, limit, limitByTvl, cap] = await tranche.getDepositLimitInfo();
             expect(enabled).to.equal(true);
@@ -409,7 +412,7 @@ describe("Tranche", () => {
             await expect(tranche.setUnstakeDelayEpochs(1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
-            await expect(tranche.setDepositLimits(true, 1n, 1n))
+            await expect(tranche.setDepositLimits(1n, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
             await expect(tranche.setDepositLimitEnabled(true))
@@ -1443,7 +1446,8 @@ describe("Tranche", () => {
             // Phase 0: enable limits (global caps, not per-tx)
             const cap0 = 0n; // no cap
             const tvlBps0 = 4000n; // 40% of total supply
-            const txCfg0 = await tranche.connect(deployer).setDepositLimits(true, cap0, tvlBps0);
+            await (await tranche.connect(deployer).setDepositLimitEnabled(true)).wait();
+            const txCfg0 = await tranche.connect(deployer).setDepositLimits(cap0, tvlBps0);
             await expect(txCfg0)
                 .to.emit(tranche, "DepositLimitUpdated")
                 .withArgs(true, cap0, tvlBps0);
@@ -1469,7 +1473,7 @@ describe("Tranche", () => {
             // Admin sets a tighter global cap to bind instead of TVL-bps
             const cap3 = to18(250n);
             const tvlBps3 = tvlBps0;
-            const txCfg3 = await tranche.connect(deployer).setDepositLimits(true, cap3, tvlBps3);
+            const txCfg3 = await tranche.connect(deployer).setDepositLimits(cap3, tvlBps3);
             await expect(txCfg3)
                 .to.emit(tranche, "DepositLimitUpdated")
                 .withArgs(true, cap3, tvlBps3);
@@ -1509,7 +1513,7 @@ describe("Tranche", () => {
             // Loosen cap and set TVL-bps to allow only small headroom
             const cap4 = 0n; // disable cap so TVL-bps rules
             const tvlBps4 = 3000n; // 30%
-            const txCfg4 = await tranche.connect(deployer).setDepositLimits(true, cap4, tvlBps4);
+            const txCfg4 = await tranche.connect(deployer).setDepositLimits(cap4, tvlBps4);
             await expect(txCfg4)
                 .to.emit(tranche, "DepositLimitUpdated")
                 .withArgs(true, cap4, tvlBps4);

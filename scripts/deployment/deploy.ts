@@ -579,11 +579,27 @@ async function main() {
                       : 0n;
             const targetTvl = BigInt(tranche.depositLimits.tvlBps ?? 0);
 
-            if (enabled !== targetEnabled || cap !== targetCap || tvl !== targetTvl) {
-                await (
-                    await trancheAdmin.setDepositLimits(targetEnabled, targetCap, targetTvl)
-                ).wait();
-                log.success(`Tranche.setDepositLimits ${tranche.key}`);
+            const configNeedsUpdate = cap !== targetCap || tvl !== targetTvl;
+            const enabledNeedsUpdate = enabled !== targetEnabled;
+
+            if (targetEnabled) {
+                if (configNeedsUpdate) {
+                    await (await trancheAdmin.setDepositLimits(targetCap, targetTvl)).wait();
+                    log.success(`Tranche.setDepositLimits ${tranche.key}`);
+                }
+                if (enabledNeedsUpdate) {
+                    await (await trancheAdmin.setDepositLimitEnabled(targetEnabled)).wait();
+                    log.success(`Tranche.setDepositLimitEnabled ${tranche.key}`);
+                }
+            } else {
+                if (enabledNeedsUpdate) {
+                    await (await trancheAdmin.setDepositLimitEnabled(targetEnabled)).wait();
+                    log.success(`Tranche.setDepositLimitEnabled ${tranche.key}`);
+                }
+                if (configNeedsUpdate) {
+                    await (await trancheAdmin.setDepositLimits(targetCap, targetTvl)).wait();
+                    log.success(`Tranche.setDepositLimits ${tranche.key}`);
+                }
             }
         }
     }

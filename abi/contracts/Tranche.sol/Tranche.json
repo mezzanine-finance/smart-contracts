@@ -1582,11 +1582,6 @@
     {
         "inputs": [
             {
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            },
-            {
                 "internalType": "uint256",
                 "name": "cap",
                 "type": "uint256"

@@ -323,15 +323,13 @@ contract Tranche is
 
     /// @notice Update deposit limits.
     function setDepositLimits(
-        bool enabled,
         uint256 cap,
         uint256 tvlBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (tvlBps > BASIS_POINTS) revert InvalidAmount();
-        depositLimitEnabled = enabled;
         maxDepositCap = cap;
         maxDepositTvlBps = tvlBps;
-        emit DepositLimitUpdated(enabled, cap, tvlBps);
+        emit DepositLimitUpdated(depositLimitEnabled, cap, tvlBps);
     }
 
     /// @notice Enable/disable both deposit limits without changing cap and tvlBps values.

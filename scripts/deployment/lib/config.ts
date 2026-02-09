@@ -235,7 +235,7 @@ function validateConfig(config: DeployConfig, filePath: string) {
         const trancheId = tranche.trancheId ?? tranche.id;
         assert(trancheId !== undefined, `Tranche trancheId is required: ${tranche.key}`);
         assert(trancheId > 0, `Tranche trancheId must be > 0: ${tranche.key}`);
-        if (tranche.depositLimits?.enabled) {
+        if (tranche.depositLimits) {
             if (
                 tranche.depositLimits.capMZUSD !== undefined &&
                 tranche.depositLimits.capUSDC !== undefined
