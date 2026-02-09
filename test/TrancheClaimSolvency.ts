@@ -151,14 +151,9 @@ describe("Tranche claim solvency", () => {
         navOracleSigner = await imp(navOracleRef.target as string);
 
         // Roles setup
-        const setLossManagerSel = mzusd.interface.getFunction("setLossManager").selector;
         const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         const burnSel = mzusd.interface.getFunction("burn").selector;
-        await accessManager.setTargetFunctionRole(
-            mzusdAddr,
-            [setLossManagerSel, setVaultSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(mzusdAddr, [burnSel], BURNER_ROLE);
         await accessManager.grantRole(BURNER_ROLE, trancheAddr, 0);
 
@@ -181,7 +176,6 @@ describe("Tranche claim solvency", () => {
 
         // Wire contracts
         await mzusd.setVault(vaultAddr);
-        await mzusd.setLossManager(lossManagerAddr);
         await vault.setLossManager(lossManagerAddr);
         await vault.setNavOracle(navOracleRef.target);
 

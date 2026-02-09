@@ -467,10 +467,6 @@ async function main() {
         log.success("Vault.setNavOracle wired");
     }
 
-    if ((await mzusd.contract.lossManager()) === ethers.ZeroAddress) {
-        log.info("Skipping MZUSD.setLossManager: LossManager is resolved from Vault wiring");
-    }
-
     // === Register tranches ===
     log.step("Registering tranches");
     const desiredYieldConfigByAddress = new Map<
@@ -854,7 +850,6 @@ async function main() {
             mzusd.contract.interface.getFunction("setVault").selector,
             mzusd.contract.interface.getFunction("setGlobalRedemptionCap").selector,
             mzusd.contract.interface.getFunction("setRedemptionWindowDuration").selector,
-            mzusd.contract.interface.getFunction("setLossManager").selector,
         ],
         adminRole
     );
@@ -1063,13 +1058,6 @@ async function main() {
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
         "Vault.navOracle mismatch"
     );
-    if ((await mzusd.contract.lossManager()) !== ethers.ZeroAddress) {
-        assert(
-            (await mzusd.contract.lossManager()).toLowerCase() ===
-                lossManager.address.toLowerCase(),
-            "MZUSD.lossManager mismatch"
-        );
-    }
 
     for (const tranche of trancheByKey.values()) {
         const trancheVault = await tranche.contract.vault();
