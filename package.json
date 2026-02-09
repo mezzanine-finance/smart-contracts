@@ -42,6 +42,7 @@
         "deploy:hardhat": "npm run deploy -- --network hardhat",
         "deploy:sepolia": "npm run deploy -- --network sepolia",
         "deploy:mainnet": "npm run deploy -- --network mainnet",
+        "deploy:mock-nav-submitter": "npx hardhat run scripts/deployment/deployMockNavSubmitterAutomation.ts",
         "deploy:grant-roles": "npx hardhat run scripts/deployment/grantRoles.ts",
         "deploy:renounce-roles": "npx hardhat run scripts/deployment/renounceRoles.ts",
         "deploy:handoff-roles": "npx hardhat run scripts/deployment/handoffRoles.ts"

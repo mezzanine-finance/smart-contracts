@@ -34,9 +34,16 @@ engineers, integrators, and auditors.
 
 ### PolJuniorTranche (contracts/PolJuniorTranche.sol)
 
-- ERC4626 tranche intended for protocol-owned liquidity.
-- Withdraw and redeem are AccessManager-restricted.
+- Admin-only escrow-style tranche intended for protocol-owned liquidity (no ERC4626 shares).
+- Funded by direct MZUSD transfers; withdraw is AccessManager-restricted.
 - Yield is forwarded immediately to `polPayout` (no streaming, no umbrella).
+- Asset is **intended** to be MZUSD; initializer validates MZUSD authority/pause manager wiring.
+- Vault address is immutable (constructor param) and validated on initialize.
+
+Note (Phase 1 transfer safety):
+- We use direct ERC20 `transfer`/`transferFrom` calls for known tokens
+  (USDC + protocol ERC20s). ERC4626 still uses SafeERC20 internally for
+  asset transfers in deposit/mint/withdraw/redeem.
 
 ### MZUSD (contracts/MZUSD.sol)
 
@@ -132,7 +139,7 @@ Notes:
 1. If NAV is lower than supply, the delta is loss.
 2. LossManager advances the epoch and burns MZUSD from tranches.
 3. Losses are applied sequentially, or proportionally within configured pairs.
-4. If TVL is insufficient, the call reverts.
+4. If TVL is insufficient, partial burn is applied and uncovered loss is accumulated on LossManager.
 
 ### Rebalancing and idle buffer
 

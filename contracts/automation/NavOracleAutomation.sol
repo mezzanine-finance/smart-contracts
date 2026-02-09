@@ -11,6 +11,8 @@ import {IVault} from "../interfaces/IVault.sol";
 /// @notice Stores oracle NAV snapshots with a veto window, then applies yield or loss via Automation.
 /// @dev submitNav is AccessManaged; map it to ORACLE_ROLE in AccessManager, and grant this contract
 ///      a role that can call Vault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
+/// @dev Trust model: submitted NAV is trusted oracle input. This contract does not validate NAV truthfulness,
+///      it only enforces role-gated submission and optional veto delay before applying protocol accounting.
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
@@ -19,13 +21,15 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     address public immutable vault;
     address public immutable lossManager;
 
-    uint256 public vetoPeriod;
-
-    bool public hasPendingNav;
-    uint256 public pendingNavUSDC;
-    uint256 public pendingTotalSupplyMZ;
-    uint256 public pendingSubmittedAt;
-    uint256 public pendingReadyAt;
+    // Packed storage:
+    // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte) + vetoPeriod (4 bytes)
+    // uint128 comfortably covers practical USDC (6d) deltas with wide headroom.
+    uint128 public pendingDeltaUSDC;
+    // uint64 timestamp and uint32 durations match protocol style (Vault epoch config) and are ample.
+    uint64 public pendingReadyAt;
+    // Direction is stored separately to avoid signed-int casts/abs math during upkeep execution.
+    bool public pendingIsYield;
+    uint32 public vetoPeriod;
 
     event NavSubmitted(
         uint256 navUSDC,
@@ -35,14 +39,15 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         uint256 submittedAt,
         uint256 readyAt
     );
-    event NavRejected(uint256 navUSDC, uint256 totalSupplyMZ);
-    event NavApplied(uint256 navUSDC, uint256 totalSupplyMZ, bool isYield, uint256 deltaUSDC);
+    event NavRejected(bool isYield, uint256 deltaUSDC, uint256 readyAt);
+    event NavApplied(bool isYield, uint256 deltaUSDC, uint256 readyAt);
     event VetoPeriodUpdated(uint256 newPeriod);
 
     error PendingNavExists();
     error NoPendingNav();
     error NotReady(uint256 readyAt);
     error InvalidVetoPeriod();
+    error ValueTooLarge();
     error ZeroAddress();
 
     constructor(
@@ -70,20 +75,25 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @dev Reverts if a pending NAV exists. If vetoPeriod is 0, applies immediately.
     /// @param navUSDC NAV snapshot in USDC (6 decimals).
     function submitNav(uint256 navUSDC) external restricted {
-        if (hasPendingNav) revert PendingNavExists();
+        if (hasPendingNav()) revert PendingNavExists();
 
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 totalSupplyMZ = mzusd.totalSupply();
+        if (block.timestamp > type(uint64).max) {
+            revert ValueTooLarge();
+        }
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 
-        uint256 submittedAt = block.timestamp;
-        uint256 readyAt = submittedAt + vetoPeriod;
+        uint64 submittedAt = uint64(block.timestamp);
+        uint256 readyAt = uint256(submittedAt) + uint256(vetoPeriod);
+        if (readyAt > type(uint64).max) revert ValueTooLarge();
 
-        pendingNavUSDC = navUSDC;
-        pendingTotalSupplyMZ = totalSupplyMZ;
-        pendingSubmittedAt = submittedAt;
-        pendingReadyAt = readyAt;
-        hasPendingNav = true;
+        if (deltaUSDC > type(uint128).max) revert ValueTooLarge();
+        pendingDeltaUSDC = uint128(deltaUSDC);
+        // Snapshot readiness for this pending NAV; changing vetoPeriod later
+        // does not shift already submitted snapshots.
+        pendingReadyAt = uint64(readyAt);
+        pendingIsYield = isYield;
 
         emit NavSubmitted(navUSDC, totalSupplyMZ, isYield, deltaUSDC, submittedAt, readyAt);
 
@@ -94,8 +104,8 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
 
     /// @notice Rejects the pending NAV snapshot during the veto window.
     function rejectPendingNav() external restricted {
-        if (!hasPendingNav) revert NoPendingNav();
-        emit NavRejected(pendingNavUSDC, pendingTotalSupplyMZ);
+        if (!hasPendingNav()) revert NoPendingNav();
+        emit NavRejected(pendingIsYield, pendingDeltaUSDC, pendingReadyAt);
         _clearPending();
     }
 
@@ -107,24 +117,40 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     }
 
     /// @notice Chainlink Automation check: pending NAV exists and veto period elapsed.
+    /// @param checkData Unused; kept only for Chainlink Automation compatibility.
+    /// @return upkeepNeeded True when a pending NAV exists and veto delay elapsed.
+    /// @return performData Empty; action is derived from on-chain state in performUpkeep.
     function checkUpkeep(
-        bytes calldata /* checkData */
+        bytes calldata checkData
     ) external view returns (bool upkeepNeeded, bytes memory performData) {
-        if (!hasPendingNav) return (false, "");
+        checkData;
+        if (!hasPendingNav()) return (false, "");
         if (block.timestamp < pendingReadyAt) return (false, "");
         return (true, "");
     }
 
     /// @notice Applies pending NAV after the veto period.
-    function performUpkeep(bytes calldata /* performData */) external {
-        if (!hasPendingNav) revert NoPendingNav();
-        if (block.timestamp < pendingReadyAt) revert NotReady(pendingReadyAt);
+    /// @param performData Unused; kept only for Chainlink Automation compatibility.
+    /// @dev Action is derived from on-chain state to avoid data manipulation via calldata.
+    function performUpkeep(bytes calldata performData) external {
+        performData;
+        if (!hasPendingNav()) revert NoPendingNav();
+        uint256 readyAt = pendingReadyAt;
+        if (block.timestamp < readyAt) revert NotReady(readyAt);
         _applyPending();
+    }
+
+    /// @notice Returns true when a NAV snapshot is currently pending.
+    /// @dev Kept as an explicit getter for external integrations.
+    function hasPendingNav() public view returns (bool) {
+        return pendingReadyAt != 0;
     }
 
     /// @dev External calls to Vault/LossManager; pending state cleared afterward.
     function _applyPending() internal {
-        (bool isYield, uint256 deltaUSDC) = _deltaUSDC(pendingNavUSDC, pendingTotalSupplyMZ);
+        bool isYield = pendingIsYield;
+        uint256 deltaUSDC = pendingDeltaUSDC;
+        uint256 readyAt = pendingReadyAt;
 
         if (isYield) {
             IVault(vault).distributeYield(deltaUSDC);
@@ -132,7 +158,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
             ILossManager(lossManager).applyLoss(deltaUSDC);
         }
 
-        emit NavApplied(pendingNavUSDC, pendingTotalSupplyMZ, isYield, deltaUSDC);
+        emit NavApplied(isYield, deltaUSDC, readyAt);
         _clearPending();
     }
 
@@ -151,15 +177,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     }
 
     function _clearPending() internal {
-        hasPendingNav = false;
-        pendingNavUSDC = 0;
-        pendingTotalSupplyMZ = 0;
-        pendingSubmittedAt = 0;
+        pendingDeltaUSDC = 0;
         pendingReadyAt = 0;
+        pendingIsYield = false;
     }
 
     function _setVetoPeriod(uint256 newPeriod) internal {
         if (newPeriod > MAX_VETO_PERIOD) revert InvalidVetoPeriod();
-        vetoPeriod = newPeriod;
+        vetoPeriod = uint32(newPeriod);
     }
 }

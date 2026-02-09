@@ -26,6 +26,8 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
 
  `contracts/automation/NavOracleAutomation.sol` - NAV oracle + automation.
 
+ `contracts/automation/UmbrellaEpochFinalizer.sol` - umbrella epoch finalization automation helper.
+
  `contracts/pause/` - PauseManager/PauseManaged (category pauses).
 
  `contracts/phase2/` - next-phase drafts (`*.disabled`, excluded from builds).

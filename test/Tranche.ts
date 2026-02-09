@@ -42,6 +42,10 @@ describe("Tranche", () => {
     let reservoir: ReservoirUSDC;
     let tranche: Tranche;
     let whale: any;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let lossManagerSigner: any;
+    let navOracleSigner: any;
 
     before(async () => {
         [deployer, alice, bob, carol] = await ethers.getSigners();
@@ -78,18 +82,6 @@ describe("Tranche", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, carol.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -102,9 +94,17 @@ describe("Tranche", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        })) as unknown as Vault;
 
         // Tranche
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -128,9 +128,29 @@ describe("Tranche", () => {
             }
         )) as unknown as Tranche;
 
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vault.target, mzusd.target);
+        await lossManagerRef.waitForDeployment();
+
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vault.target,
+            lossManagerRef.target,
+            mzusd.target
+        );
+        await navOracleRef.waitForDeployment();
+        lossManagerSigner = await imp(lossManagerRef.target as string);
+        navOracleSigner = await imp(navOracleRef.target as string);
+
         // ROLES & AccessManager wiring
         // 2) Admin-only functions on MZUSD & Vault
-        const setMZUSDSelector = vault.interface.getFunction("setMZUSD").selector;
+        const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
@@ -142,7 +162,6 @@ describe("Tranche", () => {
         await accessManager.setTargetFunctionRole(
             vault.target,
             [
-                setMZUSDSelector,
                 distributeYieldSelector,
                 advanceEpochSelector,
                 addTrancheSelector,
@@ -152,11 +171,12 @@ describe("Tranche", () => {
             ],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
         // 5) Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
-        await vault.setMZUSD(mzusd.target);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        await mzusd.setVault(vault.target);
+        await vault.setLossManager(lossManagerRef.target);
+        await vault.setNavOracle(navOracleRef.target);
 
         await vault.addTranche(tranche.target);
         await vault.setYieldDistribution(0, [10_000], [true]);
@@ -311,7 +331,7 @@ describe("Tranche", () => {
             await (await tranche.connect(alice).requestWithdrawal(1n)).wait();
 
             await time.increase(24 * 60 * 60);
-            await (await vault.connect(deployer).advanceEpoch()).wait();
+            await (await vault.connect(lossManagerSigner).advanceEpoch()).wait();
 
             await (await tranche.connect(deployer).finalizeEpoch(epochId)).wait();
 
@@ -362,6 +382,7 @@ describe("Tranche", () => {
                 .withArgs(PauseCategory.WITHDRAWALS);
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
 
+            await tranche.connect(alice).approve(deployer, 1n);
             await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
             await expect(tranche.transfer(bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
@@ -415,6 +436,10 @@ describe("Tranche", () => {
                     constructorArgs: [true],
                 }
             )) as unknown as Tranche;
+
+            const mintedMZ = await mintMZUSDFor(alice, to6(100n));
+            await mzusd.connect(alice).approve(directTranche, mintedMZ);
+            await directTranche.connect(alice).deposit(mintedMZ, alice);
 
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
             await expect(directTranche.withdraw(1n, alice.address, alice.address))
@@ -633,7 +658,7 @@ describe("Tranche", () => {
             expect(assetsAfterAliceDeposit).to.equal(expectedMZ); // 100
 
             await expect(
-                vault.connect(deployer).distributeYield(1000n)
+                vault.connect(navOracleSigner).distributeYield(1000n)
             ).to.be.revertedWithCustomError(vault, "EpochTooSoon"); // dummy call to check revert
 
             // 2) Time skip for one epoch, distributeYield on Vault is called
@@ -646,7 +671,7 @@ describe("Tranche", () => {
             const newEpochId = (await vault.currentEpochId()) + 1n;
 
             // Call distributeYield and get tx
-            const tx = await vault.connect(deployer).distributeYield(reportedUSDC);
+            const tx = await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
             await tx.wait();
 
             // Use Hardhat time helper to get latest block timestamp (the tx block)
@@ -656,7 +681,7 @@ describe("Tranche", () => {
 
             await expect(tx)
                 .to.emit(tranche, "YieldNotified")
-                .withArgs(newEpochId, expectedYieldMZ, streamStartTs, expectedStreamEnd)
+                .withArgs(expectedYieldMZ, streamStartTs, expectedStreamEnd)
                 .and.emit(vault, "YieldDistributed")
                 .withArgs(reportedUSDC, expectedYieldMZ, newEpochId);
 
@@ -767,7 +792,7 @@ describe("Tranche", () => {
             await tranche.connect(alice).requestWithdrawal(to18(50n));
 
             await time.increase(DAY);
-            await vault.connect(deployer).distributeYield(0);
+            await vault.connect(navOracleSigner).distributeYield(0);
 
             await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
 
@@ -783,7 +808,7 @@ describe("Tranche", () => {
             await tranche.connect(alice).requestWithdrawal(to18(50n));
 
             await time.increase(DAY);
-            await vault.connect(deployer).distributeYield(0);
+            await vault.connect(navOracleSigner).distributeYield(0);
             await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
 
             const bobSharesBefore = await tranche.balanceOf(bob.address);
@@ -801,7 +826,7 @@ describe("Tranche", () => {
             await tranche.connect(alice).requestWithdrawal(to18(50n));
 
             await time.increase(DAY);
-            await vault.connect(deployer).distributeYield(0);
+            await vault.connect(navOracleSigner).distributeYield(0);
             await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
 
             expect(await tranche.totalAssets()).to.equal(to18(50n));
@@ -845,7 +870,7 @@ describe("Tranche", () => {
             await time.increase(DAY);
 
             const reportedUSDC = to6(10n); // small yield just to advance epoch
-            await vault.connect(deployer).distributeYield(reportedUSDC);
+            await vault.connect(navOracleSigner).distributeYield(reportedUSDC);
 
             const currentEpochAfterYield = await vault.currentEpochId();
             expect(currentEpochAfterYield).to.equal(epochAtRequest + 1n);
@@ -911,11 +936,12 @@ describe("Tranche", () => {
             // 5) Alice claims her withdrawal for that epoch
             const aliceMZBeforeClaim = await mzusd.balanceOf(alice.address);
 
-            const [pendingSharesBefore, isFinalizedUser, , , claimableBefore] =
-                await tranche.getUserEpochInfo(alice.address, targetEpoch);
+            const [pendingSharesBefore, claimableBefore] = await tranche.getUserEpochInfo(
+                alice.address,
+                targetEpoch
+            );
 
             expect(pendingSharesBefore).to.equal(aliceSharesBefore);
-            expect(isFinalizedUser).to.equal(true);
             // Since Alice is the only pending user for this epoch, claimable = finalized totalAssets
             expect(claimableBefore).to.equal(totalAssetsFinal);
 
@@ -930,7 +956,7 @@ describe("Tranche", () => {
             // Claim transfers the finalized, claimable assets for this epoch back to Alice
             expect(aliceMZAfterClaim).to.equal(aliceMZBeforeClaim + claimableBefore);
 
-            const [pendingSharesAfter, , , , claimableAfter] = await tranche.getUserEpochInfo(
+            const [pendingSharesAfter, claimableAfter] = await tranche.getUserEpochInfo(
                 alice.address,
                 targetEpoch
             );
@@ -973,7 +999,7 @@ describe("Tranche", () => {
             await time.increase(DAY);
 
             const yieldUSDC = to6(17n);
-            const txYield1 = await vault.connect(deployer).distributeYield(yieldUSDC);
+            const txYield1 = await vault.connect(navOracleSigner).distributeYield(yieldUSDC);
             await txYield1.wait();
 
             expect(await vault.currentEpochId()).to.equal(2n);
@@ -1022,7 +1048,7 @@ describe("Tranche", () => {
 
             // 5) Advance epoch again so finalizeEpoch(2) becomes allowed
             await time.increase(DAY);
-            const txYield2 = await vault.connect(deployer).distributeYield(to6(1n));
+            const txYield2 = await vault.connect(navOracleSigner).distributeYield(to6(1n));
             await txYield2.wait();
 
             expect(await vault.currentEpochId()).to.equal(3n);
@@ -1043,22 +1069,22 @@ describe("Tranche", () => {
             const expectedC = (cReq * totalAssetsFinal) / totalSharesFinal;
 
             // Verify getUserEpochInfo matches the same formula
-            const [aPending, aFinalized, aTotShares, aTotAssets, aClaimable] =
-                await tranche.getUserEpochInfo(alice.address, targetEpoch);
+            const [aPending, aClaimable] = await tranche.getUserEpochInfo(
+                alice.address,
+                targetEpoch
+            );
+            const [, aFinalized, aTotShares, aTotAssets] = await tranche.getEpochInfo(targetEpoch);
             expect(aPending).to.equal(aReq);
             expect(aFinalized).to.equal(true);
             expect(aTotShares).to.equal(totalSharesFinal);
             expect(aTotAssets).to.equal(totalAssetsFinal);
             expect(aClaimable).to.equal(expectedA);
 
-            const [bPending, , , , bClaimable] = await tranche.getUserEpochInfo(
-                bob.address,
-                targetEpoch
-            );
+            const [bPending, bClaimable] = await tranche.getUserEpochInfo(bob.address, targetEpoch);
             expect(bPending).to.equal(bReq);
             expect(bClaimable).to.equal(expectedB);
 
-            const [cPending, , , , cClaimable] = await tranche.getUserEpochInfo(
+            const [cPending, cClaimable] = await tranche.getUserEpochInfo(
                 carol.address,
                 targetEpoch
             );
@@ -1120,7 +1146,7 @@ describe("Tranche", () => {
 
             // 2) Advance to epoch 2 and start streaming yield (odd amount)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(9n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(9n))).wait();
             expect(await vault.currentEpochId()).to.equal(2n);
 
             // Move into the stream by a weird amount so Bob's shares are non-round
@@ -1208,7 +1234,7 @@ describe("Tranche", () => {
 
             // 7) Advance vault epoch so finalizeEpoch(targetEpoch) becomes allowed
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
             expect(await vault.currentEpochId()).to.equal(3n);
 
             // Capture pending shares at finalization moment
@@ -1274,14 +1300,14 @@ describe("Tranche", () => {
             await (await tranche.connect(alice).requestWithdrawal(aShares)).wait();
 
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
 
             const {shares: bShares} = await mintAndDepositIntoTranche(bob, to6(30n), bob.address);
             const epoch2 = await vault.currentEpochId();
             await (await tranche.connect(bob).requestWithdrawal(bShares)).wait();
 
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
 
             await (await tranche.connect(deployer).finalizeEpoch(epoch2)).wait();
 
@@ -1336,7 +1362,7 @@ describe("Tranche", () => {
 
             // Move to epoch 2 and start yield streaming
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(11n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(11n))).wait();
             expect(await vault.currentEpochId()).to.equal(2n);
 
             // Cancel within target epoch is allowed (currentEpoch = epochId)
@@ -1373,7 +1399,7 @@ describe("Tranche", () => {
 
             // Advance to epoch 3 (but do NOT finalize epoch 2 yet)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(3n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(3n))).wait();
             expect(await vault.currentEpochId()).to.equal(3n);
 
             await expect(
@@ -1391,7 +1417,7 @@ describe("Tranche", () => {
 
             // Advance to epoch 4 so finalizeEpoch(2) is allowed
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
             expect(await vault.currentEpochId()).to.equal(4n);
 
             // Finalize epoch 2 (should burn ONLY epoch 2 pending shares)
@@ -1414,10 +1440,10 @@ describe("Tranche", () => {
             // Epoch 3 umbrella should be unaffected by finalizing epoch 2
             expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
 
-            // After finalization, cancel for epoch 2 is blocked with AlreadyFinalized (checked before TooLateToCancel)
+            // After finalization, cancel for epoch 2 is blocked with TooLateToCancel
             await expect(
                 tranche.connect(alice).cancelUnstake(2n, 1n)
-            ).to.be.revertedWithCustomError(tranche, "AlreadyFinalized");
+            ).to.be.revertedWithCustomError(tranche, "TooLateToCancel");
 
             // Claims for epoch 2, pro-rata floor math
             const expectedA = (aPendingE2 * totalAssetsFinal) / totalSharesFinal;
@@ -1503,7 +1529,7 @@ describe("Tranche", () => {
             // Phase 3: streaming NAV stress (limits should use virtual NAV, not raw balance)
             // Start a yield stream by advancing epoch and distributing yield
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(13n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(13n))).wait();
 
             const epochDuration = await vault.epochDuration();
             // Move into the stream by a weird amount (to create ugly virtual NAV)
@@ -1583,7 +1609,7 @@ describe("Tranche", () => {
 
             // Advance to epoch 2 (starts a yield stream for epoch 2)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(5n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(5n))).wait();
             expect(await vault.currentEpochId()).to.equal(2n);
 
             // TooLateToCancel should block cancelling for epoch 1 now
@@ -1614,7 +1640,7 @@ describe("Tranche", () => {
 
             // Move to epoch 3 (starts a yield stream for epoch 3)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(7n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(7n))).wait();
             expect(await vault.currentEpochId()).to.equal(3n);
 
             // finalizeEpoch(3) is NOT allowed when currentEpoch = epochId
@@ -1625,7 +1651,7 @@ describe("Tranche", () => {
 
             // Move to epoch 4 (starts a yield stream for epoch 4)
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(9n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(9n))).wait();
             expect(await vault.currentEpochId()).to.equal(4n);
 
             // Key addition: finalize epoch 3 while a yield stream (epoch 4) is ACTIVE
@@ -1761,7 +1787,7 @@ describe("Tranche", () => {
             expect(await tranche.umbrellaSharesByEpoch(1n)).to.equal(0n);
 
             await time.increase(DAY);
-            await (await vault.connect(deployer).distributeYield(to6(1n))).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
             expect(await vault.currentEpochId()).to.equal(2n);
 
             await expect(tranche.connect(deployer).finalizeEpoch(1n)).to.be.revertedWithCustomError(

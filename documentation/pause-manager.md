@@ -57,7 +57,7 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 - `DEPOSITS`: `deposit`
 - `WITHDRAWALS`: `requestWithdrawal`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setTrancheBurner`
+- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`
 - `PROTOCOL`: `mint`, `burn`
 
 ### Tranche
@@ -70,13 +70,13 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 
 ### Vault
 
-- `ADMIN`: `setMZUSD`, `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`,
+- `ADMIN`: `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`, `setBuffer`, `setEpochConfig`,
   `addTranche`, `updateTranche`
 - `PROTOCOL`: `distributeYield`, `rebalance`, `withdraw`, `advanceEpoch`
 
 ### LossManager
 
-- `ADMIN`: `setTrancheOrderAndGroups`, `setMaxLossPerTxUSDC`
+- `ADMIN`: `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC`
 - `PROTOCOL`: `applyLoss`
 
 ### ReservoirUSDC
@@ -85,8 +85,6 @@ This mapping is the intended target for core contracts once PauseManaged is wire
 
 ### PolJuniorTranche
 
-- `DEPOSITS`: `deposit`, `mint`
-- `WITHDRAWALS`: `withdraw`, `redeem`
-- `TRANSFERS`: `transfer`, `transferFrom`, `approve`
+- `WITHDRAWALS`: `withdraw`
 - `ADMIN`: `setPolPayout`
 - `PROTOCOL`: `notifyYield`

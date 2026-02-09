@@ -56,7 +56,7 @@ Tranche (`Tranche.sol`):
 
 LossManager (`LossManager.sol`, optional):
 
-- `LossApplied(usdcLoss, lossMZ, tranches, cutsMZ)`
+- `LossApplied(usdcLoss, requestedMZ, burnedMZ, uncoveredMZ, totalUncoveredMZ, cutsMZ)`
 
 ## Core metric derivations
 

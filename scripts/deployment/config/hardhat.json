@@ -9,8 +9,9 @@
     "UNPAUSER_ROLE": 2,
     "UPGRADER_ROLE": 3,
     "RESERVOIR_WITHDRAW_ROLE": 4,
-    "KEEPER_ROLE": 5,
-    "ORACLE_ROLE": 6
+    "BURNER_ROLE": 5,
+    "ORACLE_ROLE": 6,
+    "KEEPER_ROLE": 7
   },
   "roles": {
     "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
@@ -99,14 +100,12 @@
   ],
   "polJunior": {
     "enabled": true,
-    "name": "POL Junior Tranche",
-    "symbol": "pJLT",
     "polPayout": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     "registerInVault": false
   },
   "lossManager": {
     "order": ["polJunior", "junior", "mezzanine", "senior"],
-    "groupIds": [1, 1, 0, 0],
+    "isPairedWithNext": [true, true, false, false],
     "maxLossPerTxUSDC": "10000000"
   },
   "navOracle": {

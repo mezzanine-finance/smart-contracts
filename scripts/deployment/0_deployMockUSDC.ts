@@ -1,5 +1,5 @@
 import {ethers, network, run} from "hardhat";
-import {loadDeployments, saveDeployments, recordDeployment} from "./utils/deployments";
+import {loadDeployments, saveDeployments, recordDeployment} from "./lib/deployments";
 
 async function verifyContract(address: string, constructorArguments: any[] = []) {
     if (network.name === "hardhat") {

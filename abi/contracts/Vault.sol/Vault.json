@@ -3,7 +3,7 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "_usdc",
+                "name": "_mzusd",
                 "type": "address"
             },
             {
@@ -62,6 +62,17 @@
             }
         ],
         "name": "AddressEmptyCode",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "candidate",
+                "type": "address"
+            }
+        ],
+        "name": "AddressHasNoCode",
         "type": "error"
     },
     {
@@ -130,12 +141,56 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualVault",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidLossManagerVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint8",
                 "name": "actualDecimals",
                 "type": "uint8"
             }
         ],
         "name": "InvalidMZUSDDecimals",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidMZUSDPauseManager",
         "type": "error"
     },
     {
@@ -153,11 +208,66 @@
         "inputs": [
             {
                 "internalType": "address",
+                "name": "actualLossManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleLossManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualMZUSD",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidNavOracleMZUSD",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
                 "name": "actualVault",
                 "type": "address"
             }
         ],
-        "name": "InvalidMZUSDVault",
+        "name": "InvalidNavOracleVault",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualAccessManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirAccessManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualPauseManager",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirPauseManager",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "actualUSDC",
+                "type": "address"
+            }
+        ],
+        "name": "InvalidReservoirUSDC",
         "type": "error"
     },
     {
@@ -177,7 +287,7 @@
     },
     {
         "inputs": [],
-        "name": "MZUSDAlreadySet",
+        "name": "LossManagerNotSet",
         "type": "error"
     },
     {
@@ -438,19 +548,6 @@
             }
         ],
         "name": "LossManagerUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
-                "name": "newMZUSD",
-                "type": "address"
-            }
-        ],
-        "name": "MZUSDChanged",
         "type": "event"
     },
     {
@@ -959,16 +1056,6 @@
     {
         "inputs": [
             {
-                "internalType": "address",
-                "name": "accessManager",
-                "type": "address"
-            },
-            {
-                "internalType": "address",
-                "name": "pauseManager_",
-                "type": "address"
-            },
-            {
                 "internalType": "uint16",
                 "name": "_performanceFeeBps",
                 "type": "uint16"
@@ -1265,19 +1352,6 @@
             }
         ],
         "name": "setLossManager",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_mzusd",
-                "type": "address"
-            }
-        ],
-        "name": "setMZUSD",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

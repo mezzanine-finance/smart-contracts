@@ -1,6 +1,6 @@
 import {expect} from "chai";
 import {ethers, upgrades, network} from "hardhat";
-import {parseUnits, toBigInt} from "ethers";
+import {parseUnits} from "ethers";
 import {
     impersonateAccount,
     setBalance,
@@ -23,8 +23,6 @@ import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-const LOSS_MANAGER_ROLE = 3n;
-
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
 
@@ -42,9 +40,9 @@ describe("PolJuniorTranche", () => {
     let deployer: any;
     let alice: any;
     let bob: any;
-    let users: any[];
 
     let whale: any;
+    let users: any[];
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -60,12 +58,13 @@ describe("PolJuniorTranche", () => {
     let vaultAddr: string;
     let mzusdAddr: string;
     let polAddr: string;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let navOracleSigner: any;
 
     before(async () => {
         const signers = await ethers.getSigners();
         [deployer, alice, bob, ...users] = signers;
-        // extra accounts for stress tests (keep it bounded for runtime)
-        users = users.slice(0, 12);
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -97,19 +96,6 @@ describe("PolJuniorTranche", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, alice.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-        vaultAddr = await vault.getAddress();
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -118,47 +104,66 @@ describe("PolJuniorTranche", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusdAddr, reservoir.target],
+        })) as unknown as Vault;
+        vaultAddr = await vault.getAddress();
 
         // Deploy POL tranche
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
         pol = (await upgrades.deployProxy(
             PolFactory,
-            [
-                mzusd.target,
-                vault.target,
-                "POL Junior Tranche",
-                "pJLT",
-                accessManager.target,
-                pauseManager.target,
-                bob.address,
-            ],
-            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+            [mzusd.target, vault.target, accessManager.target, pauseManager.target, bob.address],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [vault.target],
+            }
         )) as unknown as PolJuniorTranche;
         polAddr = await pol.getAddress();
+
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vaultAddr, mzusdAddr);
+        await lossManagerRef.waitForDeployment();
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vaultAddr,
+            lossManagerRef.target,
+            mzusdAddr
+        );
+        await navOracleRef.waitForDeployment();
+        navOracleSigner = await imp(navOracleRef.target as string);
 
         // Roles setup
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
-        // POL tranche: withdraw/redeem should be ADMIN only
+        // POL tranche: withdraw should be ADMIN only
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
-        const polRedeemSel = pol.interface.getFunction("redeem").selector;
-        await accessManager.setTargetFunctionRole(
-            polAddr,
-            [polWithdrawSel, polRedeemSel],
-            ADMIN_ROLE
-        );
+        await accessManager.setTargetFunctionRole(polAddr, [polWithdrawSel], ADMIN_ROLE);
 
         // POL tranche: admin-only management endpoints
         const polSetPayoutSel = pol.interface.getFunction("setPolPayout").selector;
         await accessManager.setTargetFunctionRole(polAddr, [polSetPayoutSel], ADMIN_ROLE);
 
         // admin: vault distribute + tranche management + epoch config
-        const setMZUSDSel = vault.interface.getFunction("setMZUSD").selector;
+        const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSel = vault.interface.getFunction("addTranche").selector;
         const setYieldDistributionSel =
@@ -169,7 +174,6 @@ describe("PolJuniorTranche", () => {
         await accessManager.setTargetFunctionRole(
             vaultAddr,
             [
-                setMZUSDSel,
                 distributeSel,
                 addTrancheSel,
                 setYieldDistributionSel,
@@ -179,11 +183,12 @@ describe("PolJuniorTranche", () => {
             ],
             ADMIN_ROLE
         );
+        await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
 
         // wire
-        await vault.setMZUSD(mzusdAddr);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        await mzusd.setVault(vaultAddr);
+        await vault.setLossManager(lossManagerRef.target);
+        await vault.setNavOracle(navOracleRef.target);
 
         snapshot = await takeSnapshot();
     });
@@ -203,59 +208,16 @@ describe("PolJuniorTranche", () => {
         return await mzusd.balanceOf(user.address);
     }
 
-    async function depositMZInto(user: any, tranche: any, mzAmount18: bigint): Promise<bigint> {
-        const addr = await tranche.getAddress();
-        const sharesBefore = await tranche.balanceOf(user.address);
-        await mzusd.connect(user).approve(addr, mzAmount18);
-        await (await tranche.connect(user).deposit(mzAmount18, user.address)).wait();
-        const sharesAfter = await tranche.balanceOf(user.address);
-        return toBigInt(sharesAfter - sharesBefore);
-    }
-
-    async function assertPolInvariants(holders: any[]) {
-        const assets = await pol.totalAssets();
-        expect(await mzusd.balanceOf(polAddr)).to.equal(assets);
-
-        const supply = await pol.totalSupply();
-        expect(await pol.convertToAssets(supply)).to.equal(assets);
-
-        let sumShares = 0n;
-        for (const h of holders) {
-            sumShares += await pol.balanceOf(h.address);
-        }
-        expect(sumShares).to.equal(supply);
+    async function depositMZInto(user: any, mzAmount18: bigint): Promise<void> {
+        await (await mzusd.connect(user).transfer(polAddr, mzAmount18)).wait();
     }
 
     describe("Pause guards", () => {
         it("Pauses all guarded PolJuniorTranche functions", async () => {
             const vaultSigner = await imp(vaultAddr);
 
-            await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
-            await expect(pol.connect(alice).deposit(1n, alice.address))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
-            await expect(pol.connect(alice).mint(1n, alice.address))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
-            await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
-
-            await pauseManager.pauseGlobal(PauseCategory.TRANSFERS);
-            await expect(pol.connect(alice).transfer(bob.address, 1n))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.TRANSFERS);
-            await expect(pol.connect(alice).approve(bob.address, 1n))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.TRANSFERS);
-            await expect(pol.connect(alice).transferFrom(alice.address, bob.address, 1n))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.TRANSFERS);
-            await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
-
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
-            await expect(pol.connect(deployer).withdraw(1n, deployer.address, deployer.address))
-                .to.be.revertedWithCustomError(pol, "CategoryPaused")
-                .withArgs(PauseCategory.WITHDRAWALS);
-            await expect(pol.connect(deployer).redeem(1n, deployer.address, deployer.address))
+            await expect(pol.connect(deployer).withdraw(1n, deployer.address))
                 .to.be.revertedWithCustomError(pol, "CategoryPaused")
                 .withArgs(PauseCategory.WITHDRAWALS);
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
@@ -279,26 +241,16 @@ describe("PolJuniorTranche", () => {
             await vault.addTranche(polAddr);
             await vault.setYieldDistribution(0, [10_000], [true]);
 
-            // Deposit principal by Alice (PUBLIC deposit should work)
-            const alicePrincipal = await mintMZUSDFor(alice, to6(1n));
-            await depositMZInto(alice, pol, alicePrincipal);
-
-            // Deposit principal by Admin (so that admin can later withdraw without allowance issues)
-            const adminPrincipal = await mintMZUSDFor(deployer, to6(100n));
-            await depositMZInto(deployer, pol, adminPrincipal);
+            const adminPrincipal = await mintMZUSDFor(deployer, to6(101n));
+            await depositMZInto(deployer, adminPrincipal);
 
             const withdrawAmt = to18(40n);
             // Withdraw is restricted to admin: Alice cannot withdraw
-            await expect(pol.connect(alice).withdraw(withdrawAmt, alice.address, alice.address)).to
-                .be.reverted;
+            await expect(pol.connect(alice).withdraw(withdrawAmt, alice.address)).to.be.reverted;
 
-            // Admin can withdraw its own position
+            // Admin can withdraw
             const adminBalBefore = await mzusd.balanceOf(deployer.address);
-            await (
-                await pol
-                    .connect(deployer)
-                    .withdraw(withdrawAmt, deployer.address, deployer.address)
-            ).wait();
+            await (await pol.connect(deployer).withdraw(withdrawAmt, deployer.address)).wait();
             const adminBalAfter = await mzusd.balanceOf(deployer.address);
             expect(adminBalAfter - adminBalBefore).to.equal(withdrawAmt);
 
@@ -307,46 +259,30 @@ describe("PolJuniorTranche", () => {
 
             await time.increase(DAY);
             const reported = to6(20n); // 20 USDC -> 20e18 MZUSD
-            await (await vault.connect(deployer).distributeYield(reported)).wait();
+            await (await vault.connect(navOracleSigner).distributeYield(reported)).wait();
 
             const payoutAfter = await mzusd.balanceOf(bob.address);
             expect(payoutAfter - payoutBefore).to.equal(to18(20n));
 
             // POL tranche should not retain yield, only remaining principal stays
-            const totalPrincipal = alicePrincipal + adminPrincipal;
-            const expectedPrincipalLeft = totalPrincipal - withdrawAmt;
+            const expectedPrincipalLeft = adminPrincipal - withdrawAmt;
             expect(await mzusd.balanceOf(polAddr)).to.equal(expectedPrincipalLeft);
             expect(await pol.totalAssets()).to.equal(expectedPrincipalLeft);
         });
     });
 
-    describe("ERC20 and admin flows", () => {
-        it("Mints, transfers, redeems, and updates payout", async () => {
+    describe("Admin flows", () => {
+        it("Deposits, withdraws, and updates payout", async () => {
             const mintUSDC = to6(25n);
-            const minted = await mintMZUSDFor(alice, mintUSDC);
+            const minted = await mintMZUSDFor(deployer, mintUSDC);
 
-            const shares = to18(10n);
-            const assetsRequired = await pol.previewMint(shares);
-            expect(assetsRequired).to.be.lte(minted);
+            await depositMZInto(deployer, minted);
 
-            await mzusd.connect(alice).approve(polAddr, assetsRequired);
-            await (await pol.connect(alice).mint(shares, alice.address)).wait();
-
-            await (await pol.connect(alice).transfer(bob.address, shares / 2n)).wait();
-
-            await (await pol.connect(alice).approve(deployer.address, shares / 2n)).wait();
-            await (
-                await pol.connect(deployer).transferFrom(alice.address, bob.address, shares / 2n)
-            ).wait();
-
-            const bobShares = await pol.balanceOf(bob.address);
-            await (await pol.connect(bob).approve(deployer.address, bobShares)).wait();
-
-            const bobBefore = await mzusd.balanceOf(bob.address);
-            await (await pol.connect(deployer).redeem(bobShares, bob.address, bob.address)).wait();
-            const bobAfter = await mzusd.balanceOf(bob.address);
-
-            expect(bobAfter - bobBefore).to.equal(bobShares);
+            const withdrawAmt = to18(10n);
+            const before = await mzusd.balanceOf(bob.address);
+            await (await pol.connect(deployer).withdraw(withdrawAmt, bob.address)).wait();
+            const after = await mzusd.balanceOf(bob.address);
+            expect(after - before).to.equal(withdrawAmt);
 
             await expect(pol.connect(deployer).setPolPayout(alice.address))
                 .to.emit(pol, "PolPayoutUpdated")
@@ -369,11 +305,10 @@ describe("PolJuniorTranche", () => {
                 const mzAmt = await mintMZUSDFor(u, usdcAmt);
                 totalDeposited += mzAmt;
 
-                const shares = await depositMZInto(u, pol, mzAmt);
-                expect(shares).to.equal(mzAmt);
+                await depositMZInto(u, mzAmt);
 
                 // Let admin operate on behalf of the owner (ERC4626 allowance path)
-                await (await pol.connect(u).approve(deployer.address, shares)).wait();
+                await (await pol.connect(u).approve(deployer.address, mzAmt)).wait();
             }
 
             expect(await pol.totalAssets()).to.equal(totalDeposited);
@@ -430,8 +365,7 @@ describe("PolJuniorTranche", () => {
                 const amt = to18(BigInt((i % 5) + 1)); // 1-5 MZUSD
 
                 const aliceBefore = await mzusd.balanceOf(alice.address);
-                const shares = await depositMZInto(alice, pol, amt);
-                expect(shares).to.equal(amt);
+                await depositMZInto(alice, amt);
 
                 await (
                     await pol.connect(deployer).withdraw(amt, alice.address, alice.address)

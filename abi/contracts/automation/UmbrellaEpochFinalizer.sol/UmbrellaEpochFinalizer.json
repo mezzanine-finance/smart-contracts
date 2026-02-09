@@ -5,10 +5,20 @@
                 "internalType": "address",
                 "name": "tranche_",
                 "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "startEpoch_",
+                "type": "uint256"
             }
         ],
         "stateMutability": "nonpayable",
         "type": "constructor"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidEpoch",
+        "type": "error"
     },
     {
         "inputs": [],
@@ -22,19 +32,27 @@
     },
     {
         "inputs": [],
-        "name": "StaleEpoch",
+        "name": "ZeroAddress",
         "type": "error"
     },
     {
         "inputs": [],
-        "name": "ZeroAddress",
-        "type": "error"
+        "name": "MIN_EPOCH_ID",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [
             {
                 "internalType": "bytes",
-                "name": "",
+                "name": "checkData",
                 "type": "bytes"
             }
         ],
@@ -49,6 +67,19 @@
                 "internalType": "bytes",
                 "name": "performData",
                 "type": "bytes"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "nextEpochId",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",

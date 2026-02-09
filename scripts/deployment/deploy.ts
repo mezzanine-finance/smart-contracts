@@ -1,5 +1,18 @@
 import {ethers, network, upgrades} from "hardhat";
-import {Contract} from "ethers";
+import {BaseContract} from "ethers";
+import type {
+    AccessManager,
+    LossManager,
+    MZUSD,
+    MockUSDC,
+    NavOracleAutomation,
+    PauseManager,
+    PolJuniorTranche,
+    ReservoirUSDC,
+    Tranche,
+    UmbrellaEpochFinalizer,
+    Vault,
+} from "../../typechain-types";
 import {loadConfig} from "./lib/config";
 import {
     loadDeployments,
@@ -12,7 +25,7 @@ import {assert, getArg, hasFlag, isLocalNetwork, parseUSDC, requireAddress} from
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
 
-interface DeployResult<T extends Contract> {
+interface DeployResult<T extends BaseContract> {
     contract: T;
     address: string;
     implementation?: string;
@@ -26,9 +39,9 @@ async function hasCode(address: string) {
     return code !== "0x";
 }
 
-async function ensureDeployment<T extends Contract>(
+async function ensureDeployment<T extends BaseContract>(
     name: string,
-    factory: {attach: (address: string) => T},
+    factory: {attach: (address: string) => unknown},
     deploy: () => Promise<T>,
     fresh: boolean,
     deployments: ReturnType<typeof loadDeployments>
@@ -38,7 +51,7 @@ async function ensureDeployment<T extends Contract>(
         if (existing && (await hasCode(existing.address))) {
             log.info(`Reusing ${name} at ${existing.address}`);
             return {
-                contract: factory.attach(existing.address),
+                contract: factory.attach(existing.address) as T,
                 address: existing.address,
                 implementation: existing.implementation,
             };
@@ -61,9 +74,9 @@ async function ensureDeployment<T extends Contract>(
     return {contract, address};
 }
 
-async function ensureProxyDeployment<T extends Contract>(
+async function ensureProxyDeployment<T extends BaseContract>(
     name: string,
-    factory: {attach: (address: string) => T},
+    factory: {attach: (address: string) => unknown},
     deploy: () => Promise<T>,
     fresh: boolean,
     deployments: ReturnType<typeof loadDeployments>
@@ -74,7 +87,7 @@ async function ensureProxyDeployment<T extends Contract>(
             const impl = await upgrades.erc1967.getImplementationAddress(existing.address);
             log.info(`Reusing ${name} proxy at ${existing.address}`);
             return {
-                contract: factory.attach(existing.address),
+                contract: factory.attach(existing.address) as T,
                 address: existing.address,
                 implementation: impl,
             };
@@ -152,7 +165,7 @@ async function main() {
 
     // === Deploy core contracts ===
     const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
-    const accessManager = await ensureDeployment(
+    const accessManager = await ensureDeployment<AccessManager>(
         "AccessManager",
         AccessManagerFactory,
         async () => AccessManagerFactory.deploy(devDeployer),
@@ -161,7 +174,7 @@ async function main() {
     );
 
     const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
-    const pauseManager = await ensureProxyDeployment(
+    const pauseManager = await ensureProxyDeployment<PauseManager>(
         "PauseManager",
         PauseManagerFactory,
         async () =>
@@ -173,7 +186,7 @@ async function main() {
         deployments
     );
 
-    let mockUsdc: DeployResult<Contract> | undefined;
+    let mockUsdc: DeployResult<MockUSDC> | undefined;
     let usdcAddress: string;
     if (!config.usdc.deployMock) {
         requireAddress(config.usdc.address ?? "", "usdc.address");
@@ -181,10 +194,10 @@ async function main() {
     } else {
         const mock = config.usdc.mock!;
         const MockUSDCFactory = await ethers.getContractFactory("MockUSDC", deployer);
-        mockUsdc = await ensureDeployment(
+        mockUsdc = await ensureDeployment<MockUSDC>(
             "MockUSDC",
             MockUSDCFactory,
-            async () => MockUSDCFactory.deploy(mock.name, mock.symbol, devDeployer),
+            async () => MockUSDCFactory.deploy(),
             fresh,
             deployments
         );
@@ -205,7 +218,7 @@ async function main() {
     assert(Number(usdcDecimals) === 6, `USDC decimals must be 6 (got ${usdcDecimals})`);
 
     const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
-    const reservoir = await ensureProxyDeployment(
+    const reservoir = await ensureProxyDeployment<ReservoirUSDC>(
         "ReservoirUSDC",
         ReservoirFactory,
         async () =>
@@ -219,34 +232,8 @@ async function main() {
         deployments
     );
 
-    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-    const vault = await ensureProxyDeployment(
-        "Vault",
-        VaultFactory,
-        async () =>
-            upgrades.deployProxy(
-                VaultFactory,
-                [
-                    accessManager.address,
-                    pauseManager.address,
-                    config.vault.performanceFeeBps,
-                    config.vault.performanceFeeReceiver,
-                    config.vault.protocolFeeBps,
-                    config.vault.protocolFeeReceiver,
-                ],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [usdcAddress, reservoir.address],
-                }
-            ),
-        fresh,
-        deployments
-    );
-
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
-    const mzusd = await ensureProxyDeployment(
+    const mzusd = await ensureProxyDeployment<MZUSD>(
         "MZUSD",
         MZUSDFactory,
         async () =>
@@ -261,7 +248,31 @@ async function main() {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [usdcAddress, vault.address],
+                    constructorArgs: [usdcAddress],
+                }
+            ),
+        fresh,
+        deployments
+    );
+
+    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+    const vault = await ensureProxyDeployment<Vault>(
+        "Vault",
+        VaultFactory,
+        async () =>
+            upgrades.deployProxy(
+                VaultFactory,
+                [
+                    config.vault.performanceFeeBps,
+                    config.vault.performanceFeeReceiver,
+                    config.vault.protocolFeeBps,
+                    config.vault.protocolFeeReceiver,
+                ],
+                {
+                    kind: "uups",
+                    initializer: "initialize",
+                    unsafeAllow: ["constructor", "state-variable-immutable"],
+                    constructorArgs: [mzusd.address, reservoir.address],
                 }
             ),
         fresh,
@@ -270,10 +281,10 @@ async function main() {
 
     // === Deploy tranches ===
     const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-    const trancheByKey = new Map<string, DeployResult<Contract>>();
+    const trancheByKey = new Map<string, DeployResult<Tranche>>();
     for (const tranche of config.tranches) {
         const key = `Tranche.${tranche.key}`;
-        const result = await ensureProxyDeployment(
+        const result = await ensureProxyDeployment<Tranche>(
             key,
             TrancheFactory,
             async () =>
@@ -302,10 +313,10 @@ async function main() {
         trancheByKey.set(tranche.key, result);
     }
 
-    let polJunior: DeployResult<Contract> | undefined;
+    let polJunior: DeployResult<PolJuniorTranche> | undefined;
     if (config.polJunior?.enabled) {
         const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
-        polJunior = await ensureProxyDeployment(
+        polJunior = await ensureProxyDeployment<PolJuniorTranche>(
             "PolJuniorTranche",
             PolFactory,
             async () =>
@@ -314,13 +325,16 @@ async function main() {
                     [
                         mzusd.address,
                         vault.address,
-                        config.polJunior!.name,
-                        config.polJunior!.symbol,
                         accessManager.address,
                         pauseManager.address,
                         config.polJunior!.polPayout,
                     ],
-                    {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
+                    {
+                        kind: "uups",
+                        initializer: "initialize",
+                        unsafeAllow: ["constructor", "state-variable-immutable"],
+                        constructorArgs: [vault.address],
+                    }
                 ),
             fresh,
             deployments
@@ -338,19 +352,17 @@ async function main() {
     });
 
     const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-    const lossManager = await ensureProxyDeployment(
+    const lossManager = await ensureProxyDeployment<LossManager>(
         "LossManager",
         LossManagerFactory,
         async () =>
             upgrades.deployProxy(
                 LossManagerFactory,
                 [
-                    accessManager.address,
-                    pauseManager.address,
                     mzusd.address,
                     vault.address,
                     orderAddresses,
-                    config.lossManager.groupIds,
+                    config.lossManager.isPairedWithNext,
                     parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0"),
                 ],
                 {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
@@ -360,7 +372,7 @@ async function main() {
     );
 
     const NavFactory = await ethers.getContractFactory("NavOracleAutomation", deployer);
-    const navOracle = await ensureDeployment(
+    const navOracle = await ensureDeployment<NavOracleAutomation>(
         "NavOracleAutomation",
         NavFactory,
         async () =>
@@ -381,21 +393,22 @@ async function main() {
     const lossManagerAdmin = lossManager.contract.connect(adminSigner);
     const navOracleAdmin = navOracle.contract.connect(adminSigner);
 
-    const finalizers: DeployResult<Contract>[] = [];
-    const finalizerByKey = new Map<string, DeployResult<Contract>>();
+    const finalizers: DeployResult<UmbrellaEpochFinalizer>[] = [];
+    const finalizerByKey = new Map<string, DeployResult<UmbrellaEpochFinalizer>>();
     if (config.umbrellaFinalizer?.enabled) {
         const FinalizerFactory = await ethers.getContractFactory(
             "UmbrellaEpochFinalizer",
             deployer
         );
+        const finalizerStartEpoch = BigInt(config.umbrellaFinalizer.startEpoch ?? 1);
         for (const tranche of config.tranches) {
             if (tranche.directWithdrawEnabled) continue;
             const trancheContract = trancheByKey.get(tranche.key)!;
             const key = `UmbrellaEpochFinalizer.${tranche.key}`;
-            const finalizer = await ensureDeployment(
+            const finalizer = await ensureDeployment<UmbrellaEpochFinalizer>(
                 key,
                 FinalizerFactory,
-                async () => FinalizerFactory.deploy(trancheContract.address),
+                async () => FinalizerFactory.deploy(trancheContract.address, finalizerStartEpoch),
                 fresh,
                 deployments
             );
@@ -440,9 +453,14 @@ async function main() {
 
     // === Wire core references ===
     log.step("Wiring core references");
-    if ((await vault.contract.mzusd()) === ethers.ZeroAddress) {
-        await (await vaultAdmin.setMZUSD(mzusd.address)).wait();
-        log.success("Vault.setMZUSD wired");
+    if ((await mzusd.contract.vault()) === ethers.ZeroAddress) {
+        await (await mzusdAdmin.setVault(vault.address)).wait();
+        log.success("MZUSD.setVault wired");
+    }
+
+    if ((await reservoir.contract.vault()) === ethers.ZeroAddress) {
+        await (await reservoir.contract.connect(adminSigner).setVault(vault.address)).wait();
+        log.success("ReservoirUSDC.setVault wired");
     }
 
     if ((await vault.contract.lossManager()) === ethers.ZeroAddress) {
@@ -637,19 +655,27 @@ async function main() {
     const currentProtReceiver = await vault.contract.protocolFeeReceiver();
     if (
         currentPerfBps !== BigInt(config.vault.performanceFeeBps) ||
-        currentProtBps !== BigInt(config.vault.protocolFeeBps) ||
+        currentProtBps !== BigInt(config.vault.protocolFeeBps)
+    ) {
+        await (
+            await vaultAdmin.setFeeRates(
+                config.vault.performanceFeeBps,
+                config.vault.protocolFeeBps
+            )
+        ).wait();
+        log.success("Vault.setFeeRates");
+    }
+    if (
         currentPerfReceiver.toLowerCase() !== config.vault.performanceFeeReceiver.toLowerCase() ||
         currentProtReceiver.toLowerCase() !== config.vault.protocolFeeReceiver.toLowerCase()
     ) {
         await (
-            await vaultAdmin.setFees(
-                config.vault.performanceFeeBps,
+            await vaultAdmin.setFeeReceivers(
                 config.vault.performanceFeeReceiver,
-                config.vault.protocolFeeBps,
                 config.vault.protocolFeeReceiver
             )
         ).wait();
-        log.success("Vault.setFees");
+        log.success("Vault.setFeeReceivers");
     }
 
     const cap = await mzusd.contract.globalRedemptionCapUSDC();
@@ -703,25 +729,25 @@ async function main() {
         }
     }
 
-    const [currentOrder, currentGroups] = await lossManager.contract.getTrancheOrderAndGroups();
+    const [currentOrder, currentPairFlags] = await lossManager.contract.getTrancheOrderAndPairs();
     const orderMatch =
         currentOrder.length === orderAddresses.length &&
         currentOrder.every(
             (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
         );
-    const groupMatch =
-        currentGroups.length === config.lossManager.groupIds.length &&
-        currentGroups.every(
-            (gid: bigint, i: number) => gid === BigInt(config.lossManager.groupIds[i])
+    const pairFlagsMatch =
+        currentPairFlags.length === config.lossManager.isPairedWithNext.length &&
+        currentPairFlags.every(
+            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
         );
-    if (!orderMatch || !groupMatch) {
+    if (!orderMatch || !pairFlagsMatch) {
         await (
-            await lossManagerAdmin.setTrancheOrderAndGroups(
+            await lossManagerAdmin.setTrancheOrderAndPairs(
                 orderAddresses,
-                config.lossManager.groupIds
+                config.lossManager.isPairedWithNext
             )
         ).wait();
-        log.success("LossManager.setTrancheOrderAndGroups");
+        log.success("LossManager.setTrancheOrderAndPairs");
     }
 
     if (config.lossManager.maxLossPerTxUSDC !== undefined) {
@@ -777,10 +803,10 @@ async function main() {
         accessManagerAdmin,
         vault.address,
         [
-            vault.contract.interface.getFunction("setMZUSD").selector,
             vault.contract.interface.getFunction("setLossManager").selector,
             vault.contract.interface.getFunction("setNavOracle").selector,
-            vault.contract.interface.getFunction("setFees").selector,
+            vault.contract.interface.getFunction("setFeeRates").selector,
+            vault.contract.interface.getFunction("setFeeReceivers").selector,
             vault.contract.interface.getFunction("setBuffer").selector,
             vault.contract.interface.getFunction("setEpochConfig").selector,
             vault.contract.interface.getFunction("addTranche").selector,
@@ -805,11 +831,18 @@ async function main() {
         accessManagerAdmin,
         mzusd.address,
         [
+            mzusd.contract.interface.getFunction("setVault").selector,
             mzusd.contract.interface.getFunction("setGlobalRedemptionCap").selector,
             mzusd.contract.interface.getFunction("setRedemptionWindowDuration").selector,
             mzusd.contract.interface.getFunction("setLossManager").selector,
         ],
         adminRole
+    );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        mzusd.address,
+        [mzusd.contract.interface.getFunction("burn").selector],
+        roleIds.BURNER_ROLE
     );
     await ensureTargetRole(
         accessManagerAdmin,
@@ -827,6 +860,12 @@ async function main() {
     await ensureTargetRole(
         accessManagerAdmin,
         reservoir.address,
+        [reservoir.contract.interface.getFunction("setVault").selector],
+        adminRole
+    );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        reservoir.address,
         [reservoir.contract.interface.getFunction("upgradeToAndCall").selector],
         roleIds.UPGRADER_ROLE
     );
@@ -835,7 +874,7 @@ async function main() {
         accessManagerAdmin,
         lossManager.address,
         [
-            lossManager.contract.interface.getFunction("setTrancheOrderAndGroups").selector,
+            lossManager.contract.interface.getFunction("setTrancheOrderAndPairs").selector,
             lossManager.contract.interface.getFunction("setNavOracle").selector,
             lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector,
         ],
@@ -872,7 +911,6 @@ async function main() {
             polJunior.address,
             [
                 polJunior.contract.interface.getFunction("withdraw").selector,
-                polJunior.contract.interface.getFunction("redeem").selector,
                 polJunior.contract.interface.getFunction("setPolPayout").selector,
             ],
             adminRole
@@ -979,11 +1017,23 @@ async function main() {
         await ensureRoleMember(accessManagerAdmin, roleIds.ORACLE_ROLE, addr, delays.oracle ?? 0);
     }
 
+    const burnerMembers = new Set<string>(Array.from(trancheByKey.values(), (t) => t.address));
+    if (polJunior) {
+        burnerMembers.add(polJunior.address);
+    }
+    for (const addr of burnerMembers) {
+        await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
+    }
+
     // === Post-deploy checks ===
     log.step("Post-deploy checks");
     assert(
         (await vault.contract.mzusd()).toLowerCase() === mzusd.address.toLowerCase(),
         "Vault.mzusd mismatch"
+    );
+    assert(
+        (await mzusd.contract.vault()).toLowerCase() === vault.address.toLowerCase(),
+        "MZUSD.vault mismatch"
     );
     assert(
         (await vault.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
@@ -1034,10 +1084,14 @@ async function main() {
         await verifyContract(reservoir.implementation, [usdcAddress], shouldVerify);
     }
     if (vault.implementation) {
-        await verifyContract(vault.implementation, [usdcAddress, reservoir.address], shouldVerify);
+        await verifyContract(
+            vault.implementation,
+            [mzusd.address, reservoir.address],
+            shouldVerify
+        );
     }
     if (mzusd.implementation) {
-        await verifyContract(mzusd.implementation, [usdcAddress, vault.address], shouldVerify);
+        await verifyContract(mzusd.implementation, [usdcAddress], shouldVerify);
     }
     for (const trancheConfig of config.tranches) {
         const tranche = trancheByKey.get(trancheConfig.key);
@@ -1050,7 +1104,7 @@ async function main() {
         }
     }
     if (polJunior?.implementation) {
-        await verifyContract(polJunior.implementation, [], shouldVerify);
+        await verifyContract(polJunior.implementation, [vault.address], shouldVerify);
     }
     if (lossManager.implementation) {
         await verifyContract(lossManager.implementation, [], shouldVerify);

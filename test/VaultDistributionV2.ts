@@ -41,6 +41,9 @@ describe("Vault Yield Distribution V2", () => {
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
     let vault: Vault;
+    let lossManagerRef: any;
+    let navOracleRef: any;
+    let navOracleSigner: any;
 
     let junior: Tranche;
     let mezzanine: Tranche;
@@ -83,18 +86,6 @@ describe("Vault Yield Distribution V2", () => {
             }
         )) as unknown as ReservoirUSDC;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-        vault = (await upgrades.deployProxy(
-            VaultFactory,
-            [accessManager.target, pauseManager.target, 0, bob.address, 0, carol.address],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, reservoir.target],
-            }
-        )) as unknown as Vault;
-
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
@@ -107,9 +98,17 @@ describe("Vault Yield Distribution V2", () => {
                 kind: "uups",
                 initializer: "initialize",
                 unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [MAINNET_USDC, vault.target],
+                constructorArgs: [MAINNET_USDC],
             }
         )) as unknown as MZUSD;
+
+        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [mzusd.target, reservoir.target],
+        })) as unknown as Vault;
 
         // ── Tranches ────────────────────────────────────────────────
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -174,13 +173,31 @@ describe("Vault Yield Distribution V2", () => {
             }
         )) as unknown as Tranche;
 
+        const MockLossManagerFactory = await ethers.getContractFactory(
+            "MockLossManagerRef",
+            deployer
+        );
+        lossManagerRef = await MockLossManagerFactory.deploy(vault.target, mzusd.target);
+        await lossManagerRef.waitForDeployment();
+
+        const MockNavOracleFactory = await ethers.getContractFactory(
+            "MockNavOracleAutomationRef",
+            deployer
+        );
+        navOracleRef = await MockNavOracleFactory.deploy(
+            vault.target,
+            lossManagerRef.target,
+            mzusd.target
+        );
+        await navOracleRef.waitForDeployment();
+        navOracleSigner = await imp(navOracleRef.target as string);
+
         // ── Roles ───────────────────────────────────────────────────
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         // Vault admin selectors
         const vaultSelectors = [
-            vault.interface.getFunction("setMZUSD").selector,
             vault.interface.getFunction("distributeYield").selector,
             vault.interface.getFunction("advanceEpoch").selector,
             vault.interface.getFunction("setLossManager").selector,
@@ -202,10 +219,14 @@ describe("Vault Yield Distribution V2", () => {
         await accessManager.setTargetFunctionRole(mezzanine.target, trancheSelectors, ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(junior.target, trancheSelectors, ADMIN_ROLE);
 
+        // MZUSD admin selectors
+        const mzusdSelectors = [mzusd.interface.getFunction("setVault").selector];
+        await accessManager.setTargetFunctionRole(mzusd.target, mzusdSelectors, ADMIN_ROLE);
+
         // ── Wire contracts ──────────────────────────────────────────
-        await vault.setMZUSD(mzusd.target);
-        await vault.setLossManager(deployer.address);
-        await vault.setNavOracle(deployer.address);
+        await mzusd.setVault(vault.target);
+        await vault.setLossManager(lossManagerRef);
+        await vault.setNavOracle(navOracleRef);
 
         // Register tranches (riskPremiumBps=0 initially, configured via setYieldDistribution)
         // Order: senior=idx0, mezzanine=idx1, junior=idx2
@@ -317,7 +338,7 @@ describe("Vault Yield Distribution V2", () => {
             // ── Distribute yield ─────────────────────────────────
             await time.increase(DAY);
             await fundYieldUSDC(YIELD_USDC);
-            await vault.distributeYield(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
 
             // ── Expected yield math ──────────────────────────────
             //
@@ -454,7 +475,7 @@ describe("Vault Yield Distribution V2", () => {
             // ── Distribute yield ─────────────────────────────────
             await time.increase(DAY);
             await fundYieldUSDC(YIELD_USDC);
-            await vault.distributeYield(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
 
             // ── Expected yield math ──────────────────────────────
             //
@@ -572,7 +593,7 @@ describe("Vault Yield Distribution V2", () => {
             // ── Distribute yield ─────────────────────────────────
             await time.increase(DAY);
             await fundYieldUSDC(YIELD_USDC);
-            await vault.distributeYield(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
 
             // ── Expected yield math ──────────────────────────────
             //

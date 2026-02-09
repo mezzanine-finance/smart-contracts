@@ -10,11 +10,13 @@ import "./pause/PauseCategory.sol";
 import "./interfaces/IMZUSD.sol";
 import "./interfaces/IReservoir.sol";
 import "./interfaces/ITranche.sol";
-// NOTE: This Vault is not an ERC4626 vault. It does not mint user shares or represent deposits.
-// Tranches are the ERC4626-like vaults for users. This Vault acts as a protocol treasury:
-// it mints MZUSD, manages yield distribution, holds the USDC buffer for withdrawals/insurance,
-// and coordinates with the Reservoir where strategies live.
-
+import "./interfaces/ILossManager.sol";
+import "./interfaces/INavOracleAutomation.sol";
+/// @title Vault
+/// @notice Protocol treasury that mints MZUSD, manages yield distribution, buffers USDC for withdrawals/insurance,
+///         and coordinates with the Reservoir where strategies live.
+/// @dev This Vault is not an ERC4626 vault and does not mint user shares or represent deposits.
+/// @dev Tranches are the ERC4626-like vaults for users.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract Vault is
@@ -47,9 +49,8 @@ contract Vault is
 
     //IMMUTABLE
     IERC20 public immutable usdc; // address of USDC token
+    IMZUSD public immutable mzusd; // address of MZUSD token, protocol stablecoin
     IReservoir public immutable reservoir; // address of reservoir contract for idle USDC
-
-    IMZUSD public mzusd; // address of MZUSD token, protocol stablecoin
     address public performanceFeeReceiver; // receiver of performance/curators fees
     address public protocolFeeReceiver; // receiver of protocols fees
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
@@ -80,7 +81,6 @@ contract Vault is
     event TrancheUpdated(uint256 idx, uint256 riskPremiumBps, bool enabled);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
     event WithdrawnUSDCFromVault(address to, uint256 amount);
-    event MZUSDChanged(address newMZUSD);
     event LossManagerUpdated(address newLossManager);
     event NavOracleUpdated(address newNavOracle);
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
@@ -101,14 +101,24 @@ contract Vault is
     error InvalidEpochDuration();
     error TooManyTranches();
     error SameValue();
-    error MZUSDAlreadySet();
     error LossManagerAlreadySet();
+    error LossManagerNotSet();
     error NotMZUSD();
     error NotLossManager();
     error NotNavOracle();
     error InvalidMZUSDDecimals(uint8 actualDecimals);
     error InvalidMZUSDUSDC(address actualUSDC);
-    error InvalidMZUSDVault(address actualVault);
+    error InvalidLossManagerVault(address actualVault);
+    error InvalidLossManagerMZUSD(address actualMZUSD);
+    error InvalidNavOracleVault(address actualVault);
+    error InvalidNavOracleLossManager(address actualLossManager);
+    error InvalidNavOracleMZUSD(address actualMZUSD);
+    error InvalidMZUSDAccessManager(address actualAccessManager);
+    error InvalidMZUSDPauseManager(address actualPauseManager);
+    error InvalidReservoirAccessManager(address actualAccessManager);
+    error InvalidReservoirPauseManager(address actualPauseManager);
+    error AddressHasNoCode(address candidate);
+    error InvalidReservoirUSDC(address actualUSDC);
     error ReservoirEmpty();
     error InvalidYieldDistribution();
     error LengthMismatch();
@@ -128,30 +138,28 @@ contract Vault is
         _;
     }
 
-    constructor(address _usdc, address _reservoir) {
-        if (_usdc == address(0) || _reservoir == address(0)) revert ZeroAddress();
-        usdc = IERC20(_usdc);
+    constructor(address _mzusd, address _reservoir) {
+        (IMZUSD token, address tokenUSDC) = _validateConstructorParams(_mzusd, _reservoir);
+
+        mzusd = token;
+        usdc = IERC20(tokenUSDC);
         reservoir = IReservoir(_reservoir);
         _disableInitializers();
     }
 
     /// @notice Initialize the Vault.
-    /// @param accessManager AccessManager address.
-    /// @param pauseManager_ PauseManager address for category-based pauses.
     /// @param _performanceFeeBps Performance/curator fee in bps (0 allowed).
     /// @param _performanceFeeReceiver Recipient of performance/curator fees.
     /// @param _protocolFeeBps Protocol fee in bps (0 allowed).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
     function initialize(
-        address accessManager,
-        address pauseManager_,
         uint16 _performanceFeeBps,
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
         address _protocolFeeReceiver
     ) external initializer {
-        if (accessManager == address(0)) revert ZeroAddress();
+        (address accessManager, address pauseManager_) = _resolveAndValidateCoreManagers();
 
         __AccessManaged_init(accessManager);
         __PauseManaged_init(pauseManager_);
@@ -236,31 +244,17 @@ contract Vault is
     }
 
     //SETTERS
-    /// @notice Set MZUSD address (one-time).
-    function setMZUSD(address _mzusd) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (_mzusd == address(0)) revert ZeroAddress();
-        if (address(mzusd) != address(0)) revert MZUSDAlreadySet();
-
-        uint8 decimals = IMZUSD(_mzusd).decimals();
-        if (decimals != 18) revert InvalidMZUSDDecimals(decimals);
-
-        address mzusdUSDC = IMZUSD(_mzusd).usdc();
-        if (mzusdUSDC != address(usdc)) revert InvalidMZUSDUSDC(mzusdUSDC);
-
-        address mzusdVault = IMZUSD(_mzusd).vault();
-        if (mzusdVault != address(this)) revert InvalidMZUSDVault(mzusdVault);
-
-        mzusd = IMZUSD(_mzusd);
-
-        emit MZUSDChanged(_mzusd);
-    }
-
     /// @notice Set LossManager address (one-time).
     function setLossManager(
         address _lossManager
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_lossManager == address(0)) revert ZeroAddress();
         if (lossManager != address(0)) revert LossManagerAlreadySet();
+        if (_lossManager.code.length == 0) revert AddressHasNoCode(_lossManager);
+        address lmVault = ILossManager(_lossManager).vault();
+        if (lmVault != address(this)) revert InvalidLossManagerVault(lmVault);
+        address lmMZUSD = ILossManager(_lossManager).mzusd();
+        if (lmMZUSD != address(mzusd)) revert InvalidLossManagerMZUSD(lmMZUSD);
         lossManager = _lossManager;
         emit LossManagerUpdated(_lossManager);
     }
@@ -271,6 +265,19 @@ contract Vault is
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_navOracle == address(0)) revert ZeroAddress();
         if (navOracle == _navOracle) revert SameValue();
+        if (lossManager == address(0)) revert LossManagerNotSet();
+        if (_navOracle.code.length == 0) revert AddressHasNoCode(_navOracle);
+
+        INavOracleAutomation oracle = INavOracleAutomation(_navOracle);
+        address oracleVault = oracle.vault();
+        if (oracleVault != address(this)) revert InvalidNavOracleVault(oracleVault);
+        address oracleLossManager = oracle.lossManager();
+        if (oracleLossManager != lossManager) {
+            revert InvalidNavOracleLossManager(oracleLossManager);
+        }
+        address oracleMZUSD = oracle.mzusd();
+        if (oracleMZUSD != address(mzusd)) revert InvalidNavOracleMZUSD(oracleMZUSD);
+
         navOracle = _navOracle;
         emit NavOracleUpdated(_navOracle);
     }
@@ -468,6 +475,56 @@ contract Vault is
     }
 
     //INTERNAL HELPERS
+    /// @notice Validate constructor parameters.
+    /// @param _mzusd MZUSD token address.
+    /// @param _reservoir Reservoir contract address.
+    /// @return token Validated MZUSD token interface.
+    /// @return tokenUSDC MZUSD's USDC address.
+    function _validateConstructorParams(
+        address _mzusd,
+        address _reservoir
+    ) internal view returns (IMZUSD token, address tokenUSDC) {
+        if (_mzusd == address(0) || _reservoir == address(0)) revert ZeroAddress();
+
+        token = IMZUSD(_mzusd);
+        uint8 decimals = token.decimals();
+        if (decimals != 18) revert InvalidMZUSDDecimals(decimals);
+
+        tokenUSDC = token.usdc();
+        if (tokenUSDC == address(0)) revert InvalidMZUSDUSDC(tokenUSDC);
+
+        address reservoirUSDC = IReservoir(_reservoir).usdc();
+        if (reservoirUSDC != tokenUSDC) revert InvalidReservoirUSDC(reservoirUSDC);
+    }
+
+    /// @notice Resolve and validate AccessManager and PauseManager from MZUSD/Reservoir.
+    /// @dev Enforces that MZUSD and Reservoir are wired to the same authority and pause manager.
+    function _resolveAndValidateCoreManagers()
+        internal
+        view
+        returns (address accessManager, address pauseManager_)
+    {
+        accessManager = mzusd.authority();
+        if (accessManager == address(0)) {
+            revert InvalidMZUSDAccessManager(accessManager);
+        }
+
+        pauseManager_ = mzusd.pauseManager();
+        if (pauseManager_ == address(0)) {
+            revert InvalidMZUSDPauseManager(pauseManager_);
+        }
+
+        address reservoirAccessManager = reservoir.authority();
+        if (reservoirAccessManager != accessManager) {
+            revert InvalidReservoirAccessManager(reservoirAccessManager);
+        }
+
+        address reservoirPauseManager = reservoir.pauseManager();
+        if (reservoirPauseManager != pauseManager_) {
+            revert InvalidReservoirPauseManager(reservoirPauseManager);
+        }
+    }
+
     /// @notice Internal function to set fee rates.
     /// @param _performanceFeeBps Performance/curator fee in bps.
     /// @param _protocolFeeBps Protocol fee in bps.

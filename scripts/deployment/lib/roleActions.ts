@@ -37,6 +37,21 @@ export async function grantRoles() {
     if (!vaultDeployment) {
         throw new Error("Vault deployment not found for this network");
     }
+    const trancheDeployments = config.tranches.map((tranche) => {
+        const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
+        if (!deployment) {
+            throw new Error(`Tranche deployment not found for key: ${tranche.key}`);
+        }
+        return deployment.address;
+    });
+    const burnerTargets = [...trancheDeployments];
+    if (config.polJunior?.enabled) {
+        const polDeployment = getLatestDeployment(deployments, network.name, "PolJuniorTranche");
+        if (!polDeployment) {
+            throw new Error("PolJuniorTranche deployment not found for this network");
+        }
+        burnerTargets.push(polDeployment.address);
+    }
 
     const accessManager = await ethers.getContractAt(
         "AccessManager",
@@ -134,6 +149,10 @@ export async function grantRoles() {
         await ensureRoleMember(accessManager, config.roleIds.ORACLE_ROLE, addr, delays.oracle ?? 0);
     }
 
+    for (const addr of uniqueAddresses(burnerTargets)) {
+        await ensureRoleMember(accessManager, config.roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
+    }
+
     log.success("Role grants complete");
 }
 
@@ -150,6 +169,21 @@ export async function renounceRoles() {
     const vaultDeployment = getLatestDeployment(deployments, network.name, "Vault");
     if (!vaultDeployment) {
         throw new Error("Vault deployment not found for this network");
+    }
+    const trancheDeployments = config.tranches.map((tranche) => {
+        const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
+        if (!deployment) {
+            throw new Error(`Tranche deployment not found for key: ${tranche.key}`);
+        }
+        return deployment.address;
+    });
+    const burnerMembers = [...trancheDeployments];
+    if (config.polJunior?.enabled) {
+        const polDeployment = getLatestDeployment(deployments, network.name, "PolJuniorTranche");
+        if (!polDeployment) {
+            throw new Error("PolJuniorTranche deployment not found for this network");
+        }
+        burnerMembers.push(polDeployment.address);
     }
 
     const accessManager = await ethers.getContractAt(
@@ -191,6 +225,11 @@ export async function renounceRoles() {
             name: "ORACLE_ROLE",
             roleId: roleIds.ORACLE_ROLE,
             members: config.navOracle.oracles,
+        },
+        {
+            name: "BURNER_ROLE",
+            roleId: roleIds.BURNER_ROLE,
+            members: burnerMembers,
         },
     ];
 

@@ -24,11 +24,12 @@ contract MZUSD is
 
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
+    /// @notice Decimal conversion scale between USDC (6d) and MZUSD (18d): 1 USDC = 1e12 MZUSD units.
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
     uint32 public constant MAX_REDEMPTION_WINDOW_DURATION = 30 days;
 
-    IVault public immutable vault;
+    IVault public vault;
     address public lossManager;
     /// @notice Start timestamp of current redemption window.
     uint40 public windowStartTimestamp;
@@ -43,8 +44,6 @@ contract MZUSD is
     uint256 transient _txDepositedUSDC;
     /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
-    /// @notice Addresses allowed to burn their MZUSD balances.
-    mapping(address => bool) public trancheBurner;
 
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
@@ -52,31 +51,31 @@ contract MZUSD is
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
     event LossManagerUpdated(address indexed lossManager);
-    event TrancheBurnerUpdated(address indexed tranche, bool allowed);
+    event VaultUpdated(address indexed vault);
 
     error ZeroAmount();
     error ZeroAddress();
     error ZeroCap();
     error ZeroDuration();
     error SameValue();
+    error VaultAlreadySet();
+    error VaultNotSet();
     error LossManagerAlreadySet();
     error NotVault();
     error NotLossManager();
-    error NotTrancheBurner();
     error InvalidRedemptionWindowDuration();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
 
-    constructor(address _usdc, address _vault) {
-        if (_usdc == address(0) || _vault == address(0)) revert ZeroAddress();
+    constructor(address _usdc) {
+        if (_usdc == address(0)) revert ZeroAddress();
 
         // aderyn-fp-next-line(reentrancy-state-change)
         uint8 usdcDecimals = IERC20Metadata(_usdc).decimals();
         if (usdcDecimals != USDC_DECIMALS) revert InvalidUSDCDecimals(usdcDecimals);
 
         usdc = IERC20(_usdc);
-        vault = IVault(_vault);
         _disableInitializers();
     }
 
@@ -87,11 +86,6 @@ contract MZUSD is
 
     modifier onlyLossManager() {
         if (msg.sender != lossManager) revert NotLossManager();
-        _;
-    }
-
-    modifier onlyTrancheBurner() {
-        if (!trancheBurner[msg.sender]) revert NotTrancheBurner();
         _;
     }
 
@@ -117,8 +111,11 @@ contract MZUSD is
         nextRedemptionWindowDuration = redemptionWindowDuration;
     }
 
-    /// @notice Deposit USDC and mint MZUSD 1:1.
-    /// @param amountUSDC USDC amount (6 decimals).
+    /// @notice Deposit USDC and mint MZUSD at fixed 1:1 notional value.
+    /// @param amountUSDC USDC amount in 6 decimals.
+    /// @dev Minted amount is amountUSDC * SCALE, so conversion is exact (no rounding loss on deposit).
+    /// @dev Example: deposit 15_000_000 (15 USDC in 6d) -> mint 15_000_000_000_000_000_000 (15 MZUSD in 18d).
+    /// @dev USDC is transferred directly to the Vault, MZUSD is minted to the depositor.
     function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -140,6 +137,10 @@ contract MZUSD is
     /// @dev v2: might be changed to enqueue
     /// @dev Applies atomic netting of deposits vs withdrawals within the same tx
     /// @dev Enforces global redemption cap per window
+    /// @dev Withdrawal is quantized to full USDC units: usdcOut = floor(amountMZ / SCALE).
+    /// @dev Only burnAmount = usdcOut * SCALE is burned, any sub-SCALE remainder stays on user balance.
+    /// @dev Example: if amountMZ = SCALE + 123, then usdcOut = 1, burnAmount = SCALE, and 123 MZUSD-wei remain.
+    /// @dev If amountMZ < SCALE, tx reverts with `TooSmallWithdrawalAmount`.
     function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         uint256 usdcOut = amountMZ / SCALE;
         if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
@@ -152,6 +153,7 @@ contract MZUSD is
 
         _burn(msg.sender, burnAmount);
 
+        if (address(vault) == address(0)) revert VaultNotSet();
         vault.withdraw(msg.sender, usdcOut);
 
         emit Withdrawal(msg.sender, usdcOut);
@@ -190,9 +192,9 @@ contract MZUSD is
         _mint(to, amount);
     }
 
-    /// @notice Burn MZUSD from an address.
-    /// @dev Used by tranche contracts to burn their own MZUSD balances.
-    function burn(uint256 amount) external onlyTrancheBurner whenNotPaused(PauseCategory.PROTOCOL) {
+    /// @notice Burn MZUSD from caller balance.
+    /// @dev AccessManager should grant burn permission only to approved tranche contracts.
+    function burn(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _burn(msg.sender, amount);
     }
 
@@ -238,11 +240,12 @@ contract MZUSD is
         emit LossManagerUpdated(_lossManager);
     }
 
-    /// @notice Allow or disallow a tranche to burn its own balance.
-    function setTrancheBurner(address tranche, bool allowed) external restricted {
-        if (tranche == address(0)) revert ZeroAddress();
-        trancheBurner[tranche] = allowed;
-        emit TrancheBurnerUpdated(tranche, allowed);
+    /// @notice Set Vault address (one-time).
+    function setVault(address _vault) external restricted {
+        if (_vault == address(0)) revert ZeroAddress();
+        if (address(vault) != address(0)) revert VaultAlreadySet();
+        vault = IVault(_vault);
+        emit VaultUpdated(_vault);
     }
 
     //GETTERS

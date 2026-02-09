@@ -96,6 +96,11 @@
     },
     {
         "inputs": [],
+        "name": "ValueTooLarge",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "ZeroAddress",
         "type": "error"
     },
@@ -117,18 +122,6 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "uint256",
-                "name": "navUSDC",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "totalSupplyMZ",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
                 "internalType": "bool",
                 "name": "isYield",
                 "type": "bool"
@@ -137,6 +130,12 @@
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "deltaUSDC",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "readyAt",
                 "type": "uint256"
             }
         ],
@@ -148,14 +147,20 @@
         "inputs": [
             {
                 "indexed": false,
+                "internalType": "bool",
+                "name": "isYield",
+                "type": "bool"
+            },
+            {
+                "indexed": false,
                 "internalType": "uint256",
-                "name": "navUSDC",
+                "name": "deltaUSDC",
                 "type": "uint256"
             },
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "totalSupplyMZ",
+                "name": "readyAt",
                 "type": "uint256"
             }
         ],
@@ -261,7 +266,7 @@
         "inputs": [
             {
                 "internalType": "bytes",
-                "name": "",
+                "name": "checkData",
                 "type": "bytes"
             }
         ],
@@ -335,12 +340,25 @@
     },
     {
         "inputs": [],
-        "name": "pendingNavUSDC",
+        "name": "pendingDeltaUSDC",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint128",
                 "name": "",
-                "type": "uint256"
+                "type": "uint128"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pendingIsYield",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
             }
         ],
         "stateMutability": "view",
@@ -351,35 +369,9 @@
         "name": "pendingReadyAt",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint64",
                 "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "pendingSubmittedAt",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "pendingTotalSupplyMZ",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",
@@ -389,7 +381,7 @@
         "inputs": [
             {
                 "internalType": "bytes",
-                "name": "",
+                "name": "performData",
                 "type": "bytes"
             }
         ],
@@ -462,9 +454,9 @@
         "name": "vetoPeriod",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "uint32",
                 "name": "",
-                "type": "uint256"
+                "type": "uint32"
             }
         ],
         "stateMutability": "view",

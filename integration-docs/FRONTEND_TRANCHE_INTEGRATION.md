@@ -4,13 +4,16 @@ This doc explains how to wire tranche pages (senior, mezzanine, junior) to the s
 
 ## TL;DR for UI behavior
 
-- Each tranche is an ERC-4626 vault over **MZUSD (18 decimals)**.
+- Standard tranches are ERC-4626 vaults over **MZUSD (18 decimals)**.
+- `PolJuniorTranche` is an admin-only escrow (no ERC-4626 shares).
 - Direct withdraw/redeem depends on `directWithdrawEnabled()`.
     - If enabled: `requestWithdrawal(shares)` redeems immediately (same result as `redeem` to self).
     - If disabled: `requestWithdrawal(shares)` enters the umbrella flow (wait + claim).
 - `PolJuniorTranche` is a separate contract for protocol-owned liquidity.
-    - `withdraw` and `redeem` are AccessManager-restricted.
+    - There is no `deposit` function; admins transfer MZUSD directly to the tranche address.
+    - `withdraw` is AccessManager-restricted.
     - Do not expose it to users unless you control the admin flow.
+    - Asset is **intended** to be MZUSD (not a generic ERC20 tranche).
 
 ## Contracts you need per tranche page
 
@@ -22,7 +25,7 @@ For standard tranches:
 
 For POL tranches (if you expose them at all):
 
-- **PolJuniorTranche** (ERC-4626 with restricted withdraw/redeem)
+- **PolJuniorTranche** (admin-only escrow; no ERC-4626 shares)
 - **MZUSD** (asset token for deposits)
 
 You should have ABI + address for each.
