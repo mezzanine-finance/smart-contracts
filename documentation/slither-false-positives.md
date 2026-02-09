@@ -17,10 +17,10 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
     non-standard tokens, we can switch to `SafeERC20`.
 
 - `divide-before-multiply` (Medium)
-  - Files: `contracts/MZUSD.sol`, `contracts/Vault.sol`, `contracts/test/MockNavSubmitterAutomation.sol`.
+  - Files: `contracts/MZUSD.sol`, `contracts/Vault.sol`.
   - Reason: rounding down to 6-decimal USDC is intentional; burn uses the
     rounded amount to avoid dust mismatch in `MZUSD.requestWithdrawal`; in Vault
-    and test automation this is expected integer arithmetic with accepted rounding.
+    this is expected integer arithmetic with accepted rounding.
 
 - `incorrect-equality` (Medium)
   - File: `contracts/Vault.sol` (`available == 0`).
@@ -30,7 +30,7 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
   - Files: `contracts/automation/NavOracleAutomation.sol`,
     `contracts/Vault.sol`, `contracts/LossManager.sol`, `contracts/MZUSD.sol`,
     `contracts/ReservoirUSDC.sol`, `contracts/Tranche.sol`,
-    `contracts/PolJuniorTranche.sol`, `contracts/test/MockNavSubmitterAutomation.sol`.
+    `contracts/PolJuniorTranche.sol`.
   - Reason: external calls are to protocol components under AccessManager
     control. No untrusted callbacks are expected; findings are informational.
 
@@ -39,27 +39,16 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
   - Reason: loop variables default to zero in Solidity; pattern is idiomatic.
 
 - `unused-return` (Medium)
-  - Files: `contracts/Vault.sol`, `contracts/LossManager.sol`,
-    `contracts/test/MZUSDNettingHelper.sol`,
-    `contracts/test/MockNavSubmitterAutomation.sol`.
+  - Files: `contracts/Vault.sol`, `contracts/LossManager.sol`.
   - Reason: return values are not required for correctness; used for calls
     where revert semantics are sufficient.
 
 - `missing-zero-check` (Low)
   - Files: `contracts/automation/NavOracleAutomation.sol`,
-    `contracts/PolJuniorTranche.sol`,
-    `contracts/test/MockMZUSD.sol`,
-    `contracts/test/MockNavOracleAutomationRef.sol`,
-    `contracts/test/MockLossManagerRef.sol`.
+    `contracts/PolJuniorTranche.sol`.
   - Reason: in `PolJuniorTranche` payout is already validated by `_resolveCoreContracts`;
     in `NavOracleAutomation` addresses are derived from deployed `LossManager` and
-    deployment script post-validates `mzusd/vault/lossManager` consistency; mock files
-    are test-only and intentionally lightweight.
-
-- `missing-inheritance` (Info)
-  - File: `contracts/automation/NavOracleAutomation.sol`.
-  - Reason: detector compares against test helper interface
-    `INavOracleAutomationForMock`; production contract intentionally does not inherit it.
+    deployment script post-validates `mzusd/vault/lossManager` consistency.
 
 - `redundant-statements` (Info)
   - Files: `contracts/automation/NavOracleAutomation.sol`,

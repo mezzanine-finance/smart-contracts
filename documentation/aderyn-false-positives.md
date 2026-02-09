@@ -20,16 +20,7 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
     calls. These paths are AccessManager-controlled and do not expose untrusted
     callbacks by design.
 
-- `contract-locks-ether` (H-2)
-  - Reason: UUPS contracts inherit OpenZeppelin `upgradeToAndCall` which is
-    payable; Aderyn flags the contract as locking Ether even though there is no
-    intentional ETH flow. ETH can only be forced via `selfdestruct`, and we do
-    not support ETH withdrawals by design.
-  - Suppression: inline `aderyn-fp-next-line(contract-locks-ether)` on the
-    contract declaration (see `contracts/pause/PauseManager.sol` and other
-    UUPS contracts).
-
-- `unsafe-erc20-operation` / `unchecked-return` (L-1, L-11)
+- `unsafe-erc20-operation` / `unchecked-return` (L-1, L-10)
   - Files: `contracts/MZUSD.sol`, `contracts/ReservoirUSDC.sol`,
     `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
   - Reason: we interact with well-known tokens (USDC) or our own ERC20s. These
@@ -52,31 +43,40 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
     `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
   - Reason: modifiers kept for clarity and future extensibility.
 
-- `loop-contains-revert` (L-6)
+- `loop-contains-revert` (L-5)
   - Files: `contracts/LossManager.sol`.
   - Reason: these loops validate configuration and should fail fast on invalid
     input.
 
-- `redundant-statement` (L-7)
+- `redundant-statement` (L-6)
   - Files: `contracts/automation/NavOracleAutomation.sol`,
     `contracts/automation/UmbrellaEpochFinalizer.sol`.
   - Reason: `checkData;` / `performData;` are explicit no-op markers for
     Chainlink Automation compatibility where calldata is intentionally ignored.
 
-- `uninitialized-local-variable` (L-8)
+- `uninitialized-local-variable` (L-7)
   - Files: `contracts/LossManager.sol`, `contracts/Vault.sol`.
   - Reason: loop counters default to zero by Solidity rules.
 
-- `costly-operations-inside-loop` (L-9)
+- `costly-operations-inside-loop` (L-8)
   - Files: `contracts/LossManager.sol`.
   - Reason: loops are bounded and called in admin flows; gas is acceptable.
 
-- `state-change-without-event` (L-10)
+- `state-change-without-event` (L-9)
   - File: `contracts/automation/UmbrellaEpochFinalizer.sol`.
   - Reason: offchain tracking is expected to use `nextEpochId` state and
     underlying tranche/vault events; extra event here is optional, not a safety issue.
 
+## Inline-Suppressed (Not in Current Report)
+
+- `contract-locks-ether`
+  - Reason: UUPS contracts inherit OpenZeppelin `upgradeToAndCall` which is
+    payable; Aderyn may flag the contract as locking Ether even though there is
+    no intentional ETH flow.
+  - Suppression: inline `aderyn-fp-next-line(contract-locks-ether)` on UUPS
+    contract declarations.
+
 - `unused-import`
   - File: `contracts/AccessManagerImport.sol`.
-  - Reason: this file forces dependency compilation; suppressed inline via
-    `aderyn-ignore-next-line(unused-import)`.
+  - Reason: this file forces dependency compilation.
+  - Suppression: inline `aderyn-ignore-next-line(unused-import)`.
