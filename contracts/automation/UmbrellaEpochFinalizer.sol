@@ -56,11 +56,12 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
         performData;
         address vault = tranche.vault();
         uint256 current = IVault(vault).currentEpochId();
+        uint256 epochId = nextEpochId;
+        nextEpochId++;
         if (current <= 1) revert InvalidState();
-        if (nextEpochId >= current) revert NoWork();
-        if (tranche.umbrellaSharesByEpoch(nextEpochId) > 0) {
-            tranche.finalizeEpoch(nextEpochId);
+        if (epochId >= current) revert NoWork();
+        if (tranche.umbrellaSharesByEpoch(epochId) > 0) {
+            tranche.finalizeEpoch(epochId);
         }
-        ++nextEpochId;
     }
 }
