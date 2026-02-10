@@ -826,5 +826,128 @@
         "deployedAt": "2026-02-09T19:27:21.538Z"
       }
     ]
+  },
+  "sepolia": {
+    "AccessManager": [
+      {
+        "version": 1,
+        "address": "0xE7874975f5c7263F57F8b5C006782613fca3F735",
+        "txHash": "0xa38801676c9f9d785f9b0abc24150b0aa12d33f165e1b029cdf5d48a78edb89b",
+        "deployedAt": "2026-02-10T21:22:00.991Z"
+      }
+    ],
+    "PauseManager": [
+      {
+        "version": 1,
+        "address": "0x558CA955d71fdbF9D5B8a76bAcE536ed3cC6f977",
+        "implementation": "0x483c39911CCbDb4793c84DC11Ff30D9027F68020",
+        "txHash": "0xaa500ffaf88fd3924360355875254897ce02c2e915929a1c178fecb050817099",
+        "deployedAt": "2026-02-10T21:22:25.984Z"
+      }
+    ],
+    "MockUSDC": [
+      {
+        "version": 1,
+        "address": "0x591606a9D14cda6577338Ef5CA881074D1Ff53A7",
+        "txHash": "0xfa07873626b1d51d9bf5eb3dc95227bee30bacb2741af48d89fd8473aba12133",
+        "deployedAt": "2026-02-10T21:22:36.911Z"
+      }
+    ],
+    "ReservoirUSDC": [
+      {
+        "version": 1,
+        "address": "0x7dD430d3F4eE218FaE62cC9Fc790f09FaF8519d8",
+        "implementation": "0xe8Bb38D744b81F79CabdF45ac008c7890A38729e",
+        "txHash": "0x3ea3036e595da22577f74297cda140e9eae5a94b5245793eeaa4b6c4fb97f49e",
+        "deployedAt": "2026-02-10T21:23:12.923Z"
+      }
+    ],
+    "MZUSD": [
+      {
+        "version": 1,
+        "address": "0xfe73ffB476f2C0727AaB0177CCb48718C511aD36",
+        "implementation": "0x2d75094b3d0D01c8B101F2Ec391dC620e7cdF6Bf",
+        "txHash": "0xa0791153ec209f9066eba6b5aa05e8d87e26fffdfbaafa2c3e07108481946032",
+        "deployedAt": "2026-02-10T21:23:48.840Z"
+      }
+    ],
+    "Vault": [
+      {
+        "version": 1,
+        "address": "0xe2972CE74CAB51fA24195709cAf120b6cDf04fc3",
+        "implementation": "0x5820bAcCA2ca03159b32e74CCA1BB83eC5ef3a75",
+        "txHash": "0x9a70328f230ab320bc015e6da225a2bbe47f9683e6e6d584e56d6a0d85aaa153",
+        "deployedAt": "2026-02-10T21:24:24.892Z"
+      }
+    ],
+    "Tranche.senior": [
+      {
+        "version": 1,
+        "address": "0xed53857e592d30D2944705A0638402950FDeb967",
+        "implementation": "0x5200FCd5B779a80E6E88369eB70ae8EDadAf97FD",
+        "txHash": "0xe7e394eef05f46e175fca3acee87f86ec36d99e6d04a8e0422ba5bf2b7cbd65f",
+        "deployedAt": "2026-02-10T21:24:49.013Z"
+      }
+    ],
+    "Tranche.mezzanine": [
+      {
+        "version": 1,
+        "address": "0xE029D8dAaF911e614A34788207a8A4a0FFd9C680",
+        "implementation": "0xCF4a3137972d493533F11541e2A2F06b16c3074E",
+        "txHash": "0xf3edbf8235284003705e910bfb3ded0e54fa74a0039e919d2d83022cc47ea90b",
+        "deployedAt": "2026-02-10T21:25:13.929Z"
+      }
+    ],
+    "Tranche.junior": [
+      {
+        "version": 1,
+        "address": "0xd15053aeb57418a136794E04C9B868Af08c25c59",
+        "implementation": "0xCF4a3137972d493533F11541e2A2F06b16c3074E",
+        "txHash": "0x9862bbd05b603a4f811514da1ef95e783125cb10289f0ab6e6e682b26b1034fa",
+        "deployedAt": "2026-02-10T21:25:24.943Z"
+      }
+    ],
+    "PolJuniorTranche": [
+      {
+        "version": 1,
+        "address": "0xEDDc4DEa059D1E9E350f4780163b13FD41214547",
+        "implementation": "0xB695b23558a44B3163764B72FFf6320c710Dc744",
+        "txHash": "0x99260eee2ae619c87a2f03e803ddbc83f43fb3b632ef5875f41d775552aed68e",
+        "deployedAt": "2026-02-10T21:25:48.813Z"
+      }
+    ],
+    "LossManager": [
+      {
+        "version": 1,
+        "address": "0xB60F2B1CdF25dEfcB39cCBCB2d815485e0461f79",
+        "implementation": "0x7F0347564b129F3651a0F532108D73266C076393",
+        "txHash": "0x940245fe1eac7f92f6fcba51d81f5683a6ea72fd9e62c6a4cbf753bb7d263685",
+        "deployedAt": "2026-02-10T21:26:12.844Z"
+      }
+    ],
+    "NavOracleAutomation": [
+      {
+        "version": 1,
+        "address": "0x8394E89FF4E820d9951Bc828E441cf7b4dcdCE76",
+        "txHash": "0xad30453e9bb2ef3751d83b3dfdeb2fd398e886f2723d6ff2cdd84ca2f30eb84c",
+        "deployedAt": "2026-02-10T21:26:24.860Z"
+      }
+    ],
+    "UmbrellaEpochFinalizer.mezzanine": [
+      {
+        "version": 1,
+        "address": "0xc64b916823571cA9CEe2668A47329B369083D229",
+        "txHash": "0xe6baa4d99dd9d76357a1a013516f63a4e3f24b835d0c517a81085f313b8a63aa",
+        "deployedAt": "2026-02-10T21:26:36.905Z"
+      }
+    ],
+    "UmbrellaEpochFinalizer.junior": [
+      {
+        "version": 1,
+        "address": "0xe8482C00d08efB5D2419a7AC6B2Ef58DEcf468c9",
+        "txHash": "0x829e859a6a26fde10f7728559f874635f9ae329e492a6b8512f1c739539a63eb",
+        "deployedAt": "2026-02-10T21:26:48.932Z"
+      }
+    ]
   }
 }
