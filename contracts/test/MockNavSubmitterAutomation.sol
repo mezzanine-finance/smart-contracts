@@ -19,8 +19,9 @@ interface IVaultForMock {
 /// @dev Intentionally convenience-first and not hardened. Use only in test/dev environments.
 contract MockNavSubmitterAutomation is AutomationCompatibleInterface {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
-    uint256 public constant BPS = 10_000;
-    uint256 public constant PREMIUM_BPS = 500; // +5%
+    // 0.001% precision to allow much smaller per-epoch growth in short test epochs.
+    uint256 public constant BPS = 100_000;
+    uint256 public constant PREMIUM_BPS = 3; // +0.003% per submission
     uint256 public constant MIN_NAV_DELTA_USDC = 1;
 
     address public immutable vault;

@@ -234,7 +234,9 @@ describe("NavSubmitterAutomation", () => {
 
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
-        const expectedDelta = (totalSupplyUSDC * 500n + 9_999n) / 10_000n;
+        const premiumBps = await submitter.PREMIUM_BPS();
+        const bps = await submitter.BPS();
+        const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
 
         const [needed] = await submitter.checkUpkeep("0x");
         expect(needed).to.equal(true);
@@ -307,7 +309,9 @@ describe("NavSubmitterAutomation", () => {
 
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
-        const expectedDelta = (totalSupplyUSDC * 500n + 9_999n) / 10_000n;
+        const premiumBps = await submitter.PREMIUM_BPS();
+        const bps = await submitter.BPS();
+        const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
         const expectedNav = totalSupplyUSDC + expectedDelta;
 
         const [canSubmit, navUSDC] = await submitter.previewNextNav();

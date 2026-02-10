@@ -52,7 +52,7 @@
         "protocolFeeReceiver": "0x1111111111111111111111111111111111111111",
         "idleBufferUSDC": "1000000",
         "hysteresisBps": 500,
-        "epochDurationSec": 86400
+        "epochDurationSec": 3600
     },
     "seed": {
         "mzusdDepositUSDC": "1000000"
@@ -109,7 +109,7 @@
         "maxLossPerTxUSDC": "10000000"
     },
     "navOracle": {
-        "vetoPeriodSec": 600,
+        "vetoPeriodSec": 0,
         "oracles": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"]
     },
     "umbrellaFinalizer": {
