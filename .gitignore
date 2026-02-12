@@ -38,6 +38,10 @@ gas-report.txt
 # Output of `solc`.
 bin
 
+# Foundry files.
+cache_forge
+out-foundry
+
 # Docs
 docs/_*/
 docs/test/

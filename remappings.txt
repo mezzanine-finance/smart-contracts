@@ -1,0 +1,6 @@
+forge-std/=lib/forge-std/src/
+contracts/=contracts/
+@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
+@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/
+@chainlink/=node_modules/@chainlink/
+@prb/math/=node_modules/@prb/math/

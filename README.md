@@ -74,6 +74,47 @@ npm run test:fork
 
 Environment requirements: Node `>=22.21.1`, npm `>=11.6.2`.
 
+## Foundry fuzz setup (auditors)
+
+This repository includes a Foundry fuzz suite in `test/foundry/fuzz/`.
+
+**1) Install Foundry (if missing)**
+
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
+
+**2) Initialize submodules (required for `forge-std`; skip if already cloned with `--recurse-submodules`)**
+
+```bash
+git submodule update --init --recursive
+```
+
+**3) Build**
+
+```bash
+npm run forge:build
+```
+
+**4) Run fuzz tests**
+
+```bash
+npm run forge:test:fuzz
+```
+
+**5) Run CI-profile fuzz tests (more runs)**
+
+```bash
+npm run forge:test:fuzz:ci
+```
+
+**6) Generate fuzz coverage summary**
+
+```bash
+npm run forge:coverage:fuzz
+```
+
 ## Scripts and commands
 
 **Build**
@@ -98,6 +139,20 @@ Environment requirements: Node `>=22.21.1`, npm `>=11.6.2`.
   Use `npm run test:fork` or set `.env` `FORKING=true` and run `npm test`.
   `npx hardhat test --fork` is not used here and will not work with this setup.
   Configure `.env` with the required RPC settings (see `.env.example`).
+
+**Foundry / fuzz**
+
+ `npm run forge:build` - compile Foundry contracts
+
+ `npm run forge:test` - run all Foundry tests with verbose logs
+
+ `npm run forge:test:fuzz` - run fuzz suite in `test/foundry/fuzz/`
+
+ `npm run forge:test:fuzz:ci` - run fuzz suite with `FOUNDRY_PROFILE=ci`
+
+ `npm run forge:coverage:fuzz` - run Foundry coverage summary for fuzz suite
+
+ `npm run forge:test:ci` - run all Foundry tests with `FOUNDRY_PROFILE=ci`
 
 **Lint and format**
 
