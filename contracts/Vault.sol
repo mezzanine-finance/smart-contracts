@@ -47,6 +47,9 @@ contract Vault is
     // check if address is registered tranche
     mapping(address => bool) public isTranche;
 
+    /// @notice Pairing lookup for loss allocation. If non-zero, tranche shares loss with the paired tranche.
+    mapping(address => address) public tranchePairedTo;
+
     //IMMUTABLE
     IERC20 public immutable usdc; // address of USDC token
     IMZUSD public immutable mzusd; // address of MZUSD token, protocol stablecoin
@@ -86,7 +89,7 @@ contract Vault is
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
     event EpochDurationQueued(uint256 epochDuration);
-    event YieldDistributionUpdated(uint16 baseRewardBps, uint16[] riskPremiumsBps, bool[] enabled);
+    event TrancheConfigUpdated();
 
     error AllocationMismatch(uint256 allocated, uint256 expected);
     error ZeroAmount();
@@ -120,6 +123,9 @@ contract Vault is
     error ReservoirEmpty();
     error InvalidYieldDistribution();
     error LengthMismatch();
+    error DuplicateTranche(address tranche);
+    error PairNotContiguous(uint256 index);
+    error TrancheNotRegistered(address tranche);
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -312,8 +318,10 @@ contract Vault is
     }
 
     /// @notice Register a new tranche.
-    /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setYieldDistribution().
-    function addTranche(address _tranche) external restricted whenNotPaused(PauseCategory.ADMIN) {
+    /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setTrancheConfig().
+    function registerTranche(
+        address _tranche
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (_tranche == address(0)) revert ZeroAddress();
         if (isTranche[_tranche]) revert TrancheExists();
         if (tranches.length >= MAX_TRANCHES) revert TooManyTranches();
@@ -323,45 +331,54 @@ contract Vault is
         emit TrancheRegistered(_tranche);
     }
 
-    // /// @notice Update tranche info.
-    // /// @param idx Tranche index in `tranches`.
-    // /// @param riskPremiumBps New riskPremiumBps for yield allocation.
-    // /// @param enabled Whether the tranche receives allocations.
-    // function updateTranche(
-    //     uint256 idx,
-    //     uint16 riskPremiumBps,
-    //     bool enabled
-    // ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-    //     if (idx >= tranches.length) revert TrancheIndexOOB();
-    //     tranches[idx].riskPremiumBps = riskPremiumBps;
-    //     tranches[idx].enabled = enabled;
-    //     emit TrancheUpdated(idx, riskPremiumBps, enabled);
-    // }
-
-    /// @notice Update base reward and risk premium distribution across all tranches.
+    /// @notice Configure tranche order, pairing, and yield distribution in one call.
+    /// @param _tranches Tranche info structs in desired burn/allocation order (must all be registered).
+    /// @param _isPairedWithNext Pair flags aligned with `_tranches` (contiguous true,true for pairs).
     /// @param _baseRewardBps Base reward pool share in bps.
-    /// @param _riskPremiumsBps Risk premium in bps for each tranche (length must match tranches array).
-    /// @param _enabled Whether each tranche receives allocations (length must match tranches array).
-    /// @dev Enforces invariant: _baseRewardBps + sum(_riskPremiumsBps) == BPS (10_000).
-    function setYieldDistribution(
-        uint16 _baseRewardBps,
-        uint16[] calldata _riskPremiumsBps,
-        bool[] calldata _enabled
+    /// @dev Enforces: all registered, no duplicates, pair contiguity, _baseRewardBps + sum(riskPremiums) == BPS.
+    function setTrancheConfig(
+        TrancheInfo[] calldata _tranches,
+        bool[] calldata _isPairedWithNext,
+        uint16 _baseRewardBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        uint256 len = tranches.length;
-        if (_riskPremiumsBps.length != len || _enabled.length != len) revert LengthMismatch();
+        uint256 len = _tranches.length;
+        if (len == 0) revert NoTranchesAdded();
+        if (_isPairedWithNext.length != len) revert LengthMismatch();
 
+        // Validate registered, no duplicates, and sum yield to BPS.
         uint256 total = _baseRewardBps;
         for (uint256 i; i < len; ++i) {
-            tranches[i].riskPremiumBps = _riskPremiumsBps[i];
-            tranches[i].enabled = _enabled[i];
-            total += _riskPremiumsBps[i];
+            address tranche = _tranches[i].tranche;
+            if (!isTranche[tranche]) revert TrancheNotRegistered(tranche);
+            for (uint256 j; j < i; ++j) {
+                if (_tranches[j].tranche == tranche) revert DuplicateTranche(tranche);
+            }
+            total += _tranches[i].riskPremiumBps;
         }
         if (total != BPS) revert InvalidYieldDistribution();
 
-        baseRewardBps = _baseRewardBps;
+        // Clear old pair mapping.
+        uint256 oldLen = tranches.length;
+        for (uint256 i; i < oldLen; ++i) {
+            delete tranchePairedTo[tranches[i].tranche];
+        }
 
-        emit YieldDistributionUpdated(_baseRewardBps, _riskPremiumsBps, _enabled);
+        // Overwrite tranches array, validate pair contiguity and build pair mapping.
+        tranches = _tranches;
+        for (uint256 i; i < len; ) {
+            if (!_isPairedWithNext[i]) {
+                ++i;
+                continue;
+            }
+            if (i + 1 >= len) revert PairNotContiguous(i);
+            if (!_isPairedWithNext[i + 1]) revert PairNotContiguous(i);
+            tranchePairedTo[_tranches[i].tranche] = _tranches[i + 1].tranche;
+            tranchePairedTo[_tranches[i + 1].tranche] = _tranches[i].tranche;
+            i += 2;
+        }
+
+        baseRewardBps = _baseRewardBps;
+        emit TrancheConfigUpdated();
     }
 
     /// @notice Update idle USDC buffer and hysteresis band.
@@ -470,6 +487,36 @@ contract Vault is
     {
         (low, high) = _bufferBounds();
         return (idleBufferUSDC, hysteresisBps, low, high);
+    }
+
+    /// @notice Returns ordered tranche addresses (same order as `tranches[]`).
+    function getTrancheOrder() external view returns (address[] memory order) {
+        uint256 len = tranches.length;
+        order = new address[](len);
+        for (uint256 i; i < len; ++i) {
+            order[i] = tranches[i].tranche;
+        }
+    }
+
+    /// @notice Returns current tranche order and pair flags.
+    /// @dev Pair is represented symmetrically as `true,true` at indices `i` and `i+1`.
+    function getTrancheOrderAndPairs()
+        external
+        view
+        returns (address[] memory order, bool[] memory isPairedWithNext)
+    {
+        uint256 len = tranches.length;
+        order = new address[](len);
+        isPairedWithNext = new bool[](len);
+
+        for (uint256 i; i < len; ++i) {
+            address tranche = tranches[i].tranche;
+            order[i] = tranche;
+            if (i + 1 < len && tranchePairedTo[tranche] == tranches[i + 1].tranche) {
+                isPairedWithNext[i] = true;
+                isPairedWithNext[i + 1] = true;
+            }
+        }
     }
 
     //INTERNAL HELPERS

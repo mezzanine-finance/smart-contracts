@@ -74,17 +74,6 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "tranche",
-                "type": "address"
-            }
-        ],
-        "name": "DuplicateTranche",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
                 "name": "implementation",
                 "type": "address"
             }
@@ -105,22 +94,6 @@
     {
         "inputs": [],
         "name": "InvalidInitialization",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "orderLen",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "flagsLen",
-                "type": "uint256"
-            }
-        ],
-        "name": "LengthMismatch",
         "type": "error"
     },
     {
@@ -155,17 +128,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "index",
-                "type": "uint256"
-            }
-        ],
-        "name": "PairNotContiguous",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "PauseManagerZeroAddress",
         "type": "error"
@@ -194,11 +156,6 @@
     {
         "inputs": [],
         "name": "ZeroAmount",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ZeroLength",
         "type": "error"
     },
     {
@@ -294,19 +251,6 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": false,
-                "internalType": "address[]",
-                "name": "newOrder",
-                "type": "address[]"
-            }
-        ],
-        "name": "TrancheOrderUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
                 "indexed": true,
                 "internalType": "address",
                 "name": "implementation",
@@ -369,48 +313,7 @@
         "type": "function"
     },
     {
-        "inputs": [],
-        "name": "getTrancheOrder",
-        "outputs": [
-            {
-                "internalType": "address[]",
-                "name": "order",
-                "type": "address[]"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "getTrancheOrderAndPairs",
-        "outputs": [
-            {
-                "internalType": "address[]",
-                "name": "order",
-                "type": "address[]"
-            },
-            {
-                "internalType": "bool[]",
-                "name": "isPairedWithNext",
-                "type": "bool[]"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [
-            {
-                "internalType": "address[]",
-                "name": "order",
-                "type": "address[]"
-            },
-            {
-                "internalType": "bool[]",
-                "name": "isPairedWithNext",
-                "type": "bool[]"
-            },
             {
                 "internalType": "uint256",
                 "name": "_maxLossPerTxUSDC",
@@ -527,24 +430,6 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "address[]",
-                "name": "order",
-                "type": "address[]"
-            },
-            {
-                "internalType": "bool[]",
-                "name": "isPairedWithNext",
-                "type": "bool[]"
-            }
-        ],
-        "name": "setTrancheOrderAndPairs",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
         "inputs": [],
         "name": "totalUncoveredLossMZ",
         "outputs": [
@@ -552,57 +437,6 @@
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "name": "trancheOrder",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "trancheOrderLength",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "length",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "name": "tranchePairedTo",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
             }
         ],
         "stateMutability": "view",
