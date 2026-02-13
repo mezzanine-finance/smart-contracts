@@ -307,7 +307,7 @@ describe("Tranche", () => {
                 ADMIN_ROLE
             );
 
-            await (await tranche.connect(deployer).setDepositLimits(0n, 1n)).wait();
+            await (await tranche.connect(deployer).setDepositLimits(ethers.MaxUint256, 1n)).wait();
             await (await tranche.connect(deployer).setDepositLimitEnabled(true)).wait();
 
             const [enabled, limit, limitByTvl, cap] = await tranche.getDepositLimitInfo();
@@ -1444,7 +1444,7 @@ describe("Tranche", () => {
             const totalSupply0 = await mzusd.totalSupply();
 
             // Phase 0: enable limits (global caps, not per-tx)
-            const cap0 = 0n; // no cap
+            const cap0 = ethers.MaxUint256; // no cap sentinel
             const tvlBps0 = 4000n; // 40% of total supply
             await (await tranche.connect(deployer).setDepositLimitEnabled(true)).wait();
             const txCfg0 = await tranche.connect(deployer).setDepositLimits(cap0, tvlBps0);
@@ -1511,7 +1511,7 @@ describe("Tranche", () => {
             expect(nav).to.be.lt(bal);
 
             // Loosen cap and set TVL-bps to allow only small headroom
-            const cap4 = 0n; // disable cap so TVL-bps rules
+            const cap4 = ethers.MaxUint256; // no cap sentinel; TVL-bps should bind
             const tvlBps4 = 3000n; // 30%
             const txCfg4 = await tranche.connect(deployer).setDepositLimits(cap4, tvlBps4);
             await expect(txCfg4)
@@ -1534,7 +1534,7 @@ describe("Tranche", () => {
             const txOff = await tranche.connect(deployer).setDepositLimitEnabled(false);
             await expect(txOff)
                 .to.emit(tranche, "DepositLimitUpdated")
-                .withArgs(false, 0n, tvlBps4);
+                .withArgs(false, cap4, tvlBps4);
 
             const huge = to18(123n);
             await mzusd.connect(carol).approve(tranche.target, huge);
@@ -1747,6 +1747,11 @@ describe("Tranche", () => {
             await expect(
                 tranche.connect(deployer).setUnstakeDelayEpochs(maxDelay + 1n)
             ).to.be.revertedWithCustomError(tranche, "UnstakeDelayTooLarge");
+        });
+        it("Reverts when unstake delay is set to zero in umbrella mode", async () => {
+            await expect(
+                tranche.connect(deployer).setUnstakeDelayEpochs(0n)
+            ).to.be.revertedWithCustomError(tranche, "UnstakeDelayZero");
         });
         it("Should revert NothingToFinalize when epoch passed but umbrella is empty", async () => {
             const DAY = 24 * 60 * 60;

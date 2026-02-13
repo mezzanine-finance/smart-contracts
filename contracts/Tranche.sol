@@ -105,6 +105,7 @@ contract Tranche is
     error TooLateToCancel();
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
+    error UnstakeDelayZero();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
@@ -318,10 +319,13 @@ contract Tranche is
     function setUnstakeDelayEpochs(
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (!directWithdrawEnabled && epochsDelay == 0) revert UnstakeDelayZero();
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
     /// @notice Update deposit limits.
+    /// @param cap Absolute cap in MZUSD units; use `type(uint256).max` as no-cap sentinel.
+    /// @param tvlBps TVL share limit in bps.
     function setDepositLimits(
         uint256 cap,
         uint256 tvlBps
@@ -535,14 +539,10 @@ contract Tranche is
 
         uint256 limitByCap = type(uint256).max;
         cap = maxDepositCap;
-        if (cap == 0) {
-            cap = type(uint256).max;
+        if (cap <= trancheAssets) {
+            limitByCap = 0;
         } else {
-            if (cap <= trancheAssets) {
-                limitByCap = 0;
-            } else {
-                limitByCap = cap - trancheAssets;
-            }
+            limitByCap = cap - trancheAssets;
         }
 
         limit = limitByTvl < limitByCap ? limitByTvl : limitByCap;
