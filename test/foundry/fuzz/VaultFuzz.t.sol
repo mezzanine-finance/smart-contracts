@@ -74,7 +74,7 @@ contract VaultFuzzTest is BaseProtocolFuzzTest {
         assertEq(usdc.balanceOf(address(reservoir)), 0);
     }
 
-    function testFuzz_RebalanceRevertsWhenReservoirEmptyAndPullNeeded(
+    function testFuzz_SetBufferDoesNotRevertWhenReservoirEmptyAndPullNeeded(
         uint96 targetSeed,
         uint16 bandSeed,
         uint96 idleSeed
@@ -88,8 +88,15 @@ contract VaultFuzzTest is BaseProtocolFuzzTest {
         uint256 idle = bound(uint256(idleSeed), 0, low - 1);
         usdc.mint(address(vault), idle);
 
-        vm.expectRevert(Vault.ReservoirEmpty.selector);
         vault.setBuffer(target, bandBps);
+
+        assertEq(vault.idleBufferUSDC(), target);
+        assertEq(vault.hysteresisBps(), bandBps);
+        assertEq(usdc.balanceOf(address(vault)), idle);
+        assertEq(usdc.balanceOf(address(reservoir)), 0);
+
+        vm.expectRevert(Vault.ReservoirEmpty.selector);
+        vault.rebalance();
     }
 
     function testFuzz_RebalancePullsExactlyNeededWhenReservoirSufficient(

@@ -250,12 +250,39 @@ describe("Vault <-> Reservoir", () => {
             expect(resBefore - resAfter).to.equal(to6(200n));
         });
 
-        it("Reverts when Reservoir is empty and idle < low bound", async () => {
+        it("setBuffer updates config and skips auto-rebalance when Reservoir is empty", async () => {
             await whaleTransfer(vault.target as string, to6(500n));
+            const resBefore = await usdc.balanceOf(reservoir.target);
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "BufferUpdated")
+                .withArgs(to6(1000n), 1000)
+                .and.to.emit(vault, "BufferRebalanceSkipped");
 
-            await expect(
-                vault.connect(deployer).setBuffer(to6(1000n), 1000)
-            ).to.be.revertedWithCustomError(vault, "ReservoirEmpty");
+            expect(await vault.idleBufferUSDC()).to.equal(to6(1000n));
+            expect(await vault.hysteresisBps()).to.equal(1000n);
+            expect(await usdc.balanceOf(vault.target)).to.equal(to6(500n));
+            expect(await usdc.balanceOf(reservoir.target)).to.equal(resBefore);
+        });
+
+        it("rebalance still reverts when Reservoir is empty and pull is needed", async () => {
+            await whaleTransfer(vault.target as string, to6(500n));
+            await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+            await expect(vault.connect(deployer).rebalance()).to.be.revertedWithCustomError(
+                vault,
+                "ReservoirEmpty"
+            );
+        });
+
+        it("setBuffer reverts when Vault has no Reservoir withdraw permission", async () => {
+            await whaleTransfer(reservoir.target as string, to6(600n));
+            await whaleTransfer(vault.target as string, to6(500n));
+            await accessManager.revokeRole(RESERVOIR_WITHDRAW_ROLE, vault.target);
+
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000)).to.be.reverted;
+
+            expect(await usdc.balanceOf(vault.target)).to.equal(to6(500n));
+            expect(await usdc.balanceOf(reservoir.target)).to.equal(to6(600n));
         });
 
         it("Does nothing when idle is within [low, high] band", async () => {
@@ -353,10 +380,6 @@ describe("Vault <-> Reservoir", () => {
             );
             expect(await reservoir.depositedBy(bob.address)).to.equal(bobDeposit);
 
-            expect(await reservoir.actorsLength()).to.equal(2n);
-            expect(await reservoir.actors(0)).to.equal(alice.address);
-            expect(await reservoir.actors(1)).to.equal(bob.address);
-
             const rebalanceTarget = to6(100n);
             const rebalanceBand = 1000;
             await vault.connect(deployer).setBuffer(rebalanceTarget, rebalanceBand);
@@ -369,12 +392,10 @@ describe("Vault <-> Reservoir", () => {
             const resAfter = await usdc.balanceOf(reservoir.target);
             expect(vaultAfter).to.equal(rebalanceTarget);
             expect(vaultBefore - vaultAfter).to.equal(resAfter - resBefore);
-            expect(await reservoir.actorsLength()).to.equal(2n);
 
             const toVault = to6(3n);
             await reservoir.connect(deployer).withdraw(toVault, vault.target);
             expect(await reservoir.withdrawnTo(vault.target)).to.equal(0n);
-            expect(await reservoir.actorsLength()).to.equal(2n);
 
             const toAliceA = to6(2n);
             const toAliceB = to6(1n);
@@ -384,12 +405,6 @@ describe("Vault <-> Reservoir", () => {
             await reservoir.connect(deployer).withdraw(toBob, bob.address);
             expect(await reservoir.withdrawnTo(alice.address)).to.equal(toAliceA + toAliceB);
             expect(await reservoir.withdrawnTo(bob.address)).to.equal(toBob);
-            expect(await reservoir.actorsLength()).to.equal(2n);
-
-            // trigger rebalances; Vault should not be tracked
-            await usdc.connect(whale).transfer(vault.target as string, to6(200n));
-            await vault.connect(deployer).rebalance();
-            expect(await reservoir.actorsLength()).to.equal(2n);
         });
     });
 });

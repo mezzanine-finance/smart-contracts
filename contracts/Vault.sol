@@ -78,8 +78,8 @@ contract Vault is
     event Rebalanced(uint256 sent, uint256 pulled, uint256 idleAfter);
     event YieldDistributed(uint256 usdcUsed, uint256 mintedMZUSD, uint256 epochId);
     event TrancheRegistered(address tranche);
-    event TrancheUpdated(uint256 idx, uint256 riskPremiumBps, bool enabled);
     event BufferUpdated(uint256 buffer, uint256 hysteresisBps);
+    event BufferRebalanceSkipped();
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event LossManagerUpdated(address newLossManager);
     event NavOracleUpdated(address newNavOracle);
@@ -323,21 +323,6 @@ contract Vault is
         emit TrancheRegistered(_tranche);
     }
 
-    // /// @notice Update tranche info.
-    // /// @param idx Tranche index in `tranches`.
-    // /// @param riskPremiumBps New riskPremiumBps for yield allocation.
-    // /// @param enabled Whether the tranche receives allocations.
-    // function updateTranche(
-    //     uint256 idx,
-    //     uint16 riskPremiumBps,
-    //     bool enabled
-    // ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-    //     if (idx >= tranches.length) revert TrancheIndexOOB();
-    //     tranches[idx].riskPremiumBps = riskPremiumBps;
-    //     tranches[idx].enabled = enabled;
-    //     emit TrancheUpdated(idx, riskPremiumBps, enabled);
-    // }
-
     /// @notice Update base reward and risk premium distribution across all tranches.
     /// @param _baseRewardBps Base reward pool share in bps.
     /// @param _riskPremiumsBps Risk premium in bps for each tranche (length must match tranches array).
@@ -376,6 +361,16 @@ contract Vault is
         idleBufferUSDC = target;
         hysteresisBps = bandBps;
         emit BufferUpdated(target, bandBps);
+
+        uint256 idle = usdc.balanceOf(address(this));
+        (uint256 low, ) = _bufferBounds();
+        if (idle < low) {
+            uint256 available = usdc.balanceOf(address(reservoir));
+            if (available == 0) {
+                emit BufferRebalanceSkipped();
+                return;
+            }
+        }
         _rebalance();
     }
 
