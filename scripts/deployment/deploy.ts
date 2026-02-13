@@ -576,7 +576,7 @@ async function main() {
                     ? parseMZUSD(tranche.depositLimits.capMZUSD)
                     : tranche.depositLimits.capUSDC !== undefined
                       ? parseUSDC(tranche.depositLimits.capUSDC) * MZUSD_SCALE
-                      : 0n;
+                      : ethers.MaxUint256;
             const targetTvl = BigInt(tranche.depositLimits.tvlBps ?? 0);
 
             const configNeedsUpdate = cap !== targetCap || tvl !== targetTvl;

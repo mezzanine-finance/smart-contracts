@@ -44,7 +44,7 @@ Notes:
 
 - Fees are initialized in `Vault.initialize`.
 - Optional:
-  - `setBuffer(idleBufferUSDC, hysteresisBps)` (triggers `_rebalance`)
+  - `setBuffer(idleBufferUSDC, hysteresisBps)` (updates config and triggers `_rebalance`)
   - `setEpochConfig(epochDurationSec)` (queued for next epoch)
 - Register tranches with `addTranche(...)`.
 - Configure distribution with `setYieldDistribution(baseRewardBps, riskPremiumsBps[], enabled[])`.
@@ -79,7 +79,9 @@ Notes:
 - Optional `ReservoirUSDC.deposit(amountUSDC)`.
 - Optional initial tranche deposits via `Tranche.deposit`.
 
-If using `setBuffer`, ensure Vault/Reservoir have enough USDC to avoid rebalance failure.
+`setBuffer` has one non-reverting skip case:
+if pull is needed (`idle < low`) and Reservoir USDC balance is zero, it emits `BufferRebalanceSkipped`.
+Other rebalance failures (for example access-control or pause conditions) still revert `setBuffer`.
 
 ### Automation
 

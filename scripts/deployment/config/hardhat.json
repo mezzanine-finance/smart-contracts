@@ -78,7 +78,6 @@
             "unstakeDelayEpochs": 2,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 3000
             }
         },
@@ -93,7 +92,6 @@
             "unstakeDelayEpochs": 4,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 1000
             }
         }
