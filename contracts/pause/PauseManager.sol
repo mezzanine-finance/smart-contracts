@@ -26,6 +26,10 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     );
 
     error ZeroAddress();
+    error AlreadyPaused(PauseCategory category);
+    error AlreadyUnpaused(PauseCategory category);
+    error ContractAlreadyPaused(address target, PauseCategory category);
+    error ContractAlreadyUnpaused(address target, PauseCategory category);
 
     /// @param accessManager AccessManager address for pause authorization.
     function initialize(address accessManager) external initializer {
@@ -52,6 +56,7 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
 
     /// @notice Pause a category for all contracts.
     function pauseGlobal(PauseCategory category) external restricted {
+        if (_globalPaused[category]) revert AlreadyPaused(category);
         _globalPaused[category] = true;
         emit GlobalPauseSet(category, true, msg.sender);
     }
@@ -59,6 +64,7 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     /// @notice Unpause a category for all contracts.
     /// @dev Configure AccessManager with an execution delay for this method.
     function unpauseGlobal(PauseCategory category) external restricted {
+        if (!_globalPaused[category]) revert AlreadyUnpaused(category);
         _globalPaused[category] = false;
         emit GlobalPauseSet(category, false, msg.sender);
     }
@@ -66,6 +72,7 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     /// @notice Pause a category for a specific contract.
     function pauseContract(address target, PauseCategory category) external restricted {
         if (target == address(0)) revert ZeroAddress();
+        if (_contractPaused[target][category]) revert ContractAlreadyPaused(target, category);
         _contractPaused[target][category] = true;
         emit ContractPauseSet(target, category, true, msg.sender);
     }
@@ -74,6 +81,7 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     /// @dev Configure AccessManager with an execution delay for this method.
     function unpauseContract(address target, PauseCategory category) external restricted {
         if (target == address(0)) revert ZeroAddress();
+        if (!_contractPaused[target][category]) revert ContractAlreadyUnpaused(target, category);
         _contractPaused[target][category] = false;
         emit ContractPauseSet(target, category, false, msg.sender);
     }

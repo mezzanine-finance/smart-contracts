@@ -396,6 +396,12 @@
     },
     {
         "anonymous": false,
+        "inputs": [],
+        "name": "BufferRebalanceSkipped",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
         "inputs": [
             {
                 "indexed": false,
@@ -602,31 +608,6 @@
             }
         ],
         "name": "TrancheRegistered",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "idx",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "riskPremiumBps",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "bool",
-                "name": "enabled",
-                "type": "bool"
-            }
-        ],
-        "name": "TrancheUpdated",
         "type": "event"
     },
     {
