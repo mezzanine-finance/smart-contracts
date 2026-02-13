@@ -133,7 +133,7 @@ describe("Tranche claim solvency", () => {
         const vaultAddr = await vault.getAddress();
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-        lossManager = (await upgrades.deployProxy(LossManagerFactory, [[trancheAddr], [false], 0], {
+        lossManager = (await upgrades.deployProxy(LossManagerFactory, [0], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
@@ -159,7 +159,7 @@ describe("Tranche claim solvency", () => {
 
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSel = vault.interface.getFunction("registerTranche").selector;
         const setVaultLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setVaultNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
 
@@ -180,7 +180,7 @@ describe("Tranche claim solvency", () => {
         await vault.setNavOracle(navOracleRef.target);
 
         // Register tranche (100% weight)
-        await vault.addTranche(trancheAddr);
+        await vault.registerTranche(trancheAddr);
 
         snapshot = await takeSnapshot();
     });

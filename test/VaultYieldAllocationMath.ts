@@ -167,8 +167,8 @@ describe("Vault Yield Allocation Math", () => {
             vault.interface.getFunction("advanceEpoch").selector,
             vault.interface.getFunction("setLossManager").selector,
             vault.interface.getFunction("setNavOracle").selector,
-            vault.interface.getFunction("addTranche").selector,
-            vault.interface.getFunction("setYieldDistribution").selector,
+            vault.interface.getFunction("registerTranche").selector,
+            vault.interface.getFunction("setTrancheConfig").selector,
             vault.interface.getFunction("setFeeRates").selector,
             vault.interface.getFunction("setFeeReceivers").selector,
             vault.interface.getFunction("setEpochConfig").selector,
@@ -195,12 +195,20 @@ describe("Vault Yield Allocation Math", () => {
 
         // Register tranches (riskPremiumBps=0 initially, configured via setYieldDistribution)
         // Order: senior=idx0, mezzanine=idx1, junior=idx2
-        await vault.addTranche(senior.target);
-        await vault.addTranche(mezzanine.target);
-        await vault.addTranche(junior.target);
+        await vault.registerTranche(senior.target);
+        await vault.registerTranche(mezzanine.target);
+        await vault.registerTranche(junior.target);
 
         // Default yield distribution: baseReward 40%, senior 20%, mezzanine 20%, junior 20%
-        await vault.setYieldDistribution(4000, [2000, 2000, 2000], [true, true, true]);
+        await vault.setTrancheConfig(
+            [
+                {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+            ],
+            [false, false, false],
+            4000
+        );
 
         snapshot = await takeSnapshot();
     });
@@ -268,7 +276,15 @@ describe("Vault Yield Allocation Math", () => {
             // ── Configure yield distribution ──────────────────────
             // riskPremium: senior=0%, mezzanine=12%, junior=18%
             // baseRewardBps = 10000 - (0 + 1200 + 1800) = 7000 (70%)
-            await vault.setYieldDistribution(7000, [0, 1200, 1800], [true, true, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                ],
+                [false, false, false],
+                7000
+            );
 
             // Protocol fee = 10%, no performance fee
             await vault.setFeeRates(0, 1000);
@@ -411,7 +427,15 @@ describe("Vault Yield Allocation Math", () => {
             // Mezzanine disabled, no deposits there.
             // riskPremium: senior=0%, mezzanine=0% (disabled), junior=30%
             // baseRewardBps = 10000 - (0 + 0 + 3000) = 7000 (70%)
-            await vault.setYieldDistribution(7000, [0, 0, 3000], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: junior.target, riskPremiumBps: 3000, enabled: true},
+                ],
+                [false, false, false],
+                7000
+            );
 
             // Protocol fee = 10%, no performance fee
             await vault.setFeeRates(0, 1000);
@@ -529,7 +553,15 @@ describe("Vault Yield Allocation Math", () => {
             // Mezzanine disabled, no deposits there.
             // riskPremium: senior=0%, mezzanine=0% (disabled), junior=29.03%
             // baseRewardBps = 10000 - (0 + 0 + 2903) = 7097 (70.97%)
-            await vault.setYieldDistribution(7097, [0, 0, 2903], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: junior.target, riskPremiumBps: 2903, enabled: true},
+                ],
+                [false, false, false],
+                7097
+            );
 
             // No fees
             // Default is already 0, 0 from initialization — set explicitly for clarity
@@ -639,14 +671,22 @@ describe("Vault Yield Allocation Math", () => {
         });
     });
 
-    // ── setYieldDistribution unit tests ───────────────────────────────
+    // ── setTrancheConfig unit tests ───────────────────────────────
 
-    describe("setYieldDistribution", () => {
+    describe("setTrancheConfig", () => {
         it("should update baseRewardBps, per-tranche riskPremiumBps and enabled flags", async () => {
             // 3 tranches registered: senior=idx0, mezzanine=idx1, junior=idx2
-            await expect(vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, false, true]))
-                .to.emit(vault, "YieldDistributionUpdated")
-                .withArgs(5000, [1000, 2000, 2000], [true, false, true]);
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
+            ).to.emit(vault, "TrancheConfigUpdated");
 
             expect(await vault.baseRewardBps()).to.equal(5000);
 
@@ -664,27 +704,45 @@ describe("Vault Yield Allocation Math", () => {
             expect(t2.enabled).to.equal(true);
         });
 
-        it("should revert when riskPremiumsBps array length does not match tranches", async () => {
+        it("should revert when isPairedWithNext array length does not match tranches", async () => {
             await expect(
-                vault.setYieldDistribution(5000, [2500, 2500], [true, true, true])
-            ).to.be.revertedWithCustomError(vault, "LengthMismatch");
-        });
-
-        it("should revert when enabled array length does not match tranches", async () => {
-            await expect(
-                vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 2500, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2500, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 2500, enabled: true},
+                    ],
+                    [false, false],
+                    2500
+                )
             ).to.be.revertedWithCustomError(vault, "LengthMismatch");
         });
 
         it("should revert when baseRewardBps + sum(riskPremiumsBps) != 10000", async () => {
             // Total = 5000 + 1000 + 1000 + 1000 = 8000 (< 10000)
             await expect(
-                vault.setYieldDistribution(5000, [1000, 1000, 1000], [true, true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
 
             // Total = 5000 + 2000 + 2000 + 2000 = 11000 (> 10000)
             await expect(
-                vault.setYieldDistribution(5000, [2000, 2000, 2000], [true, true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
         });
     });

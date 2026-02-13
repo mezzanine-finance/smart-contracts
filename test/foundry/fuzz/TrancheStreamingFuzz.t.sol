@@ -18,8 +18,8 @@ contract TrancheStreamingFuzzTest is BaseProtocolFuzzTest {
         bytes4[] memory vaultSelectors = new bytes4[](4);
         vaultSelectors[0] = Vault.setLossManager.selector;
         vaultSelectors[1] = Vault.setNavOracle.selector;
-        vaultSelectors[2] = Vault.addTranche.selector;
-        vaultSelectors[3] = Vault.setYieldDistribution.selector;
+        vaultSelectors[2] = Vault.registerTranche.selector;
+        vaultSelectors[3] = Vault.setTrancheConfig.selector;
         accessManager.setTargetFunctionRole(address(vault), vaultSelectors, adminRole);
 
         tranche = _deployTranche(1, "Streaming Tranche", "STR");
@@ -35,12 +35,12 @@ contract TrancheStreamingFuzzTest is BaseProtocolFuzzTest {
         navOracle = address(navRef);
         vault.setNavOracle(navOracle);
 
-        vault.addTranche(address(tranche));
+        vault.registerTranche(address(tranche));
 
-        uint16[] memory riskPremiums = new uint16[](1);
-        bool[] memory enabled = new bool[](1);
-        enabled[0] = true;
-        vault.setYieldDistribution(10_000, riskPremiums, enabled);
+        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](1);
+        infos[0] = Vault.TrancheInfo(address(tranche), 0, true);
+        bool[] memory pairFlags = new bool[](1);
+        vault.setTrancheConfig(infos, pairFlags, 10_000);
     }
 
     function testFuzz_NotifyYieldStreamsLinearlyIntoTotalAssets(

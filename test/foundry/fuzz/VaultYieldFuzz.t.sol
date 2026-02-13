@@ -23,8 +23,8 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         bytes4[] memory vaultSelectors = new bytes4[](5);
         vaultSelectors[0] = Vault.setLossManager.selector;
         vaultSelectors[1] = Vault.setNavOracle.selector;
-        vaultSelectors[2] = Vault.addTranche.selector;
-        vaultSelectors[3] = Vault.setYieldDistribution.selector;
+        vaultSelectors[2] = Vault.registerTranche.selector;
+        vaultSelectors[3] = Vault.setTrancheConfig.selector;
         vaultSelectors[4] = Vault.setFeeRates.selector;
         accessManager.setTargetFunctionRole(address(vault), vaultSelectors, adminRole);
 
@@ -43,19 +43,16 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         navOracle = address(navRef);
         vault.setNavOracle(navOracle);
 
-        vault.addTranche(address(tranche0));
-        vault.addTranche(address(tranche1));
-        vault.addTranche(address(tranche2));
+        vault.registerTranche(address(tranche0));
+        vault.registerTranche(address(tranche1));
+        vault.registerTranche(address(tranche2));
 
-        uint16[] memory risk = new uint16[](3);
-        risk[0] = RISK_BPS;
-        risk[1] = RISK_BPS;
-        risk[2] = RISK_BPS;
-        bool[] memory enabled = new bool[](3);
-        enabled[0] = true;
-        enabled[1] = true;
-        enabled[2] = true;
-        vault.setYieldDistribution(BASE_REWARD_BPS, risk, enabled);
+        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](3);
+        infos[0] = Vault.TrancheInfo(address(tranche0), RISK_BPS, true);
+        infos[1] = Vault.TrancheInfo(address(tranche1), RISK_BPS, true);
+        infos[2] = Vault.TrancheInfo(address(tranche2), RISK_BPS, true);
+        bool[] memory pairFlags = new bool[](3);
+        vault.setTrancheConfig(infos, pairFlags, BASE_REWARD_BPS);
     }
 
     function testFuzz_DistributeYieldConservesMintAndAllocatesAll(
@@ -142,15 +139,12 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         _fundAndDeposit(vm.addr(201), tranche0, deposit0);
         _fundAndDeposit(vm.addr(202), tranche1, deposit1);
 
-        uint16[] memory risk = new uint16[](3);
-        risk[0] = 2000;
-        risk[1] = 3000;
-        risk[2] = 1000;
-        bool[] memory enabled = new bool[](3);
-        enabled[0] = true;
-        enabled[1] = false;
-        enabled[2] = true;
-        vault.setYieldDistribution(4000, risk, enabled);
+        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](3);
+        infos[0] = Vault.TrancheInfo(address(tranche0), 2000, true);
+        infos[1] = Vault.TrancheInfo(address(tranche1), 3000, false);
+        infos[2] = Vault.TrancheInfo(address(tranche2), 1000, true);
+        bool[] memory pairFlags = new bool[](3);
+        vault.setTrancheConfig(infos, pairFlags, 4000);
 
         vault.setFeeRates(perfBps, protBps);
 
@@ -192,15 +186,12 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         uint256 deposit0 = bound(uint256(depositSeed), 1, 3_000_000e6);
         _fundAndDeposit(vm.addr(301), tranche0, deposit0);
 
-        uint16[] memory risk = new uint16[](3);
-        risk[0] = 3333;
-        risk[1] = 3333;
-        risk[2] = 3334;
-        bool[] memory enabled = new bool[](3);
-        enabled[0] = false;
-        enabled[1] = false;
-        enabled[2] = false;
-        vault.setYieldDistribution(0, risk, enabled);
+        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](3);
+        infos[0] = Vault.TrancheInfo(address(tranche0), 3333, false);
+        infos[1] = Vault.TrancheInfo(address(tranche1), 3333, false);
+        infos[2] = Vault.TrancheInfo(address(tranche2), 3334, false);
+        bool[] memory pairFlags = new bool[](3);
+        vault.setTrancheConfig(infos, pairFlags, 0);
 
         uint256 usdcReported = bound(uint256(usdcReportedSeed), 1, 5_000_000e6);
 
@@ -239,15 +230,12 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         uint16 baseRewardBps = uint16(bound(uint256(baseSeed), 0, BPS - risk0 - risk1));
         uint16 risk2 = uint16(BPS - baseRewardBps - risk0 - risk1);
 
-        uint16[] memory risk = new uint16[](3);
-        risk[0] = risk0;
-        risk[1] = risk1;
-        risk[2] = risk2;
-        bool[] memory enabled = new bool[](3);
-        enabled[0] = (enabledSeed & 0x01) != 0;
-        enabled[1] = (enabledSeed & 0x02) != 0;
-        enabled[2] = (enabledSeed & 0x04) != 0;
-        vault.setYieldDistribution(baseRewardBps, risk, enabled);
+        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](3);
+        infos[0] = Vault.TrancheInfo(address(tranche0), risk0, (enabledSeed & 0x01) != 0);
+        infos[1] = Vault.TrancheInfo(address(tranche1), risk1, (enabledSeed & 0x02) != 0);
+        infos[2] = Vault.TrancheInfo(address(tranche2), risk2, (enabledSeed & 0x04) != 0);
+        bool[] memory pairFlags = new bool[](3);
+        vault.setTrancheConfig(infos, pairFlags, baseRewardBps);
 
         vault.setFeeRates(perfBps, protBps);
 
