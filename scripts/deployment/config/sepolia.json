@@ -121,7 +121,7 @@
         "registerInVault": false
     },
     "lossManager": {
-        "order": ["polJunior", "junior", "mezzanine", "senior"],
+        "order": ["junior", "polJunior", "mezzanine", "senior"],
         "isPairedWithNext": [true, true, false, false],
         "maxLossPerTxUSDC": "10000000"
     },
