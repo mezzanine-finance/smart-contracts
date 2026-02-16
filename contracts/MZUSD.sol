@@ -192,7 +192,7 @@ contract MZUSD is
     //SETTERS
 
     /// @notice Set global redemption cap in USDC (6 decimals).
-    /// @param newCapUSDC New cap value; must be > 0 and <= USDC total supply.
+    /// @param newCapUSDC New cap value; must be > 0.
     function setGlobalRedemptionCap(
         uint256 newCapUSDC
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {

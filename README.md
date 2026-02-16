@@ -7,6 +7,7 @@ contracts, automation, tests, and helper scripts for development and deployment.
 
 Accepts USDC (6 decimals) and mints MZUSD (18 decimals) 1:1 with a `1e12` scale.
 Users interact through ERC4626 tranches with direct or umbrella withdrawals.
+Tranche share token uses `_decimalsOffset() = 3` (`Tranche.decimals() = 21`).
 Vault computes yield/loss; NavOracleAutomation and LossManager apply it.
 Governance and safety: AccessManager + PauseManager (category-based pauses).
 

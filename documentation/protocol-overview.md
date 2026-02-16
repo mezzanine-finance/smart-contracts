@@ -28,6 +28,7 @@ It is a technical overview intended for engineers, integrators, and auditors.
 ### Tranche (`contracts/Tranche.sol`)
 
 - ERC4626 vault with MZUSD as underlying asset.
+- ERC4626 share token uses a non-zero decimal offset (`_decimalsOffset() = 3`), so share decimals are `21` while MZUSD remains `18`.
 - Two withdrawal modes:
     - direct mode (`directWithdrawEnabled = true`): `requestWithdrawal(shares)` redeems immediately;
     - umbrella mode (`directWithdrawEnabled = false`): request -> finalize epoch -> claim.
@@ -96,6 +97,7 @@ Note (Phase 1 transfer safety):
 
 - USDC: 6 decimals.
 - MZUSD: 18 decimals.
+- Tranche shares: 21 decimals (`_decimalsOffset() = 3` over 18-decimal asset).
 - Scale: `1 USDC = 1e12 MZUSD units`.
 
 ## Core flows
@@ -135,6 +137,10 @@ Notes:
     3. Anyone (or automation) finalizes passed epoch via `finalizeEpoch(epochId)`.
     4. User claims MZUSD via `claim(epochId)`.
 
+Note:
+
+- If user enters desired assets in UI, convert with `previewWithdraw(assets)` (round-up path) to compute shares for `requestWithdrawal`.
+
 ### Yield distribution
 
 1. Oracle submits NAV.
@@ -165,6 +171,8 @@ Notes:
 ## Epochs and yield streaming
 
 - Epoch advancement is time-gated by `epochStart + epochDuration`.
+- On advancement, `epochStart` is set to the current `block.timestamp` (advance-call time), not to prior `epochStart + epochDuration`.
+- Delayed advancement therefore creates a gap in wall-clock time; missed periods are not backfilled as extra epochs.
 - `Vault.distributeYield` always attempts epoch advancement before allocation logic.
 - Tranches stream yield linearly between `yieldStreamStart` and `yieldStreamEnd`.
 - `Tranche.totalAssets()` exposes virtual NAV:

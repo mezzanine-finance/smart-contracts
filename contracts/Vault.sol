@@ -83,6 +83,8 @@ contract Vault is
     event WithdrawnUSDCFromVault(address to, uint256 amount);
     event LossManagerUpdated(address newLossManager);
     event NavOracleUpdated(address newNavOracle);
+    /// @notice Emitted when the epoch is advanced.
+    /// @dev `startTs` is the block timestamp of the advance call (not previous `epochStart + epochDuration`).
     event EpochAdvanced(uint256 indexed epochId, uint256 startTs);
     event EpochDurationSet(uint256 epochDuration);
     event EpochDurationQueued(uint256 epochDuration);
@@ -448,7 +450,7 @@ contract Vault is
 
     ///@notice Get current epoch configuration.
     ///@return epochId Current epoch ID.
-    ///@return start Current epoch start timestamp.
+    ///@return start Current epoch start timestamp (set to the timestamp of the last epoch advance).
     ///@return duration Current epoch duration in seconds.
     function getEpochConfig()
         external
@@ -545,6 +547,9 @@ contract Vault is
     }
 
     /// @notice Advance epoch and validate that enough time has passed.
+    /// @dev Requires `block.timestamp >= epochStart + epochDuration`.
+    /// @dev New `epochStart` is anchored to `block.timestamp` at advance time.
+    ///      If advancement is delayed, elapsed idle time is not backfilled into synthetic epochs.
     /// @return newEpochId New epoch ID after advancement.
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
         uint64 ts = uint64(block.timestamp);
