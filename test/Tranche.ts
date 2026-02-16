@@ -220,7 +220,40 @@ describe("Tranche", () => {
         return {mintedMZ, shares, tx};
     }
 
+    async function deployDirectTranche(
+        trancheId = 2,
+        name = "Direct Tranche",
+        symbol = "dMZUSD"
+    ): Promise<Tranche> {
+        const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
+        return (await upgrades.deployProxy(TrancheFactory, [trancheId, 0, name, symbol], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target, true],
+        })) as unknown as Tranche;
+    }
+
+    async function shareScaleFor(targetTranche: Tranche): Promise<bigint> {
+        const trancheDecimals = await targetTranche.decimals();
+        const assetDecimals = await mzusd.decimals();
+        return 10n ** BigInt(trancheDecimals - assetDecimals);
+    }
+
     describe("ERC4626 basics", () => {
+        it("Uses 3-decimals share offset (21 share decimals over 18-decimals MZUSD)", async () => {
+            const trancheDecimals = await tranche.decimals();
+            const assetDecimals = await mzusd.decimals();
+
+            expect(assetDecimals).to.equal(18n);
+            expect(trancheDecimals).to.equal(21n);
+            expect(trancheDecimals - assetDecimals).to.equal(3n);
+
+            const wholeShare = 10n ** trancheDecimals;
+            const wholeShareAssets = await tranche.convertToAssets(wholeShare);
+            expect(wholeShareAssets).to.equal(10n ** assetDecimals);
+        });
+
         it("Should allow basic deposit into Tranche (ERC4626 semantics)", async () => {
             const depositUSDC = to6(100n); // 100 USDC
             const expectedMZ = to18(100n); // 100 MZUSD (18 decimals)
@@ -242,13 +275,14 @@ describe("Tranche", () => {
 
             // 2) Alice deposits MZUSD into Tranche
             await mzusd.connect(alice).approve(tranche.target, expectedMZ);
+            const expectedShares = await tranche.previewDeposit(expectedMZ);
 
             const tx = await tranche.connect(alice).deposit(expectedMZ, alice.address);
             await tx.wait();
 
             await expect(tx)
                 .to.emit(tranche, "Deposit")
-                .withArgs(alice.address, alice.address, expectedMZ, expectedMZ);
+                .withArgs(alice.address, alice.address, expectedMZ, expectedShares);
 
             const aliceMZFinal = await mzusd.balanceOf(alice.address);
             const aliceShares = await tranche.balanceOf(alice.address);
@@ -258,16 +292,20 @@ describe("Tranche", () => {
             // MZUSD moved from Alice to Tranche
             expect(aliceMZFinal).to.equal(0n);
 
-            // first deposit in ERC4626 -> shares = assets
-            expect(aliceShares).to.equal(expectedMZ);
-            expect(trancheSharesAfter).to.equal(expectedMZ);
+            // first deposit in ERC4626 with offset -> shares are scaled by 10^offset
+            expect(aliceShares).to.equal(expectedShares);
+            expect(trancheSharesAfter).to.equal(expectedShares);
 
             // totalAssets uses virtual NAV, but without streaming = real MZUSD balance
             expect(trancheAssetsAfter).to.equal(expectedMZ);
 
             // convertToAssets(shares) will return the same amount
             const previewAssets = await tranche.convertToAssets(aliceShares);
-            expect(previewAssets).to.equal(expectedMZ);
+            const assetsDiff =
+                previewAssets > expectedMZ
+                    ? previewAssets - expectedMZ
+                    : expectedMZ - previewAssets;
+            expect(assetsDiff).to.be.lte(1n);
         });
 
         it("Mints, transfers, and exposes unaccrued yield", async () => {
@@ -322,12 +360,13 @@ describe("Tranche", () => {
             await (await mzusd.connect(vaultSigner).mint(alice.address, 1n)).wait();
 
             await mzusd.connect(alice).approve(tranche.target, 1n);
+            const expectedShares = await tranche.previewDeposit(1n);
             await (await tranche.connect(alice).deposit(1n, alice.address)).wait();
 
-            expect(await tranche.balanceOf(alice.address)).to.equal(1n);
+            expect(await tranche.balanceOf(alice.address)).to.equal(expectedShares);
 
             const epochId = await vault.currentEpochId();
-            await (await tranche.connect(alice).requestWithdrawal(1n)).wait();
+            await (await tranche.connect(alice).requestWithdrawal(expectedShares)).wait();
 
             await time.increase(24 * 60 * 60);
             await (await vault.connect(lossManagerSigner).advanceEpoch()).wait();
@@ -423,17 +462,7 @@ describe("Tranche", () => {
 
     describe("Direct mode", () => {
         it("Pauses withdrawals in direct mode", async () => {
-            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-            const directTranche = (await upgrades.deployProxy(
-                TrancheFactory,
-                [2, 0, "Direct Tranche", "dMZUSD"],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.target, true],
-                }
-            )) as unknown as Tranche;
+            const directTranche = await deployDirectTranche();
 
             const mintedMZ = await mintMZUSDFor(alice, to6(100n));
             await mzusd.connect(alice).approve(directTranche, mintedMZ);
@@ -449,29 +478,15 @@ describe("Tranche", () => {
         });
 
         it("Direct mode: requestWithdrawal redeems immediately", async () => {
-            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-            const directTranche = (await upgrades.deployProxy(
-                TrancheFactory,
-                [
-                    2, // trancheIdentifier
-                    0, // initialUnstakeDelayEpochs
-                    "Direct Tranche", // name
-                    "dMZUSD", // symbol
-                ],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.target, true], // direct withdraw enabled
-                }
-            )) as unknown as Tranche;
+            const directTranche = await deployDirectTranche();
 
             const mintedMZ = await mintMZUSDFor(alice, to6(100n));
             await mzusd.connect(alice).approve(directTranche.target, mintedMZ);
+            const expectedShares = await directTranche.previewDeposit(mintedMZ);
             await directTranche.connect(alice).deposit(mintedMZ, alice.address);
 
             const shares = await directTranche.balanceOf(alice.address);
-            expect(shares).to.equal(mintedMZ);
+            expect(shares).to.equal(expectedShares);
             expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
 
             const tx = await directTranche.connect(alice).requestWithdrawal(shares);
@@ -492,17 +507,7 @@ describe("Tranche", () => {
         });
 
         it("Direct mode: withdraw and redeem work", async () => {
-            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-            const directTranche = (await upgrades.deployProxy(
-                TrancheFactory,
-                [2, 0, "Direct Tranche", "dMZUSD"],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.target, true],
-                }
-            )) as unknown as Tranche;
+            const directTranche = await deployDirectTranche();
 
             const mintedMZ = await mintMZUSDFor(alice, to6(50n));
             await mzusd.connect(alice).approve(directTranche.target, mintedMZ);
@@ -526,24 +531,15 @@ describe("Tranche", () => {
         });
 
         it("Direct mode: supports 1-wei withdraw and redeem", async () => {
-            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-            const directTranche = (await upgrades.deployProxy(
-                TrancheFactory,
-                [2, 0, "Direct Tranche", "dMZUSD"],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.target, true],
-                }
-            )) as unknown as Tranche;
+            const directTranche = await deployDirectTranche();
 
             const vaultSigner = await imp(vault.target as string);
             await (await mzusd.connect(vaultSigner).mint(alice.address, 1n)).wait();
 
             await mzusd.connect(alice).approve(directTranche.target, 1n);
+            const expectedShares = await directTranche.previewDeposit(1n);
             await (await directTranche.connect(alice).deposit(1n, alice.address)).wait();
-            expect(await directTranche.balanceOf(alice.address)).to.equal(1n);
+            expect(await directTranche.balanceOf(alice.address)).to.equal(expectedShares);
 
             await (
                 await directTranche.connect(alice).withdraw(1n, alice.address, alice.address)
@@ -553,25 +549,21 @@ describe("Tranche", () => {
             expect(await mzusd.balanceOf(directTranche.target)).to.equal(0n);
 
             await mzusd.connect(alice).approve(directTranche.target, 1n);
+            const expectedSharesSecond = await directTranche.previewDeposit(1n);
             await (await directTranche.connect(alice).deposit(1n, alice.address)).wait();
             await (
-                await directTranche.connect(alice).redeem(1n, alice.address, alice.address)
+                await directTranche
+                    .connect(alice)
+                    .redeem(expectedSharesSecond, alice.address, alice.address)
             ).wait();
             expect(await directTranche.totalSupply()).to.equal(0n);
         });
+    });
 
+    describe("Direct mode inflation", () => {
         it("Direct mode: donation inflation attack is not profitable", async () => {
-            const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
-            const directTranche = (await upgrades.deployProxy(
-                TrancheFactory,
-                [2, 0, "Direct Tranche", "dMZUSD"],
-                {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.target, true],
-                }
-            )) as unknown as Tranche;
+            const directTranche = await deployDirectTranche();
+            const shareScale = await shareScaleFor(directTranche);
 
             const attackerDeposit = to18(1n);
             const attackerDonation = to18(100n);
@@ -590,7 +582,7 @@ describe("Tranche", () => {
             await (await directTranche.connect(bob).deposit(victimMinted, bob.address)).wait();
 
             const victimShares = await directTranche.balanceOf(bob.address);
-            expect(victimShares).to.be.lt(victimMinted);
+            expect(victimShares).to.be.lt(victimMinted * shareScale);
 
             const attackerShares = await directTranche.balanceOf(alice.address);
             await (
@@ -602,6 +594,119 @@ describe("Tranche", () => {
             const attackerFinal = await mzusd.balanceOf(alice.address);
             const profit = attackerFinal - attackerMinted;
             expect(profit).to.be.lte(0n);
+        });
+
+        it("Direct mode: minimum donation threshold to zero out victim is D = 2V*10^offset - 1", async () => {
+            const directTranche = await deployDirectTranche(99, "Inflation Tranche", "iMZUSD");
+            const vaultSigner = await imp(vault.target as string);
+            const shareScale = await shareScaleFor(directTranche);
+
+            const victimDeposit = to18(100_000n);
+            const attackerInitialDeposit = 1n;
+            const thresholdMinusOne = 2n * victimDeposit * shareScale - 2n;
+            const threshold = 2n * victimDeposit * shareScale - 1n;
+
+            // Seed with 1 wei so the ERC4626 state is non-empty and deterministic.
+            await mzusd
+                .connect(vaultSigner)
+                .mint(alice.address, attackerInitialDeposit + thresholdMinusOne);
+            await mzusd.connect(alice).approve(directTranche.target, attackerInitialDeposit);
+            await directTranche.connect(alice).deposit(attackerInitialDeposit, alice.address);
+            await mzusd.connect(alice).transfer(directTranche.target, thresholdMinusOne);
+            expect(await directTranche.previewDeposit(victimDeposit)).to.equal(1n);
+
+            // Fresh tranche for exact threshold branch.
+            const directTranche2 = await deployDirectTranche(100, "Inflation Tranche 2", "iMZUSD2");
+            await mzusd.connect(vaultSigner).mint(alice.address, threshold + 1n);
+            await mzusd.connect(alice).approve(directTranche2.target, attackerInitialDeposit);
+            await directTranche2.connect(alice).deposit(attackerInitialDeposit, alice.address);
+            await mzusd.connect(alice).transfer(directTranche2.target, threshold);
+            expect(await directTranche2.previewDeposit(victimDeposit)).to.equal(0n);
+        });
+
+        it("Direct mode: calibrated single-victim inflation attack stays unprofitable with non-zero offset", async () => {
+            const directTranche = await deployDirectTranche(101, "Inflation Tranche", "iMZUSD");
+            const vaultSigner = await imp(vault.target as string);
+            const shareScale = await shareScaleFor(directTranche);
+
+            const victimDeposit = to18(100_000n);
+            const attackerInitialDeposit = 1n;
+            const attackerDonation = 2n * victimDeposit * shareScale - 1n;
+            const attackerSpent = attackerInitialDeposit + attackerDonation;
+
+            await mzusd.connect(vaultSigner).mint(alice.address, attackerSpent);
+            await mzusd.connect(vaultSigner).mint(bob.address, victimDeposit);
+
+            await mzusd.connect(alice).approve(directTranche.target, attackerInitialDeposit);
+            await directTranche.connect(alice).deposit(attackerInitialDeposit, alice.address);
+            const attackerShares = await directTranche.balanceOf(alice.address);
+            expect(attackerShares).to.equal(shareScale);
+
+            await mzusd.connect(alice).transfer(directTranche.target, attackerDonation);
+
+            expect(await directTranche.previewDeposit(victimDeposit)).to.equal(0n);
+            await mzusd.connect(bob).approve(directTranche.target, victimDeposit);
+            await directTranche.connect(bob).deposit(victimDeposit, bob.address);
+            expect(await directTranche.balanceOf(bob.address)).to.equal(0n);
+
+            const totalAssetsAfterVictim = await directTranche.totalAssets();
+            const expectedAttackerRedeemed = await directTranche.previewRedeem(attackerShares);
+
+            const attackerBefore = await mzusd.balanceOf(alice.address);
+            await directTranche.connect(alice).redeem(attackerShares, alice.address, alice.address);
+            const attackerAfter = await mzusd.balanceOf(alice.address);
+            const attackerRedeemed = attackerAfter - attackerBefore;
+            const attackerLoss = attackerSpent - attackerRedeemed;
+
+            expect(attackerRedeemed).to.equal(expectedAttackerRedeemed);
+            expect(attackerLoss).to.be.gt(0n);
+            expect(attackerLoss).to.be.gt(victimDeposit / 2n);
+
+            // Victim has 0 shares and cannot recover.
+            expect(await mzusd.balanceOf(bob.address)).to.equal(0n);
+
+            const trappedDust = await mzusd.balanceOf(directTranche.target);
+            expect(trappedDust).to.equal(totalAssetsAfterVictim - attackerRedeemed);
+            expect(trappedDust).to.be.gt(victimDeposit);
+        });
+
+        it("Direct mode: calibrated multi-victim inflation attack with few victims stays unprofitable", async () => {
+            const directTranche = await deployDirectTranche(102, "Inflation Tranche", "iMZUSD");
+            const vaultSigner = await imp(vault.target as string);
+            const shareScale = await shareScaleFor(directTranche);
+
+            const victimDeposit = to18(100_000n);
+            const attackerInitialDeposit = 1n;
+            const attackerDonation = 2n * victimDeposit * shareScale - 1n;
+            const attackerSpent = attackerInitialDeposit + attackerDonation;
+
+            await mzusd.connect(vaultSigner).mint(alice.address, attackerSpent);
+            for (const user of [bob, carol, deployer]) {
+                await mzusd.connect(vaultSigner).mint(user.address, victimDeposit);
+            }
+
+            await mzusd.connect(alice).approve(directTranche.target, attackerInitialDeposit);
+            await directTranche.connect(alice).deposit(attackerInitialDeposit, alice.address);
+            const attackerShares = await directTranche.balanceOf(alice.address);
+            await mzusd.connect(alice).transfer(directTranche.target, attackerDonation);
+
+            for (const user of [bob, carol, deployer]) {
+                await mzusd.connect(user).approve(directTranche.target, victimDeposit);
+                expect(await directTranche.previewDeposit(victimDeposit)).to.equal(0n);
+                await directTranche.connect(user).deposit(victimDeposit, user.address);
+                expect(await directTranche.balanceOf(user.address)).to.equal(0n);
+            }
+
+            const expectedAttackerRedeemed = await directTranche.previewRedeem(attackerShares);
+
+            const attackerBefore = await mzusd.balanceOf(alice.address);
+            await directTranche.connect(alice).redeem(attackerShares, alice.address, alice.address);
+            const attackerAfter = await mzusd.balanceOf(alice.address);
+            const attackerRedeemed = attackerAfter - attackerBefore;
+            const attackerProfit = attackerRedeemed - attackerSpent;
+
+            expect(attackerRedeemed).to.equal(expectedAttackerRedeemed);
+            expect(attackerProfit).to.be.lt(0n);
         });
     });
     describe("Yield streaming", () => {
@@ -619,7 +724,8 @@ describe("Tranche", () => {
             );
 
             expect(aliceMintedMZ).to.equal(expectedMZ);
-            expect(aliceShares).to.equal(expectedMZ);
+            const shareScale = await shareScaleFor(tranche);
+            expect(aliceShares).to.equal(expectedMZ * shareScale);
 
             const assetsAfterAliceDeposit = await tranche.totalAssets();
             expect(assetsAfterAliceDeposit).to.equal(expectedMZ); // 100
@@ -698,7 +804,7 @@ describe("Tranche", () => {
 
             // previewDeposit needs to show less shares than assets, because pricePerShare > 1
             const previewBobShares = await tranche.previewDeposit(bobMintedMZ);
-            expect(previewBobShares).to.be.lt(bobMintedMZ);
+            expect(previewBobShares).to.be.lt(bobMintedMZ * shareScale);
             const txBob = await depositMZIntoTranche(bob, bobMintedMZ, bob.address);
             const bobShares = await tranche.balanceOf(bob.address);
 
@@ -711,8 +817,9 @@ describe("Tranche", () => {
                     ? previewBobShares - bobShares
                     : bobShares - previewBobShares;
 
-            //difference due to math and 1 second of streaming should be very small
-            expect(delta).to.be.lte(10n ** 16n);
+            // Difference comes from integer rounding + a small streaming time shift between preview and tx.
+            // With non-zero share offset, absolute share deltas are scaled up.
+            expect(delta).to.be.lte(10n ** 18n);
 
             // For checking sanity: Alice still has her original shares
             const aliceSharesAfterBob = await tranche.balanceOf(alice.address);
@@ -737,8 +844,9 @@ describe("Tranche", () => {
             expect(finalPrice).to.be.gt(priceMid);
             expect(finalPrice).to.be.gt(to18(1n));
 
-            // Invariant check: NAV ~= price * totalShares / 1e18
-            const reconstructedAssets = (finalPrice * totalShares) / to18(1n);
+            // Invariant check: NAV ~= price * totalShares / 10^shareDecimals
+            const shareUnit = 10n ** BigInt(await tranche.decimals());
+            const reconstructedAssets = (finalPrice * totalShares) / shareUnit;
             // Allow a small difference due to integer divisions, but it should be minimal
             const diff = finalTotalAssets - reconstructedAssets;
             const absDiff = diff >= 0n ? diff : -diff;
@@ -755,8 +863,9 @@ describe("Tranche", () => {
 
             const ppsBefore = await tranche.pricePerShare();
             const epochAtRequest = await vault.currentEpochId();
+            const sharesToWithdraw = await tranche.previewWithdraw(to18(50n));
 
-            await tranche.connect(alice).requestWithdrawal(to18(50n));
+            await tranche.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -772,17 +881,19 @@ describe("Tranche", () => {
             await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
 
             const epochAtRequest = await vault.currentEpochId();
-            await tranche.connect(alice).requestWithdrawal(to18(50n));
+            const sharesToWithdraw = await tranche.previewWithdraw(to18(50n));
+            await tranche.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
             await tranche.connect(deployer).finalizeEpoch(epochAtRequest);
 
             const bobSharesBefore = await tranche.balanceOf(bob.address);
+            const expectedBobShares = await tranche.previewDeposit(to18(10n));
             const {mintedMZ} = await mintAndDepositIntoTranche(bob, to6(10n), bob.address);
             const bobSharesAfter = await tranche.balanceOf(bob.address);
-
-            expect(bobSharesAfter - bobSharesBefore).to.equal(mintedMZ);
+            expect(mintedMZ).to.equal(to18(10n));
+            expect(bobSharesAfter - bobSharesBefore).to.equal(expectedBobShares);
         });
 
         it("totalAssets should exclude finalized-but-unclaimed assets", async () => {
@@ -790,7 +901,8 @@ describe("Tranche", () => {
             await mintAndDepositIntoTranche(alice, to6(100n), alice.address);
 
             const epochAtRequest = await vault.currentEpochId();
-            await tranche.connect(alice).requestWithdrawal(to18(50n));
+            const sharesToWithdraw = await tranche.previewWithdraw(to18(50n));
+            await tranche.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -810,7 +922,7 @@ describe("Tranche", () => {
                 await mintAndDepositIntoTranche(alice, depositUSDC, alice.address);
 
             expect(aliceMintedMZ).to.equal(expectedMZ);
-            expect(aliceSharesBefore).to.equal(expectedMZ);
+            expect(aliceSharesBefore).to.equal(expectedMZ * (await shareScaleFor(tranche)));
 
             const epochAtRequest = await vault.currentEpochId();
 
@@ -958,7 +1070,7 @@ describe("Tranche", () => {
             );
 
             expect(aMinted).to.equal(to18(123n));
-            expect(aShares).to.equal(aMinted);
+            expect(aShares).to.equal(aMinted * (await shareScaleFor(tranche)));
 
             expect(await vault.currentEpochId()).to.equal(1n);
 
@@ -987,9 +1099,10 @@ describe("Tranche", () => {
                 cUSDC,
                 carol.address
             );
+            const shareScale = await shareScaleFor(tranche);
 
-            expect(bShares).to.be.lt(bMinted);
-            expect(cShares).to.be.lt(cMinted);
+            expect(bShares).to.be.lt(bMinted * shareScale);
+            expect(cShares).to.be.lt(cMinted * shareScale);
 
             // 4) All request withdrawal for all shares in current vault epoch (targetEpoch = 2)
             const targetEpoch = await vault.currentEpochId(); // 2
@@ -1108,7 +1221,7 @@ describe("Tranche", () => {
                 aUSDC,
                 alice.address
             );
-            expect(aShares0).to.equal(aMinted);
+            expect(aShares0).to.equal(aMinted * (await shareScaleFor(tranche)));
             expect(await vault.currentEpochId()).to.equal(1n);
 
             // 2) Advance to epoch 2 and start streaming yield (odd amount)
@@ -1126,7 +1239,7 @@ describe("Tranche", () => {
                 bUSDC,
                 bob.address
             );
-            expect(bShares0).to.be.lt(bMinted);
+            expect(bShares0).to.be.lt(bMinted * (await shareScaleFor(tranche)));
 
             // 4) Both request withdrawal for ALL shares in current epoch (targetEpoch = 2)
             const targetEpoch = await vault.currentEpochId();
@@ -1690,7 +1803,7 @@ describe("Tranche", () => {
                 depositUSDC,
                 alice.address
             );
-            expect(aliceShares).to.equal(expectedMZ);
+            expect(aliceShares).to.equal(expectedMZ * (await shareScaleFor(tranche)));
 
             const epochAtRequest = await vault.currentEpochId();
             expect(epochAtRequest).to.equal(1n);

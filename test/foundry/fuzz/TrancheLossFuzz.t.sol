@@ -59,7 +59,7 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         vault.setNavOracle(navOracle);
     }
 
-    function testFuzz_DirectTrancheRequestWithdrawalBurnsSharesOneToOne(
+    function testFuzz_DirectTrancheRequestWithdrawalBurnsSharesAndRedeemsPreviewedAssets(
         uint96 depositUsdcSeed,
         uint96 withdrawalSharesSeed,
         address user
@@ -70,13 +70,15 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         uint256 mintedShares = _fundAndDepositToTranche(user, directTranche, depositUSDC);
         uint256 withdrawalShares = bound(uint256(withdrawalSharesSeed), 1, mintedShares);
 
+        uint256 expectedAssetsOut = directTranche.previewRedeem(withdrawalShares);
         uint256 userMzusdBefore = mzusd.balanceOf(user);
+        uint256 trancheMzusdBefore = mzusd.balanceOf(address(directTranche));
         vm.prank(user);
         directTranche.requestWithdrawal(withdrawalShares);
 
         assertEq(directTranche.balanceOf(user), mintedShares - withdrawalShares);
-        assertEq(mzusd.balanceOf(user), userMzusdBefore + withdrawalShares);
-        assertEq(mzusd.balanceOf(address(directTranche)), mintedShares - withdrawalShares);
+        assertEq(mzusd.balanceOf(user), userMzusdBefore + expectedAssetsOut);
+        assertEq(mzusd.balanceOf(address(directTranche)), trancheMzusdBefore - expectedAssetsOut);
     }
 
     function testFuzz_ApplyLossRevertsWhenOverMaxLossPerTx(

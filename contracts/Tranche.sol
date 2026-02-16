@@ -171,6 +171,8 @@ contract Tranche is
 
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
+    /// @dev `shares` uses tranche share units (`decimals()`, currently 21).
+    ///      If UI input is in asset units (MZUSD, 18d), compute shares via `previewWithdraw`.
     /// @param shares Tranche shares to withdraw.
     function requestWithdrawal(uint256 shares) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         if (shares == 0) revert ZeroPassedShares();
@@ -361,7 +363,8 @@ contract Tranche is
         totalAssets_ = balance - unaccrued - reserved;
     }
 
-    /// @notice Convenience view: price per share using virtual NAV.
+    /// @notice Price per share using virtual NAV.
+    /// @dev Returns MZUSD amount (18d) for one whole share token (`10 ** decimals()` share units).
     function pricePerShare() external view returns (uint256 pricePerShare_) {
         pricePerShare_ = convertToAssets(10 ** decimals());
     }
@@ -375,7 +378,7 @@ contract Tranche is
     /// @return enabled Whether deposit limits are enabled.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
+    /// @return cap Effective absolute cap (`type(uint256).max` when limits are disabled; otherwise `maxDepositCap`).
     function getDepositLimitInfo()
         external
         view
@@ -475,6 +478,11 @@ contract Tranche is
         return super.approve(spender, value);
     }
 
+    /// @dev Use non-zero ERC4626 decimal offset to harden first-deposit donation attacks.
+    function _decimalsOffset() internal pure override returns (uint8) {
+        return 3;
+    }
+
     // INTERNAL HELPERS
 
     /// @notice Returns how much of current yield is still not accrued into NAV.
@@ -515,7 +523,7 @@ contract Tranche is
     /// @notice Computes the effective deposit limit from cap and TVL constraints.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
+    /// @return cap Effective absolute cap (`type(uint256).max` when limits are disabled; otherwise `maxDepositCap`).
     function _computeDepositLimit()
         internal
         view
