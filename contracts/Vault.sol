@@ -126,6 +126,7 @@ contract Vault is
     error DuplicateTranche(address tranche);
     error PairNotContiguous(uint256 index);
     error TrancheNotRegistered(address tranche);
+    error PairedTrancheRiskPremiumMustBeZero();
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -372,6 +373,7 @@ contract Vault is
             }
             if (i + 1 >= len) revert PairNotContiguous(i);
             if (!_isPairedWithNext[i + 1]) revert PairNotContiguous(i);
+            if (_tranches[i + 1].riskPremiumBps != 0) revert PairedTrancheRiskPremiumMustBeZero();
             tranchePairedTo[_tranches[i].tranche] = _tranches[i + 1].tranche;
             tranchePairedTo[_tranches[i + 1].tranche] = _tranches[i].tranche;
             i += 2;
@@ -659,6 +661,8 @@ contract Vault is
     /// @dev Tranches are expected to be ERC4626 vaults over MZUSD (18 decimals),
     ///      so totalAssets() is already in MZUSD units. If multi-asset tranches are
     ///      introduced later, normalize units before scoring.
+    /// @dev Paired tranches receive a combined base + risk premium share (using
+    ///      the first tranche's riskPremiumBps), then split the total by TVL ratio.
     function _allocateYieldToTranches(
         uint256 allocatableMZUSD
     ) internal returns (uint256 actuallyAllocated) {
@@ -675,43 +679,91 @@ contract Vault is
 
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
-            // score = TVL
             trancheTvl = ITranche(t.tranche).totalAssets();
             if (!t.enabled || trancheTvl == 0) continue;
             trancheTvls[i] = trancheTvl;
             totalTvl += trancheTvl;
-            // Track the last tranche that actually participates in allocation.
-            // Dust will be assigned there to avoid leftover MZUSD on the Vault.
             lastNonZeroIndex = i;
         }
 
         if (totalTvl == 0) revert TVLZero();
 
-        // allocate yield based on TVL and Risk premium
         uint256 allocated;
-        uint256 baseShare;
-        uint256 riskPremiumShare;
-        uint256 totalShare;
 
-        for (uint256 i; i < trancheCount; ++i) {
-            trancheTvl = trancheTvls[i];
+        for (uint256 i; i < trancheCount; ) {
             t = tranches[i];
-            if (trancheTvl == 0) continue;
+            address pairedAddr = tranchePairedTo[t.tranche];
 
-            baseShare = (basePool * trancheTvl) / totalTvl;
-            riskPremiumShare = (allocatableMZUSD * t.riskPremiumBps) / BPS;
-            totalShare = baseShare + riskPremiumShare;
+            // ── Paired tranche handling ──────────────────────────────
+            if (
+                pairedAddr != address(0) &&
+                i + 1 < trancheCount &&
+                tranches[i + 1].tranche == pairedAddr
+            ) {
+                uint256 tvl0 = trancheTvls[i];
+                uint256 tvl1 = trancheTvls[i + 1];
+                uint256 pairTvl = tvl0 + tvl1;
 
-            if (i == lastNonZeroIndex) {
-                // Assign any rounding dust to the last participating tranche.
-                totalShare = allocatableMZUSD - allocated;
-            }
-            if (totalShare == 0) {
+                if (pairTvl == 0) {
+                    i += 2;
+                    continue;
+                }
+
+                uint256 pairTotal;
+                if (i == lastNonZeroIndex || i + 1 == lastNonZeroIndex) {
+                    pairTotal = allocatableMZUSD - allocated;
+                } else {
+                    uint256 pairBaseShare = (basePool * pairTvl) / totalTvl;
+                    uint256 pairRiskPremium = (allocatableMZUSD * t.riskPremiumBps) / BPS;
+                    pairTotal = pairBaseShare + pairRiskPremium;
+                }
+
+                uint256 share0;
+                uint256 share1;
+                if (tvl0 == 0) {
+                    share1 = pairTotal;
+                } else if (tvl1 == 0) {
+                    share0 = pairTotal;
+                } else {
+                    share0 = (pairTotal * tvl0) / pairTvl;
+                    share1 = pairTotal - share0;
+                }
+
+                if (share0 != 0) {
+                    mzusdToken.transfer(t.tranche, share0);
+                    ITranche(t.tranche).notifyYield(share0);
+                }
+                if (share1 != 0) {
+                    mzusdToken.transfer(pairedAddr, share1);
+                    ITranche(pairedAddr).notifyYield(share1);
+                }
+                allocated += share0 + share1;
+                i += 2;
                 continue;
             }
-            mzusdToken.transfer(t.tranche, totalShare);
-            ITranche(t.tranche).notifyYield(totalShare);
-            allocated += totalShare;
+
+            // ── Solo tranche handling ────────────────────────────────
+            trancheTvl = trancheTvls[i];
+            if (trancheTvl == 0) {
+                ++i;
+                continue;
+            }
+
+            uint256 totalShare;
+            if (i == lastNonZeroIndex) {
+                totalShare = allocatableMZUSD - allocated;
+            } else {
+                uint256 baseShare = (basePool * trancheTvl) / totalTvl;
+                uint256 riskPremiumShare = (allocatableMZUSD * t.riskPremiumBps) / BPS;
+                totalShare = baseShare + riskPremiumShare;
+            }
+
+            if (totalShare != 0) {
+                mzusdToken.transfer(t.tranche, totalShare);
+                ITranche(t.tranche).notifyYield(totalShare);
+                allocated += totalShare;
+            }
+            ++i;
         }
 
         // Defensive check: allocation should consume the full allocatable amount.

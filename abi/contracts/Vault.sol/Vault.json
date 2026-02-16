@@ -339,6 +339,11 @@
     },
     {
         "inputs": [],
+        "name": "PairedTrancheRiskPremiumMustBeZero",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "PauseManagerZeroAddress",
         "type": "error"
     },
