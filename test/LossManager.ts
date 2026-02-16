@@ -342,6 +342,7 @@ describe("LossManager", () => {
     }
 
     /// Helper: set tranche order+pairs via vault.setTrancheConfig with equal yield distribution.
+    /// Second tranche in each pair must have riskPremiumBps = 0; the pair's share goes to the first.
     async function setOrderAndPairs(order: string[], isPairedWithNext: boolean[]) {
         // Need to register any tranches not yet in vault
         for (const addr of order) {
@@ -349,12 +350,27 @@ describe("LossManager", () => {
                 await vault.registerTranche(addr);
             }
         }
-        // Equal risk premium distribution across all tranches
+        // Count slots that can carry risk premium (exclude second of each pair)
         const len = order.length;
-        const perTranche = Math.floor(10_000 / len);
-        const riskPremiums = new Array(len).fill(perTranche);
-        // Assign remainder to last tranche
-        riskPremiums[len - 1] = 10_000 - perTranche * (len - 1);
+        const secondOfPair = new Set<number>();
+        for (let i = 0; i < len; i++) {
+            if (isPairedWithNext[i] && i + 1 < len && isPairedWithNext[i + 1]) {
+                secondOfPair.add(i + 1);
+            }
+        }
+        const slotCount = len - secondOfPair.size;
+        const perSlot = Math.floor(10_000 / slotCount);
+        const riskPremiums = new Array(len).fill(0);
+        let assigned = 0;
+        let lastSlotIdx = 0;
+        for (let i = 0; i < len; i++) {
+            if (secondOfPair.has(i)) continue;
+            riskPremiums[i] = perSlot;
+            assigned += perSlot;
+            lastSlotIdx = i;
+        }
+        // Assign remainder to last non-paired-second tranche
+        riskPremiums[lastSlotIdx] += 10_000 - assigned;
         const trancheInfos = order.map((addr, i) => ({
             tranche: addr,
             riskPremiumBps: riskPremiums[i],
