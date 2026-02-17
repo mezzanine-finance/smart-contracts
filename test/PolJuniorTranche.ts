@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     MZUSD,
     IERC20,
@@ -51,7 +51,7 @@ describe("PolJuniorTranche", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let pol: PolJuniorTranche;
 
@@ -109,13 +109,13 @@ describe("PolJuniorTranche", () => {
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         // Deploy POL tranche
@@ -331,7 +331,7 @@ describe("PolJuniorTranche", () => {
             await time.increase(DAY);
             await (await vault.connect(navOracleSigner).distributeYield(to6(7n))).wait();
 
-            // Vault enforces one distribution per epoch window.
+            // IssuanceVault enforces one distribution per epoch window.
             await time.increase(DAY);
             await (await vault.connect(navOracleSigner).distributeYield(to6(13n))).wait();
             const payoutAfter = await mzusd.balanceOf(bob.address);

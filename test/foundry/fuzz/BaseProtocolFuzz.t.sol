@@ -8,7 +8,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {PauseManager} from "contracts/pause/PauseManager.sol";
 import {ReservoirUSDC} from "contracts/ReservoirUSDC.sol";
 import {MZUSD} from "contracts/MZUSD.sol";
-import {Vault} from "contracts/Vault.sol";
+import {IssuanceVault} from "contracts/IssuanceVault.sol";
 import {MockUSDC} from "contracts/test/MockUSDC.sol";
 
 abstract contract BaseProtocolFuzzTest is Test {
@@ -21,7 +21,7 @@ abstract contract BaseProtocolFuzzTest is Test {
     MockUSDC internal usdc;
     ReservoirUSDC internal reservoir;
     MZUSD internal mzusd;
-    Vault internal vault;
+    IssuanceVault internal vault;
 
     function setUp() public virtual {
         usdc = new MockUSDC();
@@ -57,11 +57,11 @@ abstract contract BaseProtocolFuzzTest is Test {
             )
         );
 
-        Vault vaultImpl = new Vault(address(mzusd), address(reservoir));
-        vault = Vault(
+        IssuanceVault vaultImpl = new IssuanceVault(address(mzusd), address(reservoir));
+        vault = IssuanceVault(
             _deployProxy(
                 address(vaultImpl),
-                abi.encodeCall(Vault.initialize, (0, address(this), 0, address(this)))
+                abi.encodeCall(IssuanceVault.initialize, (0, address(this), 0, address(this)))
             )
         );
 

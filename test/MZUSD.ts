@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 import {
     MZUSD,
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     IERC20,
     MZUSDNettingHelper,
@@ -44,7 +44,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
@@ -120,7 +120,7 @@ describe("MZUSD <-> USDC conversion", () => {
             }
         );
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, charlie.address], {
             kind: "uups",
             initializer: "initialize",
@@ -288,7 +288,7 @@ describe("MZUSD <-> USDC conversion", () => {
             // Alice's USDC were spent
             expect(aliceUSDCAfter).to.equal(0n);
 
-            // Vault received the USDC
+            // IssuanceVault received the USDC
             expect(vaultUSDCAfter - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
             // Alice received MZUSD 1:1 to USDC in 18 decimals.
@@ -353,7 +353,7 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(aliceUSDCAfterWithdraw).to.equal(depositAmountUSDC);
             expect(supplyAfterWithdraw).to.equal(0n);
 
-            // Vault lost exactly the withdrawn amount
+            // IssuanceVault lost exactly the withdrawn amount
             expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(depositAmountUSDC);
         });
 
@@ -377,13 +377,13 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(mzUsdcAfter).to.equal(mzUsdcBefore);
         });
 
-        it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
+        it("Should revert with InsufficientLiquidity when IssuanceVault does not have enough USDC", async () => {
             const depositAmountUSDC = to6(50n);
 
-            // Fund Alice and deposit into MZUSD (USDC goes to Vault)
+            // Fund Alice and deposit into MZUSD (USDC goes to IssuanceVault)
             await fundAndDepositForAlice(depositAmountUSDC);
 
-            // Empty the Vault's USDC by transferring it out to Bob
+            // Empty the IssuanceVault's USDC by transferring it out to Bob
             const vaultSigner = await imp(vault.target);
             const vaultBalance = await usdc.balanceOf(vault.target);
             expect(vaultBalance).to.equal(depositAmountUSDC);

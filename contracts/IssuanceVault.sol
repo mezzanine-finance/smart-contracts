@@ -12,14 +12,14 @@ import "./interfaces/IReservoir.sol";
 import "./interfaces/ITranche.sol";
 import "./interfaces/ILossManager.sol";
 import "./interfaces/INavOracleAutomation.sol";
-/// @title Vault
+/// @title IssuanceVault
 /// @notice Protocol treasury that mints MZUSD, manages yield distribution, buffers USDC for withdrawals/insurance,
 ///         and coordinates with the Reservoir where strategies live.
-/// @dev This Vault is not an ERC4626 vault and does not mint user shares or represent deposits.
+/// @dev This IssuanceVault is not an ERC4626 vault and does not mint user shares or represent deposits.
 /// @dev Tranches are the ERC4626-like vaults for users.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
-contract Vault is
+contract IssuanceVault is
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
     AccessManagedUpgradeable,
@@ -51,7 +51,7 @@ contract Vault is
     IERC20 public immutable usdc; // address of USDC token
     IMZUSD public immutable mzusd; // address of MZUSD token, protocol stablecoin
     IReservoir public immutable reservoir; // address of reservoir contract for idle USDC
-    address public performanceFeeReceiver; // receiver of performance/curators fees
+    address public performanceFeeReceiver; // receiver of performance fees
     address public protocolFeeReceiver; // receiver of protocols fees
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
 
@@ -61,7 +61,7 @@ contract Vault is
     uint64 public currentEpochId; // current epoch ID for yield distribution
 
     uint16 public hysteresisBps; // hysteresis band around idle buffer target
-    uint16 public performanceFeeBps; // portion of yield allocated to performance/curators fees (bps of total yield)
+    uint16 public performanceFeeBps; // portion of yield allocated to performance fees (bps of total yield)
     uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
     uint16 public baseRewardBps; // portion of yield allocated to the base reward pool
     address public lossManager; // canonical loss manager (set once)
@@ -147,9 +147,9 @@ contract Vault is
         _disableInitializers();
     }
 
-    /// @notice Initialize the Vault.
-    /// @param _performanceFeeBps Performance/curator fee in bps (0 allowed).
-    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
+    /// @notice Initialize the IssuanceVault.
+    /// @param _performanceFeeBps Performance fee in bps (0 allowed).
+    /// @param _performanceFeeReceiver Recipient of performance fees.
     /// @param _protocolFeeBps Protocol fee in bps (0 allowed).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
@@ -197,7 +197,7 @@ contract Vault is
         emit WithdrawnUSDCFromVault(to, amount);
     }
 
-    /// @notice Rebalance idle USDC between Vault and Reservoir.
+    /// @notice Rebalance idle USDC between IssuanceVault and Reservoir.
     function rebalance() external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _rebalance();
     }
@@ -235,8 +235,8 @@ contract Vault is
             return;
         }
 
-        // Allocation model: mint allocatable MZUSD to the Vault, then transfer to tranches.
-        // Dust is assigned to the last non-zero tranche, so the Vault should end with no MZUSD.
+        // Allocation model: mint allocatable MZUSD to the IssuanceVault, then transfer to tranches.
+        // Dust is assigned to the last non-zero tranche, so the IssuanceVault should end with no MZUSD.
         mzusd.mint(address(this), allocatableMZUSD);
         uint256 actuallyAllocated = _allocateYieldToTranches(allocatableMZUSD);
 
@@ -521,7 +521,7 @@ contract Vault is
     }
 
     /// @notice Internal function to set fee rates.
-    /// @param _performanceFeeBps Performance/curator fee in bps.
+    /// @param _performanceFeeBps Performance fee in bps.
     /// @param _protocolFeeBps Protocol fee in bps.
     /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
     function _setFeeRates(uint16 _performanceFeeBps, uint16 _protocolFeeBps) internal {
@@ -531,7 +531,7 @@ contract Vault is
     }
 
     /// @notice Internal function to set fee receivers.
-    /// @param _performanceFeeReceiver Recipient of performance/curator fees.
+    /// @param _performanceFeeReceiver Recipient of performance fees.
     /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev _performanceFeeReceiver and _protocolFeeReceiver must be non-zero.
     /// @dev _performanceFeeReceiver and _protocolFeeReceiver could be same addresses.
@@ -634,7 +634,7 @@ contract Vault is
             trancheTvls[i] = trancheTvl;
             totalTvl += trancheTvl;
             // Track the last tranche that actually participates in allocation.
-            // Dust will be assigned there to avoid leftover MZUSD on the Vault.
+            // Dust will be assigned there to avoid leftover MZUSD on the IssuanceVault.
             lastNonZeroIndex = i;
         }
 
@@ -668,7 +668,7 @@ contract Vault is
         }
 
         // Defensive check: allocation should consume the full allocatable amount.
-        // If this ever fails, it prevents silent leftover MZUSD on the Vault.
+        // If this ever fails, it prevents silent leftover MZUSD on the IssuanceVault.
         if (allocated != allocatableMZUSD) {
             revert AllocationMismatch(allocated, allocatableMZUSD);
         }

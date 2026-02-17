@@ -12,7 +12,7 @@ import "./interfaces/IMZUSD.sol";
 /// @notice Admin-managed protocol-owned-liquidity tranche for treasury/POL operations.
 /// @notice This is NOT a standard public user investment tranche:
 ///         withdrawals are `restricted` and controlled by AccessManager policy.
-/// @notice Yield sent by Vault is forwarded immediately to `polPayout` (no streaming, no umbrella queue).
+/// @notice Yield sent by IssuanceVault is forwarded immediately to `polPayout` (no streaming, no umbrella queue).
 /// @notice Despite governance/ops control, this tranche still participates in loss realization via LossManager `applyLoss`.
 /// @notice When configured in the same LossManager group as the regular Junior tranche, losses are split proportionally by TVL within that group.
 /// @notice There is no deposit function; admins fund by transferring MZUSD directly to this contract.
@@ -42,7 +42,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         _disableInitializers();
     }
 
-    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
+    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the IssuanceVault-linked MZUSD.
     function initialize(address polPayoutAddress) external initializer {
         (IMZUSD mzusdToken, address accessManager, address pauseManager_) = _resolveCoreContracts(
             polPayoutAddress
@@ -82,7 +82,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         emit Withdrawn(receiver, assets);
     }
 
-    /// @notice Vault calls this after transferring `yieldAmount` of MZUSD to this contract.
+    /// @notice IssuanceVault calls this after transferring `yieldAmount` of MZUSD to this contract.
     /// @dev Forwards yield immediately to `polPayout`; POL tranche does not stream yield over epochs.
     function notifyYield(
         uint256 yieldAmount

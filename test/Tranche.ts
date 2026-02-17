@@ -9,7 +9,14 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {
+    MZUSD,
+    IssuanceVault,
+    ReservoirUSDC,
+    IERC20,
+    Tranche,
+    PauseManager,
+} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
@@ -35,7 +42,7 @@ describe("Tranche", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
@@ -98,13 +105,13 @@ describe("Tranche", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // Tranche
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -145,7 +152,7 @@ describe("Tranche", () => {
         navOracleSigner = await imp(navOracleRef.target as string);
 
         // ROLES & AccessManager wiring
-        // 2) Admin-only functions on MZUSD & Vault
+        // 2) Admin-only functions on MZUSD & IssuanceVault
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
@@ -169,7 +176,7 @@ describe("Tranche", () => {
         );
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
-        // 5) Wire Vault to MZUSD and register tranche in Vault (after roles are configured)
+        // 5) Wire IssuanceVault to MZUSD and register tranche in IssuanceVault (after roles are configured)
         await mzusd.setVault(vault.target);
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
@@ -734,7 +741,7 @@ describe("Tranche", () => {
                 vault.connect(navOracleSigner).distributeYield(1000n)
             ).to.be.revertedWithCustomError(vault, "EpochTooSoon"); // dummy call to check revert
 
-            // 2) Time skip for one epoch, distributeYield on Vault is called
+            // 2) Time skip for one epoch, distributeYield on IssuanceVault is called
             // needed to make _advanceEpochAndValidate() not to fail with EpochTooSoon (1 day because we initialized contract with 1 day minEpochDuration)
             await time.increase(DAY);
 
@@ -945,7 +952,7 @@ describe("Tranche", () => {
             const aliceSharesAfterRequest = await tranche.balanceOf(alice.address);
             expect(aliceSharesAfterRequest).to.equal(0n);
 
-            // 3) Advance epoch in Vault and distribute some yield for the next epoch
+            // 3) Advance epoch in IssuanceVault and distribute some yield for the next epoch
             await time.increase(DAY);
 
             const reportedUSDC = to6(10n); // small yield just to advance epoch

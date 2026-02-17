@@ -11,7 +11,7 @@ import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
     MZUSD,
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     IERC20,
     Tranche,
@@ -48,7 +48,7 @@ describe("Tranche claim solvency", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
@@ -109,14 +109,14 @@ describe("Tranche claim solvency", () => {
             }
         )) as unknown as MZUSD;
 
-        // Deploy Vault
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        // Deploy IssuanceVault
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // Deploy Tranche (umbrella mode, unstakeDelay=0)
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);

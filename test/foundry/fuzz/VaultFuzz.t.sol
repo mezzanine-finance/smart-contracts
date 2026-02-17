@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {Vault} from "contracts/Vault.sol";
+import {IssuanceVault} from "contracts/IssuanceVault.sol";
 import {BaseProtocolFuzzTest} from "./BaseProtocolFuzz.t.sol";
 
 contract VaultFuzzTest is BaseProtocolFuzzTest {
@@ -95,7 +95,7 @@ contract VaultFuzzTest is BaseProtocolFuzzTest {
         assertEq(usdc.balanceOf(address(vault)), idle);
         assertEq(usdc.balanceOf(address(reservoir)), 0);
 
-        vm.expectRevert(Vault.ReservoirEmpty.selector);
+        vm.expectRevert(IssuanceVault.ReservoirEmpty.selector);
         vault.rebalance();
     }
 

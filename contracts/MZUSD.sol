@@ -106,7 +106,7 @@ contract MZUSD is
     /// @param amountUSDC USDC amount in 6 decimals.
     /// @dev Minted amount is amountUSDC * SCALE, so conversion is exact (no rounding loss on deposit).
     /// @dev Example: deposit 15_000_000 (15 USDC in 6d) -> mint 15_000_000_000_000_000_000 (15 MZUSD in 18d).
-    /// @dev USDC is transferred directly to the Vault, MZUSD is minted to the depositor.
+    /// @dev USDC is transferred directly to the IssuanceVault, MZUSD is minted to the depositor.
     function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -223,8 +223,8 @@ contract MZUSD is
         emit RedemptionWindowDurationQueued(newDuration);
     }
 
-    /// @notice Set Vault address (one-time).
-    /// @dev Vault is immutable at the application level: once set, it cannot be changed.
+    /// @notice Set IssuanceVault address (one-time).
+    /// @dev IssuanceVault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (address(vault) != address(0)) revert VaultAlreadySet();

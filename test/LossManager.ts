@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     MZUSD,
     IERC20,
@@ -52,7 +52,7 @@ describe("LossManager", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let junior: Tranche;
     let mezzanine: Tranche;
@@ -121,13 +121,13 @@ describe("LossManager", () => {
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -269,7 +269,7 @@ describe("LossManager", () => {
             ADMIN_ROLE
         );
 
-        // loss manager role: Vault.advanceEpoch
+        // loss manager role: IssuanceVault.advanceEpoch
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         // wire and register

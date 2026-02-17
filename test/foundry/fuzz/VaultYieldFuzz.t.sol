@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Tranche} from "contracts/Tranche.sol";
-import {Vault} from "contracts/Vault.sol";
+import {IssuanceVault} from "contracts/IssuanceVault.sol";
 import {MockLossManagerRef} from "contracts/test/MockLossManagerRef.sol";
 import {MockNavOracleAutomationRef} from "contracts/test/MockNavOracleAutomationRef.sol";
 import {BaseProtocolFuzzTest} from "./BaseProtocolFuzz.t.sol";
@@ -21,11 +21,11 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
 
         uint64 adminRole = accessManager.ADMIN_ROLE();
         bytes4[] memory vaultSelectors = new bytes4[](5);
-        vaultSelectors[0] = Vault.setLossManager.selector;
-        vaultSelectors[1] = Vault.setNavOracle.selector;
-        vaultSelectors[2] = Vault.addTranche.selector;
-        vaultSelectors[3] = Vault.setYieldDistribution.selector;
-        vaultSelectors[4] = Vault.setFeeRates.selector;
+        vaultSelectors[0] = IssuanceVault.setLossManager.selector;
+        vaultSelectors[1] = IssuanceVault.setNavOracle.selector;
+        vaultSelectors[2] = IssuanceVault.addTranche.selector;
+        vaultSelectors[3] = IssuanceVault.setYieldDistribution.selector;
+        vaultSelectors[4] = IssuanceVault.setFeeRates.selector;
         accessManager.setTargetFunctionRole(address(vault), vaultSelectors, adminRole);
 
         tranche0 = _deployTranche(1, "Tranche 0", "T0");
@@ -205,7 +205,7 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         uint256 usdcReported = bound(uint256(usdcReportedSeed), 1, 5_000_000e6);
 
         vm.warp(block.timestamp + 1 days + 1);
-        vm.expectRevert(Vault.TVLZero.selector);
+        vm.expectRevert(IssuanceVault.TVLZero.selector);
         vm.prank(navOracle);
         vault.distributeYield(usdcReported);
     }
@@ -285,7 +285,7 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         vm.warp(block.timestamp + 1 days + 1);
 
         if (!hasParticipants) {
-            vm.expectRevert(Vault.TVLZero.selector);
+            vm.expectRevert(IssuanceVault.TVLZero.selector);
             vm.prank(navOracle);
             vault.distributeYield(usdcReported);
             return;

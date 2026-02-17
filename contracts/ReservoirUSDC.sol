@@ -39,7 +39,7 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         __PauseManaged_init(pauseManager_);
     }
 
-    /// @notice Set Vault address for tracking (one-time).
+    /// @notice Set master vault address for tracking (one-time).
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (vault != address(0)) revert VaultAlreadySet();
@@ -47,8 +47,8 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         emit VaultUpdated(_vault);
     }
 
-    /// @notice Typically called by the Vault to move idle USDC into the Reservoir.
-    /// @dev Can also be called by external operators/curators to provide USDC liquidity.
+    /// @notice Typically called by the IssuanceVault to move idle USDC into the Reservoir.
+    /// @dev Can also be called by external operators to provide USDC liquidity for the master vault.
     function deposit(uint256 amount) external whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(msg.sender, address(this), amount);
@@ -58,7 +58,7 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         emit Deposited(msg.sender, amount);
     }
 
-    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault OR called by the Curators to move funds into the main fund to earn yield.
+    /// @notice Called by the IssuanceVault to retrieve USDC from the Reservoir back into the master vault.
     function withdraw(
         uint256 amount,
         address to

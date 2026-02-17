@@ -17,7 +17,7 @@ import {
     NavOracleAutomation,
     ReservoirUSDC,
     Tranche,
-    Vault,
+    IssuanceVault,
     PauseManager,
 } from "../typechain-types";
 import {grantPausePermissions} from "./helpers/pause";
@@ -51,7 +51,7 @@ describe("NavSubmitterAutomation", () => {
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let tranche: Tranche;
     let lossManager: LossManager;
     let navAutomation: NavOracleAutomation;
@@ -102,13 +102,13 @@ describe("NavSubmitterAutomation", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
