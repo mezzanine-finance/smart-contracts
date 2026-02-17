@@ -68,7 +68,6 @@
             "unstakeDelayEpochs": 2,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 3000
             }
         },
@@ -83,19 +82,13 @@
             "unstakeDelayEpochs": 4,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 1000
             }
         }
     ],
-    "polJunior": {
-        "enabled": true,
-        "polPayout": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
-        "registerInVault": false
-    },
     "lossManager": {
-        "order": ["polJunior", "junior", "mezzanine", "senior"],
-        "isPairedWithNext": [true, true, false, false],
+        "order": ["junior", "mezzanine", "senior"],
+        "isPairedWithNext": [false, false, false],
         "maxLossPerTxUSDC": "10000000"
     },
     "navOracle": {

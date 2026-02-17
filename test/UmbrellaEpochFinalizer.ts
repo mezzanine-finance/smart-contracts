@@ -15,7 +15,7 @@ import {
     ReservoirUSDC,
     Tranche,
     UmbrellaEpochFinalizer,
-    Vault,
+    IssuanceVault,
     PauseManager,
 } from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
@@ -47,7 +47,7 @@ describe("UmbrellaEpochFinalizer", () => {
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let tranche: Tranche;
     let whale: any;
     let lossManagerRef: any;
@@ -104,13 +104,13 @@ describe("UmbrellaEpochFinalizer", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -150,7 +150,7 @@ describe("UmbrellaEpochFinalizer", () => {
         ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
-        // Admin-only functions on MZUSD & Vault
+        // Admin-only functions on MZUSD & IssuanceVault
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
@@ -181,7 +181,7 @@ describe("UmbrellaEpochFinalizer", () => {
             ADMIN_ROLE
         );
 
-        // Wire Vault and register tranche (after roles are configured)
+        // Wire IssuanceVault and register tranche (after roles are configured)
         await mzusd.setVault(vault.target);
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);

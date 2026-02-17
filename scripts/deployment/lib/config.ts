@@ -86,14 +86,6 @@ export interface TrancheConfig {
     };
 }
 
-export interface PolJuniorConfig {
-    enabled: boolean;
-    polPayout: string;
-    registerInVault?: boolean;
-    riskPremiumBps?: number;
-    enabledInVault?: boolean;
-}
-
 export interface LossManagerConfig {
     order: string[];
     isPairedWithNext: boolean[];
@@ -141,7 +133,6 @@ export interface DeployConfig {
     mzusd: MZUSDConfig;
     vault: VaultConfig;
     tranches: TrancheConfig[];
-    polJunior?: PolJuniorConfig;
     lossManager: LossManagerConfig;
     navOracle: NavOracleConfig;
     umbrellaFinalizer?: UmbrellaFinalizerConfig;
@@ -215,13 +206,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
         parseBps(vault.hysteresisBps);
     }
     if (vault.performanceFeeBps + vault.protocolFeeBps > 5000) {
-        throw new Error("Vault fees exceed MAX_TOTAL_FEE_BPS (5000)");
+        throw new Error("IssuanceVault fees exceed MAX_TOTAL_FEE_BPS (5000)");
     }
     requireAddress(vault.performanceFeeReceiver, "vault.performanceFeeReceiver");
     requireAddress(vault.protocolFeeReceiver, "vault.protocolFeeReceiver");
     assert(
         vault.performanceFeeReceiver.toLowerCase() !== vault.protocolFeeReceiver.toLowerCase(),
-        "Vault fee receivers must be distinct"
+        "IssuanceVault fee receivers must be distinct"
     );
 
     const tranches = config.tranches ?? [];
@@ -256,27 +247,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
         }
     }
 
-    if (config.polJunior?.enabled) {
-        requireAddress(config.polJunior.polPayout, "polJunior.polPayout");
-        if (config.polJunior.registerInVault) {
-            assert(
-                config.polJunior.riskPremiumBps !== undefined,
-                "polJunior.riskPremiumBps required when registerInVault = true"
-            );
-            parseBps(config.polJunior.riskPremiumBps);
-        }
-    }
-
     const loss = config.lossManager;
     assert(
         loss.order.length === loss.isPairedWithNext.length,
         "lossManager order/isPairedWithNext mismatch"
     );
     for (const key of loss.order) {
-        assert(
-            key === "polJunior" || keys.has(key),
-            `lossManager.order references unknown tranche key: ${key}`
-        );
+        assert(keys.has(key), `lossManager.order references unknown tranche key: ${key}`);
     }
 
     for (let i = 0; i < loss.isPairedWithNext.length; ) {

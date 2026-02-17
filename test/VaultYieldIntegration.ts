@@ -9,7 +9,14 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {
+    IssuanceVault,
+    ReservoirUSDC,
+    MZUSD,
+    IERC20,
+    Tranche,
+    PauseManager,
+} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
@@ -25,7 +32,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault Yield Integration", () => {
+describe("IssuanceVault Yield Integration", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -40,7 +47,7 @@ describe("Vault Yield Integration", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let junior: Tranche;
     let mezzanine: Tranche;
@@ -102,13 +109,13 @@ describe("Vault Yield Integration", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // 3 tranches
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -243,7 +250,7 @@ describe("Vault Yield Integration", () => {
     }
 
     async function deployVaultWithoutTranches() {
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         const isolatedVault = (await upgrades.deployProxy(
             VaultFactory,
             [0, bob.address, 0, carol.address],
@@ -253,7 +260,7 @@ describe("Vault Yield Integration", () => {
                 unsafeAllow: ["constructor", "state-variable-immutable"],
                 constructorArgs: [mzusd.target, reservoir.target],
             }
-        )) as unknown as Vault;
+        )) as unknown as IssuanceVault;
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         const selectors = [
@@ -371,7 +378,7 @@ describe("Vault Yield Integration", () => {
     });
 
     describe("Access control", () => {
-        it("Pauses all guarded Vault functions", async () => {
+        it("Pauses all guarded IssuanceVault functions", async () => {
             const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
             const KEEPER_ROLE = 7n;
             const rebalanceSel = vault.interface.getFunction("rebalance").selector;
@@ -440,7 +447,7 @@ describe("Vault Yield Integration", () => {
 
     describe("Validation", () => {
         it("Fee receiver validation (init + setter)", async () => {
-            const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+            const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
 
             await expect(
                 upgrades.deployProxy(VaultFactory, [0, ethers.ZeroAddress, 0, carol.address], {
@@ -701,7 +708,7 @@ describe("Vault Yield Integration", () => {
             const juniorBalAfter = await mzusd.balanceOf(junior.target);
             expect(juniorBalAfter - juniorBalBefore).to.equal(expectedAlloc);
 
-            // No allocation mint should remain on Vault
+            // No allocation mint should remain on IssuanceVault
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
             await expectSupplyMatchesBacking();
         });

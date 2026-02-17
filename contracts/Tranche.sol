@@ -105,11 +105,12 @@ contract Tranche is
     error TooLateToCancel();
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
+    error UnstakeDelayZero();
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
 
-    /// @param vaultAddress Vault address.
+    /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
     constructor(address vaultAddress, bool _directWithdrawEnabled) {
         if (vaultAddress == address(0)) revert ZeroAddress();
@@ -133,7 +134,7 @@ contract Tranche is
     /// @param initialUnstakeDelayEpochs Initial unstake delay in epochs.
     /// @param name_ Tranche name.
     /// @param symbol_ Tranche symbol.
-    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
+    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the IssuanceVault-linked MZUSD.
     function initialize(
         uint256 trancheIdentifier,
         uint256 initialUnstakeDelayEpochs,
@@ -170,6 +171,8 @@ contract Tranche is
 
     /// @notice Request withdrawal in shares.
     /// @dev Direct mode: redeem immediately. Umbrella mode: shares are held until epoch finalization.
+    /// @dev `shares` uses tranche share units (`decimals()`, currently 21).
+    ///      If UI input is in asset units (MZUSD, 18d), compute shares via `previewWithdraw`.
     /// @param shares Tranche shares to withdraw.
     function requestWithdrawal(uint256 shares) external whenNotPaused(PauseCategory.WITHDRAWALS) {
         if (shares == 0) revert ZeroPassedShares();
@@ -278,7 +281,7 @@ contract Tranche is
 
     // Linear yield streaming
     /// @notice Registers yieldAmount of MZUSD as yield to be streamed linearly over next epoch.
-    /// @dev Assumes yieldAmount tokens are already transferred to this contract (from Vault).
+    /// @dev Assumes yieldAmount tokens are already transferred to this contract (from IssuanceVault).
     ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
     /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
     function notifyYield(
@@ -318,10 +321,13 @@ contract Tranche is
     function setUnstakeDelayEpochs(
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (!directWithdrawEnabled && epochsDelay == 0) revert UnstakeDelayZero();
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
     /// @notice Update deposit limits.
+    /// @param cap Absolute cap in MZUSD units; use `type(uint256).max` as no-cap sentinel.
+    /// @param tvlBps TVL share limit in bps.
     function setDepositLimits(
         uint256 cap,
         uint256 tvlBps
@@ -357,7 +363,8 @@ contract Tranche is
         totalAssets_ = balance - unaccrued - reserved;
     }
 
-    /// @notice Convenience view: price per share using virtual NAV.
+    /// @notice Price per share using virtual NAV.
+    /// @dev Returns MZUSD amount (18d) for one whole share token (`10 ** decimals()` share units).
     function pricePerShare() external view returns (uint256 pricePerShare_) {
         pricePerShare_ = convertToAssets(10 ** decimals());
     }
@@ -371,7 +378,7 @@ contract Tranche is
     /// @return enabled Whether deposit limits are enabled.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
+    /// @return cap Effective absolute cap (`type(uint256).max` when limits are disabled; otherwise `maxDepositCap`).
     function getDepositLimitInfo()
         external
         view
@@ -471,6 +478,11 @@ contract Tranche is
         return super.approve(spender, value);
     }
 
+    /// @dev Use non-zero ERC4626 decimal offset to harden first-deposit donation attacks.
+    function _decimalsOffset() internal pure override returns (uint8) {
+        return 3;
+    }
+
     // INTERNAL HELPERS
 
     /// @notice Returns how much of current yield is still not accrued into NAV.
@@ -511,7 +523,7 @@ contract Tranche is
     /// @notice Computes the effective deposit limit from cap and TVL constraints.
     /// @return limit Effective deposit limit.
     /// @return limitByTvl Limit derived from TVL bps.
-    /// @return cap Effective absolute cap (`type(uint256).max` when disabled or not configured).
+    /// @return cap Effective absolute cap (`type(uint256).max` when limits are disabled; otherwise `maxDepositCap`).
     function _computeDepositLimit()
         internal
         view
@@ -533,16 +545,12 @@ contract Tranche is
             limitByTvl = maxTotalByTvl - trancheAssets;
         }
 
-        uint256 limitByCap = type(uint256).max;
+        uint256 limitByCap;
         cap = maxDepositCap;
-        if (cap == 0) {
-            cap = type(uint256).max;
+        if (cap <= trancheAssets) {
+            limitByCap = 0;
         } else {
-            if (cap <= trancheAssets) {
-                limitByCap = 0;
-            } else {
-                limitByCap = cap - trancheAssets;
-            }
+            limitByCap = cap - trancheAssets;
         }
 
         limit = limitByTvl < limitByCap ? limitByTvl : limitByCap;

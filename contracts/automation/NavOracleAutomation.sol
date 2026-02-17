@@ -11,7 +11,7 @@ import {IVault} from "../interfaces/IVault.sol";
 /// @title NAV oracle automation
 /// @notice Stores oracle NAV snapshots with a veto window, then applies yield or loss via Automation.
 /// @dev submitNav is AccessManaged; map it to ORACLE_ROLE in AccessManager, and grant this contract
-///      a role that can call Vault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
+///      a role that can call IssuanceVault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
 /// @dev Trust model: submitted NAV is trusted oracle input. This contract does not validate NAV truthfulness,
 ///      it only enforces role-gated submission and optional veto delay before applying protocol accounting.
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
@@ -26,7 +26,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte) + vetoPeriod (4 bytes)
     // uint128 comfortably covers practical USDC (6d) deltas with wide headroom.
     uint128 public pendingDeltaUSDC;
-    // uint64 timestamp and uint32 durations match protocol style (Vault epoch config) and are ample.
+    // uint64 timestamp and uint32 durations match protocol style (IssuanceVault epoch config) and are ample.
     uint64 public pendingReadyAt;
     // Direction is stored separately to avoid signed-int casts/abs math during upkeep execution.
     bool public pendingIsYield;
@@ -146,7 +146,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         return pendingReadyAt != 0;
     }
 
-    /// @dev External calls to Vault/LossManager; pending state is cleared first
+    /// @dev External calls to IssuanceVault/LossManager; pending state is cleared first
     function _applyPending() internal {
         bool isYield = pendingIsYield;
         uint256 deltaUSDC = pendingDeltaUSDC;

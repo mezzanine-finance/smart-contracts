@@ -24,7 +24,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     address[] public trancheOrder;
     /// @notice Max loss allowed per transaction in USDC 6d (0 disables the limit).
     uint256 public maxLossPerTxUSDC;
-    /// @notice Vault reference used for mandatory epoch advancement on every loss apply.
+    /// @notice IssuanceVault reference used for mandatory epoch advancement on every loss apply.
     address public immutable vault;
 
     /// @notice Pairing lookup. If non-zero, tranche shares loss with the paired tranche.

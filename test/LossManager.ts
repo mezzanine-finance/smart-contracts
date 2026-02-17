@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     MZUSD,
     IERC20,
@@ -52,7 +52,7 @@ describe("LossManager", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let junior: Tranche;
     let mezzanine: Tranche;
@@ -121,13 +121,13 @@ describe("LossManager", () => {
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -269,7 +269,7 @@ describe("LossManager", () => {
             ADMIN_ROLE
         );
 
-        // loss manager role: Vault.advanceEpoch
+        // loss manager role: IssuanceVault.advanceEpoch
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         // wire and register
@@ -586,7 +586,8 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, depositMZ);
 
             const epochId = await vault.currentEpochId();
-            await (await junior.connect(alice).requestWithdrawal(depositMZ)).wait();
+            const pendingShares = await junior.balanceOf(alice.address);
+            await (await junior.connect(alice).requestWithdrawal(pendingShares)).wait();
 
             await time.increase(DAY);
             const epochBefore = await vault.currentEpochId();
@@ -599,7 +600,7 @@ describe("LossManager", () => {
 
             await (await junior.connect(deployer).finalizeEpoch(epochId)).wait();
             const [, , totalShares, totalAssets] = await junior.getEpochInfo(epochId);
-            expect(totalShares).to.equal(depositMZ);
+            expect(totalShares).to.equal(pendingShares);
             expect(totalAssets).to.equal(expectedRemaining);
 
             const before = await mzusd.balanceOf(alice.address);
@@ -625,7 +626,8 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -648,7 +650,8 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -672,7 +675,8 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -705,9 +709,11 @@ describe("LossManager", () => {
             await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(20n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(10n));
-            await mezzanine.connect(bob).requestWithdrawal(to18(10n));
-            await senior.connect(carol).requestWithdrawal(to18(10n));
+            await junior.connect(alice).requestWithdrawal(await junior.previewWithdraw(to18(10n)));
+            await mezzanine
+                .connect(bob)
+                .requestWithdrawal(await mezzanine.previewWithdraw(to18(10n)));
+            await senior.connect(carol).requestWithdrawal(await senior.previewWithdraw(to18(10n)));
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);

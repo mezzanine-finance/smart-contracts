@@ -17,7 +17,9 @@ function readArg(name: string): string | undefined {
 async function main() {
     const vault = readArg("vault") ?? process.env.VAULT;
     if (!vault || !ethers.isAddress(vault)) {
-        throw new Error("Vault address is required. Pass --vault 0x... or set VAULT env var.");
+        throw new Error(
+            "IssuanceVault address is required. Pass --vault 0x... or set VAULT env var."
+        );
     }
 
     const [deployer] = await ethers.getSigners();
@@ -25,7 +27,7 @@ async function main() {
     console.log("=== Deploy MockNavSubmitterAutomation ===");
     console.log("Network:", network.name);
     console.log("Deployer:", deployer.address);
-    console.log("Vault:", vault);
+    console.log("IssuanceVault:", vault);
 
     const Factory = await ethers.getContractFactory("MockNavSubmitterAutomation", deployer);
     const contract = await Factory.deploy(vault);

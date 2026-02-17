@@ -26,6 +26,6 @@ contract MockMZUSD {
         return _decimals;
     }
 
-    // Minimal stub to satisfy Vault's interface expectations.
+    // Minimal stub to satisfy IssuanceVault's interface expectations.
     function mint(address, uint256) external {}
 }

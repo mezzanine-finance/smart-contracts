@@ -18,7 +18,7 @@ TMP_OUTPUT_FILE="./reports/slither-cmd-output.txt"
 echo "Running Slither..."
 mkdir -p ./reports
 SLITHER_STATUS=0
-slither . --checklist --config-file ./slither.config.json > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE" || SLITHER_STATUS=$?
+slither . --checklist --config-file ./slither.config.json --foundry-out-directory out-foundry > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE" || SLITHER_STATUS=$?
 if [ "${SLITHER_STRICT:-false}" = "true" ] && [ "$SLITHER_STATUS" -ne 0 ]; then
     echo "Slither strict mode: exiting with code $SLITHER_STATUS."
     exit "$SLITHER_STATUS"

@@ -6,6 +6,7 @@ Metrics (APR/APY/TVL) are typically sourced from subgraph/indexer, with on-chain
 ## TL;DR behavior
 
 - Standard user tranches are ERC4626 vaults over `MZUSD` (18 decimals).
+- Tranche share token uses `_decimalsOffset() = 3`, so `Tranche.decimals()` is `21`.
 - `PolJuniorTranche` is admin-only (no ERC4626 shares), do not expose it as a public user vault.
 - Withdrawal UX depends on `directWithdrawEnabled()`:
   - `true`: `requestWithdrawal(shares)` redeems immediately (equivalent end result to `redeem` to self).
@@ -31,16 +32,17 @@ POL page (if any):
 
 ### From Tranche
 
-- `name()` / `symbol()` / `decimals()` (share token display)
+- `name()` / `symbol()` / `decimals()` (share token display; currently `21`)
 - `directWithdrawEnabled()` (direct vs umbrella flow)
 - `totalAssets()` (TVL in MZUSD, 18d)
-- `pricePerShare()` (MZUSD per share, 18d)
+- `pricePerShare()` (MZUSD 18d per one whole share token = `10 ** decimals()` share units)
 - `unaccruedYield()` (yield not yet reflected in NAV)
 - `totalSupply()` (shares)
 - `depositLimitEnabled()`
-- `maxDepositCap()` (configured value; `0` means cap is not configured)
+- `maxDepositCap()` (configured absolute cap value; when limits are enabled, `0` means zero-cap)
 - `maxDepositTvlBps()`
 - `getDepositLimitInfo()` (enabled, limit, limitByTvl, capEffective)
+- `maxDeposit(user)` is ERC4626-default and may stay `MAX_UINT`; use `getDepositLimitInfo()` for protocol deposit limits
 - `unstakeDelayEpochs()`
 - `pauseManager()`
 - User-specific:
@@ -88,15 +90,16 @@ When `depositLimitEnabled == false`, effective limit is `MAX_UINT`.
 
 `getDepositLimitInfo().cap` returns the effective cap:
 
-- `MAX_UINT` when limits are disabled, or when configured `maxDepositCap == 0`.
-- otherwise the configured absolute cap value.
+- when limits are disabled: `MAX_UINT`.
+- when limits are enabled: exactly the configured value (`maxDepositCap`) including `0` or `MAX_UINT`.
+- note: with limits enabled, `maxDepositCap == 0` means effective cap is zero.
 When enabled:
 
 - `tvl = totalAssets()`
 - `supply = asset.totalSupply()` (MZUSD total supply)
 - `maxTotalByTvl = supply * maxDepositTvlBps / 10_000`
 - `limitByTvl = max(0, maxTotalByTvl - tvl)`
-- `limitByCap = cap == 0 ? MAX_UINT : max(0, cap - tvl)`
+- `limitByCap = max(0, cap - tvl)`
 - `finalLimit = min(limitByTvl, limitByCap)`
 
 If `amount > finalLimit`, tx reverts with `DepositLimitExceeded`.
@@ -132,7 +135,9 @@ Users request in **shares**:
 - direct mode: immediate redeem in same tx.
 - umbrella mode: pending request by target epoch.
 
-If user enters assets in UI, convert with `convertToShares(assets)` before sending tx.
+If user enters assets in UI, convert with `previewWithdraw(assets)` before sending tx.
+(`requestWithdrawal` is share-based and `previewWithdraw` matches the withdraw-side rounding path.)
+Do not use `convertToShares` for this step: it rounds down and can under-request shares.
 
 Tx: `Tranche.requestWithdrawal(shares)`.
 

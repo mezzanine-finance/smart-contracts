@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Tranche} from "contracts/Tranche.sol";
-import {Vault} from "contracts/Vault.sol";
+import {IssuanceVault} from "contracts/IssuanceVault.sol";
 import {MockLossManagerRef} from "contracts/test/MockLossManagerRef.sol";
 import {MockNavOracleAutomationRef} from "contracts/test/MockNavOracleAutomationRef.sol";
 import {BaseProtocolFuzzTest} from "./BaseProtocolFuzz.t.sol";
@@ -16,10 +16,10 @@ contract TrancheStreamingFuzzTest is BaseProtocolFuzzTest {
 
         uint64 adminRole = accessManager.ADMIN_ROLE();
         bytes4[] memory vaultSelectors = new bytes4[](4);
-        vaultSelectors[0] = Vault.setLossManager.selector;
-        vaultSelectors[1] = Vault.setNavOracle.selector;
-        vaultSelectors[2] = Vault.addTranche.selector;
-        vaultSelectors[3] = Vault.setYieldDistribution.selector;
+        vaultSelectors[0] = IssuanceVault.setLossManager.selector;
+        vaultSelectors[1] = IssuanceVault.setNavOracle.selector;
+        vaultSelectors[2] = IssuanceVault.addTranche.selector;
+        vaultSelectors[3] = IssuanceVault.setYieldDistribution.selector;
         accessManager.setTargetFunctionRole(address(vault), vaultSelectors, adminRole);
 
         tranche = _deployTranche(1, "Streaming Tranche", "STR");

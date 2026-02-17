@@ -9,7 +9,14 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {
+    IssuanceVault,
+    ReservoirUSDC,
+    MZUSD,
+    IERC20,
+    Tranche,
+    PauseManager,
+} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
@@ -25,7 +32,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault Yield Allocation Math", () => {
+describe("IssuanceVault Yield Allocation Math", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -40,7 +47,7 @@ describe("Vault Yield Allocation Math", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let lossManagerRef: any;
     let navOracleRef: any;
     let navOracleSigner: any;
@@ -102,13 +109,13 @@ describe("Vault Yield Allocation Math", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // ── Tranches ────────────────────────────────────────────────
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -161,7 +168,7 @@ describe("Vault Yield Allocation Math", () => {
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
-        // Vault admin selectors
+        // IssuanceVault admin selectors
         const vaultSelectors = [
             vault.interface.getFunction("distributeYield").selector,
             vault.interface.getFunction("advanceEpoch").selector,
@@ -359,7 +366,7 @@ describe("Vault Yield Allocation Math", () => {
             // Protocol fee minted to carol (protocolFeeReceiver from init)
             expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify APR from yield amounts (exact) ─────────────
@@ -488,7 +495,7 @@ describe("Vault Yield Allocation Math", () => {
             // Protocol fee minted to carol
             expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify APR from yield amounts ───────────────────
@@ -605,7 +612,7 @@ describe("Vault Yield Allocation Math", () => {
             expect(await mzusd.balanceOf(bob.address)).to.equal(0n); // performanceFeeReceiver
             expect(await mzusd.balanceOf(carol.address)).to.equal(0n); // protocolFeeReceiver
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify return from yield amounts ────────────────

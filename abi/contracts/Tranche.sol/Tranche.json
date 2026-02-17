@@ -423,6 +423,11 @@
     },
     {
         "inputs": [],
+        "name": "UnstakeDelayZero",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "YieldStreamIsActive",
         "type": "error"
     },

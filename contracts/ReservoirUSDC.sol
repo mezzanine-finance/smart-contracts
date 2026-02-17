@@ -15,8 +15,6 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
     address public vault;
     mapping(address => uint256) public depositedBy;
     mapping(address => uint256) public withdrawnTo;
-    address[] public actors;
-    mapping(address => bool) private actorSeen;
 
     event Deposited(address indexed from, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
@@ -41,7 +39,7 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         __PauseManaged_init(pauseManager_);
     }
 
-    /// @notice Set Vault address for tracking (one-time).
+    /// @notice Set master vault address for tracking (one-time).
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (vault != address(0)) revert VaultAlreadySet();
@@ -49,18 +47,18 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         emit VaultUpdated(_vault);
     }
 
-    /// @notice Typically called by the Vault to move idle USDC into the Reservoir.
+    /// @notice Typically called by the IssuanceVault to move idle USDC into the Reservoir.
+    /// @dev Can also be called by external operators to provide USDC liquidity for the master vault.
     function deposit(uint256 amount) external whenNotPaused(PauseCategory.PROTOCOL) {
         if (amount == 0) revert ZeroAmount();
         usdc.transferFrom(msg.sender, address(this), amount);
         if (!_isVault(msg.sender)) {
             depositedBy[msg.sender] += amount;
-            _trackActor(msg.sender);
         }
         emit Deposited(msg.sender, amount);
     }
 
-    /// @notice Called by the Vault to retrieve USDC from the Reservoir back into the Vault OR called by the Curators to move funds into the main fund to earn yield.
+    /// @notice Called by the IssuanceVault to retrieve USDC from the Reservoir back into the master vault.
     function withdraw(
         uint256 amount,
         address to
@@ -72,7 +70,6 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         usdc.transfer(to, amount);
         if (!_isVault(to)) {
             withdrawnTo[to] += amount;
-            _trackActor(to);
         }
         emit Withdrawn(to, amount);
     }
@@ -82,20 +79,8 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
         balance = usdc.balanceOf(address(this));
     }
 
-    /// @notice Return number of tracked non-vault actors.
-    function actorsLength() external view returns (uint256 length) {
-        length = actors.length;
-    }
-
-    function _trackActor(address actor) internal {
-        if (!actorSeen[actor]) {
-            actorSeen[actor] = true;
-            actors.push(actor);
-        }
-    }
-
     function _isVault(address actor) internal view returns (bool) {
-        return vault != address(0) && actor == vault;
+        return actor == vault;
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function, AccessManager should be configured to restrict call to upgradeToAndCall function, as it's the public entry point.
