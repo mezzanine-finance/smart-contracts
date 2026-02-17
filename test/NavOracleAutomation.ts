@@ -134,20 +134,12 @@ describe("NavOracleAutomation", () => {
         )) as unknown as Tranche;
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-        lossManager = (await upgrades.deployProxy(
-            LossManagerFactory,
-            [
-                [tranche.target],
-                [false],
-                0, // maxLossPerTxUSDC
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [vault.target],
-            }
-        )) as unknown as LossManager;
+        lossManager = (await upgrades.deployProxy(LossManagerFactory, [0], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as LossManager;
 
         const NavAutomationFactory = await ethers.getContractFactory(
             "NavOracleAutomation",
@@ -170,9 +162,9 @@ describe("NavOracleAutomation", () => {
 
         // Admin-only functions on MZUSD & IssuanceVault
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const setYieldDistributionSelector =
-            vault.interface.getFunction("setYieldDistribution").selector;
+            vault.interface.getFunction("setTrancheConfig").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const setVaultLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
@@ -224,8 +216,12 @@ describe("NavOracleAutomation", () => {
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
 
-        await vault.addTranche(tranche.target);
-        await vault.setYieldDistribution(0, [10_000], [true]);
+        await vault.registerTranche(tranche.target);
+        await vault.setTrancheConfig(
+            [{tranche: tranche.target, riskPremiumBps: 10_000, enabled: true}],
+            [false],
+            0
+        );
 
         snapshot = await takeSnapshot();
     });

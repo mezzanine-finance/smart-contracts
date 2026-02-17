@@ -175,8 +175,8 @@ describe("IssuanceVault Yield Integration", () => {
             vault.interface.getFunction("advanceEpoch").selector,
             vault.interface.getFunction("setLossManager").selector,
             vault.interface.getFunction("setNavOracle").selector,
-            vault.interface.getFunction("addTranche").selector,
-            vault.interface.getFunction("setYieldDistribution").selector,
+            vault.interface.getFunction("registerTranche").selector,
+            vault.interface.getFunction("setTrancheConfig").selector,
             vault.interface.getFunction("setFeeRates").selector,
             vault.interface.getFunction("setFeeReceivers").selector,
             vault.interface.getFunction("setEpochConfig").selector,
@@ -211,12 +211,20 @@ describe("IssuanceVault Yield Integration", () => {
         await vault.setNavOracle(navOracleRef.target);
 
         // Register tranches (added disabled with riskPremiumBps=0 by default)
-        await vault.addTranche(junior.target);
-        await vault.addTranche(mezzanine.target);
-        await vault.addTranche(senior.target);
+        await vault.registerTranche(junior.target);
+        await vault.registerTranche(mezzanine.target);
+        await vault.registerTranche(senior.target);
 
         // Configure default yield distribution
-        await vault.setYieldDistribution(4000, [2000, 2000, 2000], [true, true, true]);
+        await vault.setTrancheConfig(
+            [
+                {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+            ],
+            [false, false, false],
+            4000
+        );
 
         snapshot = await takeSnapshot();
     });
@@ -342,7 +350,15 @@ describe("IssuanceVault Yield Integration", () => {
             expect(await vault.protocolFeeReceiver()).to.equal(carol.address);
 
             // Tranche info updates via setYieldDistribution
-            await vault.setYieldDistribution(5000, [1000, 1500, 2500], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1500, enabled: false},
+                    {tranche: senior.target, riskPremiumBps: 2500, enabled: true},
+                ],
+                [false, false, false],
+                5000
+            );
 
             const [t1b, r1b, e1b] = await vault.tranches(1);
             expect(t1b).to.equal(mezzanine.target);
@@ -414,13 +430,19 @@ describe("IssuanceVault Yield Integration", () => {
             await expect(vault.connect(deployer).setFeeReceivers(bob.address, carol.address))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
-            await expect(vault.connect(deployer).addTranche(carol.address))
+            await expect(vault.connect(deployer).registerTranche(carol.address))
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
             await expect(
-                vault
-                    .connect(deployer)
-                    .setYieldDistribution(4000, [2000, 2000, 2000], [true, true, true])
+                vault.connect(deployer).setTrancheConfig(
+                    [
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    4000
+                )
             )
                 .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
@@ -606,7 +628,15 @@ describe("IssuanceVault Yield Integration", () => {
 
         it("Allocates rounding dust to the last non-zero tranche when a middle tranche is disabled", async () => {
             await vault.setFeeRates(0, 0);
-            await vault.setYieldDistribution(10_000, [0, 0, 0], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, false, false],
+                10_000
+            );
 
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
             await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(5n))); // disabled
@@ -641,7 +671,15 @@ describe("IssuanceVault Yield Integration", () => {
 
         it("Allocates rounding dust to the last non-zero tranche when the last tranche has zero TVL", async () => {
             await vault.setFeeRates(0, 0);
-            await vault.setYieldDistribution(10_000, [0, 0, 0], [true, true, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, false, false],
+                10_000
+            );
 
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
             await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(4n)));

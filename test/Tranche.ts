@@ -156,9 +156,9 @@ describe("Tranche", () => {
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const setYieldDistributionSelector =
-            vault.interface.getFunction("setYieldDistribution").selector;
+            vault.interface.getFunction("setTrancheConfig").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
@@ -181,8 +181,12 @@ describe("Tranche", () => {
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche(tranche.target);
-        await vault.setYieldDistribution(0, [10_000], [true]);
+        await vault.registerTranche(tranche.target);
+        await vault.setTrancheConfig(
+            [{tranche: tranche.target, riskPremiumBps: 10_000, enabled: true}],
+            [false],
+            0
+        );
 
         snapshot = await takeSnapshot();
     });

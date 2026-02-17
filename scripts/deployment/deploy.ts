@@ -340,11 +340,7 @@ async function main() {
         async () =>
             upgrades.deployProxy(
                 LossManagerFactory,
-                [
-                    orderAddresses,
-                    config.lossManager.isPairedWithNext,
-                    parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0"),
-                ],
+                [parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0")],
                 {
                     kind: "uups",
                     initializer: "initialize",
@@ -468,38 +464,35 @@ async function main() {
 
         const isRegistered = await vault.contract.isTranche(trancheContract.address);
         if (!isRegistered) {
-            await (await vaultAdmin.addTranche(trancheContract.address)).wait();
-            log.success(`IssuanceVault.addTranche ${tranche.key}`);
+            await (await vaultAdmin.registerTranche(trancheContract.address)).wait();
+            log.success(`IssuanceVault.registerTranche ${tranche.key}`);
         }
     }
 
-    // === Configure yield distribution on IssuanceVault (base reward + per-tranche risk premiums) ===
-    const trancheCount = Number(await vault.contract.tranchesLength());
+    const trancheInfos: {tranche: string; riskPremiumBps: number; enabled: boolean}[] = [];
+    // === Configure tranche order, pairs, and yield distribution on IssuanceVault ===
+    // Build desired yield config arrays aligned with the order from lossManager config.
     const riskPremiumsBps: number[] = [];
     const enabledFlags: boolean[] = [];
     let riskPremiumSum = 0;
-    let distributionNeedsUpdate = false;
 
-    for (let i = 0; i < trancheCount; i += 1) {
-        const info = await vault.contract.tranches(i);
-        const trancheAddress = info.tranche.toLowerCase();
-        const desired = desiredYieldConfigByAddress.get(trancheAddress);
-
+    for (const addr of orderAddresses) {
+        const desired = desiredYieldConfigByAddress.get(addr.toLowerCase());
         const desiredRiskPremium = desired?.riskPremiumBps ?? 0;
         const desiredEnabled = desired?.enabled ?? false;
         if (!desired) {
             log.warn(
-                `Tranche ${info.tranche} has no config entry. Applying default yield settings: riskPremiumBps=0, enabled=false`
+                `Tranche ${addr} has no config entry. Applying default yield settings: riskPremiumBps=0, enabled=false`
             );
         }
-
+        trancheInfos.push({
+            tranche: addr,
+            riskPremiumBps: desiredRiskPremium,
+            enabled: desiredEnabled,
+        });
         riskPremiumsBps.push(desiredRiskPremium);
         enabledFlags.push(desiredEnabled);
         riskPremiumSum += desiredRiskPremium;
-
-        if (info.riskPremiumBps !== BigInt(desiredRiskPremium) || info.enabled !== desiredEnabled) {
-            distributionNeedsUpdate = true;
-        }
     }
 
     assert(
@@ -507,15 +500,49 @@ async function main() {
         `Configured tranche risk premiums exceed ${BPS.toString()} bps`
     );
     const baseRewardBps = Number(BPS) - riskPremiumSum;
-    if ((await vault.contract.baseRewardBps()) !== BigInt(baseRewardBps)) {
-        distributionNeedsUpdate = true;
+
+    // Check if setTrancheConfig needs to be called.
+    let trancheConfigNeedsUpdate = false;
+    const trancheCount = Number(await vault.contract.tranchesLength());
+    if (trancheCount !== orderAddresses.length) {
+        trancheConfigNeedsUpdate = true;
+    } else {
+        // Check order, pairs, yield config
+        const [currentOrder, currentPairFlags] = await vault.contract.getTrancheOrderAndPairs();
+        const orderMatch = currentOrder.every(
+            (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
+        );
+        const pairFlagsMatch = currentPairFlags.every(
+            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
+        );
+        if (!orderMatch || !pairFlagsMatch) {
+            trancheConfigNeedsUpdate = true;
+        }
+
+        if ((await vault.contract.baseRewardBps()) !== BigInt(baseRewardBps)) {
+            trancheConfigNeedsUpdate = true;
+        }
+
+        for (let i = 0; i < trancheCount && !trancheConfigNeedsUpdate; i += 1) {
+            const info = await vault.contract.tranches(i);
+            if (
+                info.riskPremiumBps !== BigInt(riskPremiumsBps[i]) ||
+                info.enabled !== enabledFlags[i]
+            ) {
+                trancheConfigNeedsUpdate = true;
+            }
+        }
     }
 
-    if (distributionNeedsUpdate) {
+    if (trancheConfigNeedsUpdate) {
         await (
-            await vaultAdmin.setYieldDistribution(baseRewardBps, riskPremiumsBps, enabledFlags)
+            await vaultAdmin.setTrancheConfig(
+                trancheInfos,
+                config.lossManager.isPairedWithNext,
+                baseRewardBps
+            )
         ).wait();
-        log.success("IssuanceVault.setYieldDistribution");
+        log.success("IssuanceVault.setTrancheConfig");
     }
 
     // === Apply tranche parameters ===
@@ -718,27 +745,6 @@ async function main() {
         }
     }
 
-    const [currentOrder, currentPairFlags] = await lossManager.contract.getTrancheOrderAndPairs();
-    const orderMatch =
-        currentOrder.length === orderAddresses.length &&
-        currentOrder.every(
-            (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
-        );
-    const pairFlagsMatch =
-        currentPairFlags.length === config.lossManager.isPairedWithNext.length &&
-        currentPairFlags.every(
-            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
-        );
-    if (!orderMatch || !pairFlagsMatch) {
-        await (
-            await lossManagerAdmin.setTrancheOrderAndPairs(
-                orderAddresses,
-                config.lossManager.isPairedWithNext
-            )
-        ).wait();
-        log.success("LossManager.setTrancheOrderAndPairs");
-    }
-
     if (config.lossManager.maxLossPerTxUSDC !== undefined) {
         const current = await lossManager.contract.maxLossPerTxUSDC();
         const desired = parseUSDC(config.lossManager.maxLossPerTxUSDC);
@@ -798,8 +804,8 @@ async function main() {
             vault.contract.interface.getFunction("setFeeReceivers").selector,
             vault.contract.interface.getFunction("setBuffer").selector,
             vault.contract.interface.getFunction("setEpochConfig").selector,
-            vault.contract.interface.getFunction("addTranche").selector,
-            vault.contract.interface.getFunction("setYieldDistribution").selector,
+            vault.contract.interface.getFunction("registerTranche").selector,
+            vault.contract.interface.getFunction("setTrancheConfig").selector,
         ],
         adminRole
     );
@@ -861,10 +867,7 @@ async function main() {
     await ensureTargetRole(
         accessManagerAdmin,
         lossManager.address,
-        [
-            lossManager.contract.interface.getFunction("setTrancheOrderAndPairs").selector,
-            lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector,
-        ],
+        [lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector],
         adminRole
     );
     await ensureTargetRole(

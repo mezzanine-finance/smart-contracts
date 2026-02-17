@@ -135,7 +135,7 @@ describe("Tranche finalization solvency", () => {
 
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
@@ -155,8 +155,12 @@ describe("Tranche finalization solvency", () => {
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche(tranche);
-        await vault.setYieldDistribution(7000, [3000], [true]);
+        await vault.registerTranche(tranche);
+        await vault.setTrancheConfig(
+            [{tranche: tranche, riskPremiumBps: 3000, enabled: true}],
+            [false],
+            7000
+        );
 
         snapshot = await takeSnapshot();
     });
