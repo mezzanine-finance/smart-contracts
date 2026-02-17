@@ -8,12 +8,12 @@ contracts, automation, tests, and helper scripts for development and deployment.
 Accepts USDC (6 decimals) and mints MZUSD (18 decimals) 1:1 with a `1e12` scale.
 Users interact through ERC4626 tranches with direct or umbrella withdrawals.
 Tranche share token uses `_decimalsOffset() = 3` (`Tranche.decimals() = 21`).
-Vault computes yield/loss; NavOracleAutomation and LossManager apply it.
+IssuanceVault computes yield/loss; NavOracleAutomation and LossManager apply it.
 Governance and safety: AccessManager + PauseManager (category-based pauses).
 
 ## Key contracts
 
- `contracts/Vault.sol` - protocol accounting, idle buffer, yield distribution.
+ `contracts/IssuanceVault.sol` - protocol accounting, idle buffer, yield distribution.
 
  `contracts/Tranche.sol` - ERC4626 tranche, epoch-based yield streaming.
 
@@ -36,16 +36,16 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
 ## Core flows
 
 **MZUSD mint/redemption:** `MZUSD.deposit` takes USDC and mints MZUSD;
-  `MZUSD.requestWithdrawal` burns MZUSD and asks Vault to pay USDC.
+  `MZUSD.requestWithdrawal` burns MZUSD and asks IssuanceVault to pay USDC.
 
 **Tranche deposit/withdraw:** deposit MZUSD into ERC4626; direct-withdraw or
   umbrella (request → wait for epoch → finalize → claim).
  
-**Yield:** NAV > supply → `Vault.distributeYield` → new epoch + yield streaming.
+**Yield:** NAV > supply → `IssuanceVault.distributeYield` → new epoch + yield streaming.
  
 **Loss:** NAV < supply → `LossManager.applyLoss` → burn MZUSD from tranches.
  
-**Rebalance:** Vault targets an idle buffer and rebalances USDC to Reservoir.
+**Rebalance:** IssuanceVault targets an idle buffer and rebalances USDC to Reservoir.
 
 ## Docs and guides
 
@@ -175,7 +175,12 @@ npm run forge:coverage:fuzz
  
  `npm run size` - contract size report
  
- `npm run slither` / `npm run slither:md` - run Slither (Markdown report; `slither:md` is non-strict)
+ `npm run slither` / `npm run slither:foundry` / `npm run slither:md` - run Slither
+ (`slither:foundry` is direct CLI run with Foundry out dir; `slither:md` writes Markdown report and is non-strict)
+
+  Note: this repo uses Foundry output directory `out-foundry` (from `foundry.toml`).
+  If you run Slither manually, use:
+  `slither . --checklist --config-file ./slither.config.json --foundry-out-directory out-foundry`
  
  `npm run slither:md:strict` - run Slither checklist and fail on findings (CI-style gate)
  
@@ -203,9 +208,17 @@ npm run forge:coverage:fuzz
 
  `npm run deploy:hardhat` - deploy full stack to Hardhat
 
+ `npm run deploy:fresh` - force fresh deploy (do not reuse addresses from `reports/deployments.json`)
+
+ `npm run deploy:hardhat:fresh` - force fresh deploy to Hardhat
+
  `npm run deploy:sepolia` - deploy full stack to Sepolia
 
+ `npm run deploy:sepolia:fresh` - force fresh deploy to Sepolia
+
  `npm run deploy:mainnet` - deploy full stack to Mainnet
+
+ `npm run deploy:mainnet:fresh` - force fresh deploy to Mainnet
 
  `npm run deploy:grant-roles -- --network <network>` - grant roles from config
 
