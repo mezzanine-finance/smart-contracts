@@ -110,7 +110,7 @@ contract Tranche is
     error NotVault();
     error NotLossManager();
 
-    /// @param vaultAddress Vault address.
+    /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
     constructor(address vaultAddress, bool _directWithdrawEnabled) {
         if (vaultAddress == address(0)) revert ZeroAddress();
@@ -134,7 +134,7 @@ contract Tranche is
     /// @param initialUnstakeDelayEpochs Initial unstake delay in epochs.
     /// @param name_ Tranche name.
     /// @param symbol_ Tranche symbol.
-    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the Vault-linked MZUSD.
+    /// @dev MZUSD, AccessManager, and PauseManager are resolved from the IssuanceVault-linked MZUSD.
     function initialize(
         uint256 trancheIdentifier,
         uint256 initialUnstakeDelayEpochs,
@@ -281,7 +281,7 @@ contract Tranche is
 
     // Linear yield streaming
     /// @notice Registers yieldAmount of MZUSD as yield to be streamed linearly over next epoch.
-    /// @dev Assumes yieldAmount tokens are already transferred to this contract (from Vault).
+    /// @dev Assumes yieldAmount tokens are already transferred to this contract (from IssuanceVault).
     ///      This does NOT transfer tokens, it only affects accounting (virtual NAV).
     /// @param yieldAmount Amount of yield (MZUSD, 18d) to stream.
     function notifyYield(
@@ -545,7 +545,7 @@ contract Tranche is
             limitByTvl = maxTotalByTvl - trancheAssets;
         }
 
-        uint256 limitByCap = type(uint256).max;
+        uint256 limitByCap;
         cap = maxDepositCap;
         if (cap <= trancheAssets) {
             limitByCap = 0;
