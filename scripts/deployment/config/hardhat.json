@@ -96,14 +96,9 @@
             }
         }
     ],
-    "polJunior": {
-        "enabled": true,
-        "polPayout": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "registerInVault": false
-    },
     "lossManager": {
-        "order": ["polJunior", "junior", "mezzanine", "senior"],
-        "isPairedWithNext": [true, true, false, false],
+        "order": ["junior", "mezzanine", "senior"],
+        "isPairedWithNext": [false, false, false],
         "maxLossPerTxUSDC": "10000000"
     },
     "navOracle": {

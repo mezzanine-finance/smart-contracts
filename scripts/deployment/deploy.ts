@@ -7,11 +7,10 @@ import type {
     MockUSDC,
     NavOracleAutomation,
     PauseManager,
-    PolJuniorTranche,
     ReservoirUSDC,
     Tranche,
     UmbrellaEpochFinalizer,
-    Vault,
+    IssuanceVault,
 } from "../../typechain-types";
 import {loadConfig} from "./lib/config";
 import {
@@ -41,6 +40,12 @@ interface DeployResult<T extends BaseContract> {
 
 const MZUSD_SCALE = 1_000_000_000_000n;
 const BPS = 10_000n;
+
+function isEnvFlagEnabled(name: string): boolean {
+    const raw = process.env[name];
+    if (!raw) return false;
+    return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
 
 async function hasCode(address: string) {
     const code = await ethers.provider.getCode(address);
@@ -129,10 +134,10 @@ async function ensureProxyDeployment<T extends BaseContract>(
 
 async function main() {
     const configPath = getArg("--config");
-    const fresh = hasFlag("--fresh");
-    const skipVerify = hasFlag("--skip-verify");
-    const forceRenounce = hasFlag("--renounce");
-    const skipRenounce = hasFlag("--no-renounce");
+    const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
+    const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
+    const forceRenounce = hasFlag("--renounce") || isEnvFlagEnabled("DEPLOY_RENOUNCE");
+    const skipRenounce = hasFlag("--no-renounce") || isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
 
     const config = loadConfig(network.name, configPath);
     upgrades.silenceWarnings();
@@ -146,6 +151,7 @@ async function main() {
     log.info(`Deployer: ${format.addr(deployerAddress)}`);
     log.info(`Dev deployer: ${format.addr(devDeployer)}`);
     log.info(`Final admin: ${format.addr(config.roles.admin)}`);
+    log.info(`Fresh deploy: ${fresh}`);
     log.info(
         `Config: ${format.addr(configPath ?? `scripts/deployment/config/${network.name}.json`)}`
     );
@@ -270,13 +276,13 @@ async function main() {
         deployments
     );
 
-    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-    const vault = await ensureProxyDeployment<Vault>(
-        "Vault",
-        VaultFactory,
+    const IssuanceVaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
+    const vault = await ensureProxyDeployment<IssuanceVault>(
+        "IssuanceVault",
+        IssuanceVaultFactory,
         async () =>
             upgrades.deployProxy(
-                VaultFactory,
+                IssuanceVaultFactory,
                 [
                     config.vault.performanceFeeBps,
                     config.vault.performanceFeeReceiver,
@@ -321,29 +327,7 @@ async function main() {
         trancheByKey.set(tranche.key, result);
     }
 
-    let polJunior: DeployResult<PolJuniorTranche> | undefined;
-    if (config.polJunior?.enabled) {
-        const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
-        polJunior = await ensureProxyDeployment<PolJuniorTranche>(
-            "PolJuniorTranche",
-            PolFactory,
-            async () =>
-                upgrades.deployProxy(PolFactory, [config.polJunior!.polPayout], {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.address],
-                }),
-            fresh,
-            deployments
-        );
-    }
-
     const orderAddresses = config.lossManager.order.map((key) => {
-        if (key === "polJunior") {
-            assert(polJunior, "polJunior is required for lossManager.order");
-            return polJunior.address;
-        }
         const tranche = trancheByKey.get(key);
         assert(tranche !== undefined, `Unknown tranche key in lossManager.order: ${key}`);
         return tranche.address;
@@ -459,12 +443,12 @@ async function main() {
 
     if ((await vault.contract.lossManager()) === ethers.ZeroAddress) {
         await (await vaultAdmin.setLossManager(lossManager.address)).wait();
-        log.success("Vault.setLossManager wired");
+        log.success("IssuanceVault.setLossManager wired");
     }
 
     if ((await vault.contract.navOracle()) !== navOracle.address) {
         await (await vaultAdmin.setNavOracle(navOracle.address)).wait();
-        log.success("Vault.setNavOracle wired");
+        log.success("IssuanceVault.setNavOracle wired");
     }
 
     // === Register tranches ===
@@ -485,29 +469,11 @@ async function main() {
         const isRegistered = await vault.contract.isTranche(trancheContract.address);
         if (!isRegistered) {
             await (await vaultAdmin.addTranche(trancheContract.address)).wait();
-            log.success(`Vault.addTranche ${tranche.key}`);
+            log.success(`IssuanceVault.addTranche ${tranche.key}`);
         }
     }
 
-    if (config.polJunior?.enabled && config.polJunior.registerInVault) {
-        assert(polJunior, "polJunior deployment missing");
-        const enabled = config.polJunior.enabledInVault ?? true;
-        const riskPremiumBps = config.polJunior.riskPremiumBps ?? 0;
-
-        desiredYieldConfigByAddress.set(polJunior.address.toLowerCase(), {
-            key: "polJunior",
-            riskPremiumBps,
-            enabled,
-        });
-
-        const isRegistered = await vault.contract.isTranche(polJunior.address);
-        if (!isRegistered) {
-            await (await vaultAdmin.addTranche(polJunior.address)).wait();
-            log.success("Vault.addTranche polJunior");
-        }
-    }
-
-    // === Configure yield distribution on Vault (base reward + per-tranche risk premiums) ===
+    // === Configure yield distribution on IssuanceVault (base reward + per-tranche risk premiums) ===
     const trancheCount = Number(await vault.contract.tranchesLength());
     const riskPremiumsBps: number[] = [];
     const enabledFlags: boolean[] = [];
@@ -549,7 +515,7 @@ async function main() {
         await (
             await vaultAdmin.setYieldDistribution(baseRewardBps, riskPremiumsBps, enabledFlags)
         ).wait();
-        log.success("Vault.setYieldDistribution");
+        log.success("IssuanceVault.setYieldDistribution");
     }
 
     // === Apply tranche parameters ===
@@ -604,15 +570,6 @@ async function main() {
         }
     }
 
-    if (polJunior) {
-        const polJuniorAdmin = polJunior.contract.connect(adminSigner);
-        const payout = await polJunior.contract.polPayout();
-        if (payout.toLowerCase() !== config.polJunior!.polPayout.toLowerCase()) {
-            await (await polJuniorAdmin.setPolPayout(config.polJunior!.polPayout)).wait();
-            log.success("PolJuniorTranche.setPolPayout");
-        }
-    }
-
     // === Optional seeding ===
     const seed = config.seed;
     if (seed) {
@@ -644,7 +601,7 @@ async function main() {
 
         if (seedVaultUsdc > 0n) {
             await (await usdcSeeder.transfer(vault.address, seedVaultUsdc)).wait();
-            log.success(`Vault seed ${seed.vaultUSDC}`);
+            log.success(`IssuanceVault seed ${seed.vaultUSDC}`);
         }
 
         if (seedReservoirUsdc > 0n) {
@@ -695,7 +652,7 @@ async function main() {
                 config.vault.protocolFeeBps
             )
         ).wait();
-        log.success("Vault.setFeeRates");
+        log.success("IssuanceVault.setFeeRates");
     }
     if (
         currentPerfReceiver.toLowerCase() !== config.vault.performanceFeeReceiver.toLowerCase() ||
@@ -707,7 +664,7 @@ async function main() {
                 config.vault.protocolFeeReceiver
             )
         ).wait();
-        log.success("Vault.setFeeReceivers");
+        log.success("IssuanceVault.setFeeReceivers");
     }
 
     const cap = await mzusd.contract.globalRedemptionCapUSDC();
@@ -743,11 +700,11 @@ async function main() {
             const low = (desiredBuffer * (BPS - desiredHysteresis)) / BPS;
             if (vaultUsdc < low && reservoirUsdc === 0n) {
                 throw new Error(
-                    "Vault.setBuffer requires seeded USDC in Vault or Reservoir before rebalance"
+                    "IssuanceVault.setBuffer requires seeded USDC in IssuanceVault or Reservoir before rebalance"
                 );
             }
             await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
-            log.success("Vault.setBuffer");
+            log.success("IssuanceVault.setBuffer");
         }
     }
 
@@ -757,7 +714,7 @@ async function main() {
         const desired = config.vault.epochDurationSec;
         if (current !== BigInt(desired) && pending !== BigInt(desired)) {
             await (await vaultAdmin.setEpochConfig(desired)).wait();
-            log.success("Vault.setEpochConfig queued");
+            log.success("IssuanceVault.setEpochConfig queued");
         }
     }
 
@@ -936,24 +893,6 @@ async function main() {
         );
     }
 
-    if (polJunior) {
-        await ensureTargetRole(
-            accessManagerAdmin,
-            polJunior.address,
-            [
-                polJunior.contract.interface.getFunction("withdraw").selector,
-                polJunior.contract.interface.getFunction("setPolPayout").selector,
-            ],
-            adminRole
-        );
-        await ensureTargetRole(
-            accessManagerAdmin,
-            polJunior.address,
-            [polJunior.contract.interface.getFunction("upgradeToAndCall").selector],
-            roleIds.UPGRADER_ROLE
-        );
-    }
-
     await ensureTargetRole(
         accessManagerAdmin,
         navOracle.address,
@@ -1049,9 +988,6 @@ async function main() {
     }
 
     const burnerMembers = new Set<string>(Array.from(trancheByKey.values(), (t) => t.address));
-    if (polJunior) {
-        burnerMembers.add(polJunior.address);
-    }
     for (const addr of burnerMembers) {
         await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
     }
@@ -1060,7 +996,7 @@ async function main() {
     log.step("Post-deploy checks");
     assert(
         (await vault.contract.mzusd()).toLowerCase() === mzusd.address.toLowerCase(),
-        "Vault.mzusd mismatch"
+        "IssuanceVault.mzusd mismatch"
     );
     assert(
         (await mzusd.contract.vault()).toLowerCase() === vault.address.toLowerCase(),
@@ -1068,11 +1004,11 @@ async function main() {
     );
     assert(
         (await vault.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
-        "Vault.lossManager mismatch"
+        "IssuanceVault.lossManager mismatch"
     );
     assert(
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
-        "Vault.navOracle mismatch"
+        "IssuanceVault.navOracle mismatch"
     );
 
     for (const tranche of trancheByKey.values()) {
@@ -1080,14 +1016,6 @@ async function main() {
         assert(
             trancheVault.toLowerCase() === vault.address.toLowerCase(),
             "Tranche.vault mismatch"
-        );
-    }
-
-    if (polJunior) {
-        const polVault = await polJunior.contract.vault();
-        assert(
-            polVault.toLowerCase() === vault.address.toLowerCase(),
-            "PolJuniorTranche.vault mismatch"
         );
     }
 
@@ -1125,9 +1053,6 @@ async function main() {
             );
         }
     }
-    if (polJunior?.implementation) {
-        await verifyContract(polJunior.implementation, [vault.address], shouldVerify);
-    }
     if (lossManager.implementation) {
         await verifyContract(lossManager.implementation, [vault.address], shouldVerify);
     }
@@ -1146,13 +1071,10 @@ async function main() {
     log.info(`PauseManager (proxy): ${pauseManager.address}`);
     log.info(`USDC: ${usdcAddress}`);
     log.info(`ReservoirUSDC (proxy): ${reservoir.address}`);
-    log.info(`Vault (proxy): ${vault.address}`);
+    log.info(`IssuanceVault (proxy): ${vault.address}`);
     log.info(`MZUSD (proxy): ${mzusd.address}`);
     for (const [key, tranche] of trancheByKey.entries()) {
         log.info(`Tranche ${key}: ${tranche.address}`);
-    }
-    if (polJunior) {
-        log.info(`PolJuniorTranche: ${polJunior.address}`);
     }
     log.info(`LossManager (proxy): ${lossManager.address}`);
     log.info(`NavOracleAutomation: ${navOracle.address}`);
