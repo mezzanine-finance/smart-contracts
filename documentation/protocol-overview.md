@@ -14,13 +14,13 @@ It is a technical overview intended for engineers, integrators, and auditors.
 
 ## Core contracts
 
-### Vault (`contracts/Vault.sol`)
+### IssuanceVault (`contracts/IssuanceVault.sol`)
 
 - Treasury/accounting hub (not ERC4626).
 - Holds idle USDC and rebalances against `ReservoirUSDC`.
 - Distributes yield by:
     - base pool share distributed pro-rata by TVL;
-    - per-tranche risk premium shares (`riskPremiumBps`) from `setYieldDistribution`.
+    - per-tranche risk premium shares (`riskPremiumBps`) from `setTrancheConfig`.
 - Mints MZUSD for fees and allocations during yield distribution.
 - Advances epoch on `distributeYield` and on `advanceEpoch` (called by `LossManager`).
 - Pays USDC redemptions on `withdraw` (callable only by MZUSD).
@@ -32,7 +32,7 @@ It is a technical overview intended for engineers, integrators, and auditors.
 - Two withdrawal modes:
     - direct mode (`directWithdrawEnabled = true`): `requestWithdrawal(shares)` redeems immediately;
     - umbrella mode (`directWithdrawEnabled = false`): request -> finalize epoch -> claim.
-- Streams notified yield linearly over `Vault.epochDuration()`.
+- Streams notified yield linearly over `IssuanceVault.epochDuration()`.
 - `totalAssets()` uses virtual NAV:
     - `balance(asset) - unaccruedYield - reservedAssets`.
 - Optional deposit limits:
@@ -56,13 +56,13 @@ Note (Phase 1 transfer safety):
 
 - ERC20 with 18 decimals, USDC-backed mint/redeem interface.
 - `deposit(amountUSDC)`:
-    - transfers USDC to Vault;
+    - transfers USDC to IssuanceVault;
     - mints `amountUSDC * 1e12` MZUSD.
 - `requestWithdrawal(amountMZ)`:
     - converts to USDC with floor rounding (`usdcOut = amountMZ / 1e12`);
     - burns only `usdcOut * 1e12`;
     - enforces redemption cap window (with same-tx deposit/withdraw netting);
-    - calls `Vault.withdraw` for USDC payout.
+    - calls `IssuanceVault.withdraw` for USDC payout.
 - `mint` is gated by `onlyVault`.
 - `burn` is `restricted` (typically granted to tranche contracts via `BURNER_ROLE`).
 
@@ -76,17 +76,17 @@ Note (Phase 1 transfer safety):
 
 - Applies losses by burning MZUSD across configured tranche order.
 - Supports proportional paired burns via contiguous `isPairedWithNext` flags.
-- Always calls `Vault.advanceEpoch()` before applying burns.
-- `applyLoss` is callable only by the current `Vault.navOracle()` address.
+- Always calls `IssuanceVault.advanceEpoch()` before applying burns.
+- `applyLoss` is callable only by the current `IssuanceVault.navOracle()` address.
 
 ### NavOracleAutomation (`contracts/automation/NavOracleAutomation.sol`)
 
 - Stores NAV deltas (USDC 6d) with optional veto window.
 - `submitNav` records delta vs MZUSD total supply at submission time.
 - `performUpkeep`:
-    - if yield delta: calls `Vault.distributeYield(deltaUSDC)`;
+    - if yield delta: calls `IssuanceVault.distributeYield(deltaUSDC)`;
     - if loss delta: calls `LossManager.applyLoss(deltaUSDC)`.
-- Zero-yield delta (`NAV == supply`) still calls `Vault.distributeYield(0)` (epoch advances if allowed by timing).
+- Zero-yield delta (`NAV == supply`) still calls `IssuanceVault.distributeYield(0)` (epoch advances if allowed by timing).
 
 ### Access + Pause
 
@@ -105,7 +105,7 @@ Note (Phase 1 transfer safety):
 ### MZUSD mint
 
 1. User calls `MZUSD.deposit(amountUSDC)`.
-2. USDC is transferred to Vault.
+2. USDC is transferred to IssuanceVault.
 3. User receives `amountUSDC * 1e12` MZUSD.
 
 ### MZUSD redemption
@@ -113,7 +113,7 @@ Note (Phase 1 transfer safety):
 1. User calls `MZUSD.requestWithdrawal(amountMZ)`.
 2. Amount is quantized to full USDC units (`floor(amountMZ / 1e12)`).
 3. Redemption cap window is checked after atomic netting.
-4. Vault pays USDC (pulling from Reservoir when needed).
+4. IssuanceVault pays USDC (pulling from Reservoir when needed).
 
 Notes:
 
@@ -147,7 +147,7 @@ Note:
 2. After veto readiness, automation applies pending NAV.
 3. On yield:
 
-- Vault advances epoch;
+- IssuanceVault advances epoch;
 - mints MZUSD fees;
 - allocates remaining MZUSD by base TVL share + risk premium shares;
 - transfers to each enabled tranche and calls `notifyYield`.
@@ -155,13 +155,13 @@ Note:
 ### Loss application
 
 1. On loss delta, automation calls `LossManager.applyLoss`.
-2. LossManager advances epoch via Vault.
+2. LossManager advances epoch via IssuanceVault.
 3. Burns are applied by configured order/pairs.
 4. Uncovered remainder is accumulated in `totalUncoveredLossMZ`.
 
 ### Rebalancing and idle buffer
 
-- Vault keeps target idle buffer with hysteresis band.
+- IssuanceVault keeps target idle buffer with hysteresis band.
 - Above upper bound: deposits excess into Reservoir.
 - Below lower bound: pulls from Reservoir (reverts if Reservoir has zero USDC).
 - `setBuffer` has a single skip path: when pull is needed and Reservoir USDC is zero,
@@ -173,7 +173,7 @@ Note:
 - Epoch advancement is time-gated by `epochStart + epochDuration`.
 - On advancement, `epochStart` is set to the current `block.timestamp` (advance-call time), not to prior `epochStart + epochDuration`.
 - Delayed advancement therefore creates a gap in wall-clock time; missed periods are not backfilled as extra epochs.
-- `Vault.distributeYield` always attempts epoch advancement before allocation logic.
+- `IssuanceVault.distributeYield` always attempts epoch advancement before allocation logic.
 - Tranches stream yield linearly between `yieldStreamStart` and `yieldStreamEnd`.
 - `Tranche.totalAssets()` exposes virtual NAV:
     - `assetBalance - unaccruedYield - reservedAssets`.

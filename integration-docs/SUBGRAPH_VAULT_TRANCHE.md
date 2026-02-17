@@ -6,7 +6,7 @@ This document describes indexing strategy for Vault/Tranche metrics (TVL, share 
 
 Primary contracts:
 
-- `contracts/Vault.sol`
+- `contracts/IssuanceVault.sol`
 - `contracts/Tranche.sol`
 
 Optional supporting contracts:
@@ -48,10 +48,10 @@ Tranche TVL/share-price/yield metrics are in MZUSD units (18d); share balances/s
 
 ## Events to index
 
-### Vault
+### IssuanceVault
 
 - `TrancheRegistered(address tranche)`
-- `YieldDistributionUpdated(uint16 baseRewardBps, uint16[] riskPremiumsBps, bool[] enabled)`
+- `TrancheConfigUpdated()`
 - `YieldDistributed(usdcUsed, mintedMZUSD, epochId)`
 - `EpochAdvanced(epochId, startTs)`
 - `EpochDurationSet(epochDuration)`
@@ -63,7 +63,8 @@ Tranche TVL/share-price/yield metrics are in MZUSD units (18d); share balances/s
 - It is not computed as previous `epochStart + epochDuration`.
 - If advancement is delayed, wall-clock gaps can appear between epoch boundaries.
 
-`TrancheUpdated` exists in ABI but is not produced by current live flows (`updateTranche` function is commented out).
+Risk premium, enabled flags, order, and pair updates are set through
+`IssuanceVault.setTrancheConfig(...)`; indexers can refresh tranche config on each `TrancheConfigUpdated`.
 
 ### Tranche
 

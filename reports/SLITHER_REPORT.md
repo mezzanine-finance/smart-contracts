@@ -1,28 +1,30 @@
 **THIS CHECKLIST IS NOT COMPLETE**. Use `--show-ignored-findings` to show all the results.
 Summary
- - [unchecked-transfer](#unchecked-transfer) (8 results) (High)
- - [divide-before-multiply](#divide-before-multiply) (2 results) (Medium)
+ - [unchecked-transfer](#unchecked-transfer) (10 results) (High)
+ - [divide-before-multiply](#divide-before-multiply) (3 results) (Medium)
  - [incorrect-equality](#incorrect-equality) (2 results) (Medium)
- - [uninitialized-local](#uninitialized-local) (5 results) (Medium)
+ - [uninitialized-local](#uninitialized-local) (7 results) (Medium)
  - [unused-return](#unused-return) (2 results) (Medium)
  - [missing-zero-check](#missing-zero-check) (3 results) (Low)
  - [reentrancy-benign](#reentrancy-benign) (2 results) (Low)
  - [reentrancy-events](#reentrancy-events) (8 results) (Low)
+ - [costly-loop](#costly-loop) (1 results) (Informational)
+ - [cyclomatic-complexity](#cyclomatic-complexity) (2 results) (Informational)
  - [redundant-statements](#redundant-statements) (4 results) (Informational)
  - [unused-import](#unused-import) (1 results) (Informational)
 ## unchecked-transfer
 Impact: High
 Confidence: Medium
  - [ ] ID-0
-[IssuanceVault.withdraw(address,uint256)](contracts/IssuanceVault.sol#L184-L198) ignores return value by [usdc.transfer(to,amount)](contracts/IssuanceVault.sol#L196)
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) ignores return value by [mzusdToken.transfer(pairedAddr,share1)](contracts/IssuanceVault.sol#L754)
 
-contracts/IssuanceVault.sol#L184-L198
+contracts/IssuanceVault.sol#L681-L792
 
 
  - [ ] ID-1
-[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L615-L676) ignores return value by [mzusdToken.transfer(t.tranche,totalShare)](contracts/IssuanceVault.sol#L665)
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) ignores return value by [mzusdToken.transfer(t.tranche,share0)](contracts/IssuanceVault.sol#L750)
 
-contracts/IssuanceVault.sol#L615-L676
+contracts/IssuanceVault.sol#L681-L792
 
 
  - [ ] ID-2
@@ -38,24 +40,36 @@ contracts/ReservoirUSDC.sol#L52-L59
 
 
  - [ ] ID-4
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) ignores return value by [mzusdToken.transfer(t.tranche,totalShare)](contracts/IssuanceVault.sol#L779)
+
+contracts/IssuanceVault.sol#L681-L792
+
+
+ - [ ] ID-5
 [PolJuniorTranche.notifyYield(uint256)](contracts/PolJuniorTranche.sol#L87-L93) ignores return value by [mzusd.transfer(polPayout,yieldAmount)](contracts/PolJuniorTranche.sol#L91)
 
 contracts/PolJuniorTranche.sol#L87-L93
 
 
- - [ ] ID-5
+ - [ ] ID-6
+[IssuanceVault.withdraw(address,uint256)](contracts/IssuanceVault.sol#L191-L205) ignores return value by [usdc.transfer(to,amount)](contracts/IssuanceVault.sol#L203)
+
+contracts/IssuanceVault.sol#L191-L205
+
+
+ - [ ] ID-7
 [ReservoirUSDC.withdraw(uint256,address)](contracts/ReservoirUSDC.sol#L62-L75) ignores return value by [usdc.transfer(to,amount)](contracts/ReservoirUSDC.sol#L70)
 
 contracts/ReservoirUSDC.sol#L62-L75
 
 
- - [ ] ID-6
+ - [ ] ID-8
 [Tranche.claim(uint256)](contracts/Tranche.sol#L234-L250) ignores return value by [IERC20(asset()).transfer(msg.sender,userAssets)](contracts/Tranche.sol#L247)
 
 contracts/Tranche.sol#L234-L250
 
 
- - [ ] ID-7
+ - [ ] ID-9
 [PolJuniorTranche.withdraw(uint256,address)](contracts/PolJuniorTranche.sol#L75-L83) ignores return value by [mzusd.transfer(receiver,assets)](contracts/PolJuniorTranche.sol#L81)
 
 contracts/PolJuniorTranche.sol#L75-L83
@@ -64,15 +78,23 @@ contracts/PolJuniorTranche.sol#L75-L83
 ## divide-before-multiply
 Impact: Medium
 Confidence: Medium
- - [ ] ID-8
-[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L615-L676) performs a multiplication on the result of a division:
-	- [basePool = (allocatableMZUSD * baseRewardBps) / BPS](contracts/IssuanceVault.sol#L621)
-	- [baseShare = (basePool * trancheTvl) / totalTvl](contracts/IssuanceVault.sol#L654)
+ - [ ] ID-10
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) performs a multiplication on the result of a division:
+	- [basePool = (allocatableMZUSD * baseRewardBps) / BPS](contracts/IssuanceVault.sol#L687)
+	- [pairBaseShare = (basePool * pairTvl) / totalTvl](contracts/IssuanceVault.sol#L733)
 
-contracts/IssuanceVault.sol#L615-L676
+contracts/IssuanceVault.sol#L681-L792
 
 
- - [ ] ID-9
+ - [ ] ID-11
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) performs a multiplication on the result of a division:
+	- [basePool = (allocatableMZUSD * baseRewardBps) / BPS](contracts/IssuanceVault.sol#L687)
+	- [baseShare = (basePool * trancheTvl) / totalTvl](contracts/IssuanceVault.sol#L773)
+
+contracts/IssuanceVault.sol#L681-L792
+
+
+ - [ ] ID-12
 [MZUSD.requestWithdrawal(uint256)](contracts/MZUSD.sol#L135-L151) performs a multiplication on the result of a division:
 	- [usdcOut = amountMZ / SCALE](contracts/MZUSD.sol#L136)
 	- [burnAmount = usdcOut * SCALE](contracts/MZUSD.sol#L138)
@@ -83,86 +105,98 @@ contracts/MZUSD.sol#L135-L151
 ## incorrect-equality
 Impact: Medium
 Confidence: High
- - [ ] ID-10
-[IssuanceVault.setBuffer(uint256,uint16)](contracts/IssuanceVault.sol#L357-L377) uses a dangerous strict equality:
-	- [available == 0](contracts/IssuanceVault.sol#L371)
+ - [ ] ID-13
+[IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L807-L825) uses a dangerous strict equality:
+	- [available == 0](contracts/IssuanceVault.sol#L820)
 
-contracts/IssuanceVault.sol#L357-L377
+contracts/IssuanceVault.sol#L807-L825
 
 
- - [ ] ID-11
-[IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L691-L709) uses a dangerous strict equality:
-	- [available == 0](contracts/IssuanceVault.sol#L704)
+ - [ ] ID-14
+[IssuanceVault.setBuffer(uint256,uint16)](contracts/IssuanceVault.sol#L391-L411) uses a dangerous strict equality:
+	- [available == 0](contracts/IssuanceVault.sol#L405)
 
-contracts/IssuanceVault.sol#L691-L709
+contracts/IssuanceVault.sol#L391-L411
 
 
 ## uninitialized-local
 Impact: Medium
 Confidence: Medium
- - [ ] ID-12
-[IssuanceVault._rebalance().sent](contracts/IssuanceVault.sol#L695) is a local variable never initialized
-
-contracts/IssuanceVault.sol#L695
-
-
- - [ ] ID-13
-[IssuanceVault._allocateYieldToTranches(uint256).totalTvl](contracts/IssuanceVault.sol#L623) is a local variable never initialized
-
-contracts/IssuanceVault.sol#L623
-
-
- - [ ] ID-14
-[IssuanceVault._allocateYieldToTranches(uint256).lastNonZeroIndex](contracts/IssuanceVault.sol#L624) is a local variable never initialized
-
-contracts/IssuanceVault.sol#L624
-
-
  - [ ] ID-15
-[IssuanceVault._rebalance().pulled](contracts/IssuanceVault.sol#L696) is a local variable never initialized
+[IssuanceVault._rebalance().sent](contracts/IssuanceVault.sol#L811) is a local variable never initialized
 
-contracts/IssuanceVault.sol#L696
+contracts/IssuanceVault.sol#L811
 
 
  - [ ] ID-16
-[IssuanceVault._allocateYieldToTranches(uint256).allocated](contracts/IssuanceVault.sol#L644) is a local variable never initialized
+[IssuanceVault._allocateYieldToTranches(uint256).share1](contracts/IssuanceVault.sol#L739) is a local variable never initialized
 
-contracts/IssuanceVault.sol#L644
+contracts/IssuanceVault.sol#L739
+
+
+ - [ ] ID-17
+[IssuanceVault._allocateYieldToTranches(uint256).totalTvl](contracts/IssuanceVault.sol#L689) is a local variable never initialized
+
+contracts/IssuanceVault.sol#L689
+
+
+ - [ ] ID-18
+[IssuanceVault._allocateYieldToTranches(uint256).lastNonZeroIndex](contracts/IssuanceVault.sol#L690) is a local variable never initialized
+
+contracts/IssuanceVault.sol#L690
+
+
+ - [ ] ID-19
+[IssuanceVault._rebalance().pulled](contracts/IssuanceVault.sol#L812) is a local variable never initialized
+
+contracts/IssuanceVault.sol#L812
+
+
+ - [ ] ID-20
+[IssuanceVault._allocateYieldToTranches(uint256).share0](contracts/IssuanceVault.sol#L738) is a local variable never initialized
+
+contracts/IssuanceVault.sol#L738
+
+
+ - [ ] ID-21
+[IssuanceVault._allocateYieldToTranches(uint256).allocated](contracts/IssuanceVault.sol#L708) is a local variable never initialized
+
+contracts/IssuanceVault.sol#L708
 
 
 ## unused-return
 Impact: Medium
 Confidence: Medium
- - [ ] ID-17
-[LossManager.applyLoss(uint256)](contracts/LossManager.sol#L116-L140) ignores return value by [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L130)
+ - [ ] ID-22
+[LossManager.applyLoss(uint256)](contracts/LossManager.sol#L93-L117) ignores return value by [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L107)
 
-contracts/LossManager.sol#L116-L140
+contracts/LossManager.sol#L93-L117
 
 
- - [ ] ID-18
-[IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L691-L709) ignores return value by [usdc.approve(address(reservoir),sent)](contracts/IssuanceVault.sol#L699)
+ - [ ] ID-23
+[IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L807-L825) ignores return value by [usdc.approve(address(reservoir),sent)](contracts/IssuanceVault.sol#L815)
 
-contracts/IssuanceVault.sol#L691-L709
+contracts/IssuanceVault.sol#L807-L825
 
 
 ## missing-zero-check
 Impact: Low
 Confidence: Medium
- - [ ] ID-19
+ - [ ] ID-24
 [NavOracleAutomation.constructor(address,uint256).vault_](contracts/automation/NavOracleAutomation.sol#L59) lacks a zero-check on :
 		- [vault = vault_](contracts/automation/NavOracleAutomation.sol#L63)
 
 contracts/automation/NavOracleAutomation.sol#L59
 
 
- - [ ] ID-20
+ - [ ] ID-25
 [PolJuniorTranche.initialize(address).polPayoutAddress](contracts/PolJuniorTranche.sol#L46) lacks a zero-check on :
 		- [polPayout = polPayoutAddress](contracts/PolJuniorTranche.sol#L55)
 
 contracts/PolJuniorTranche.sol#L46
 
 
- - [ ] ID-21
+ - [ ] ID-26
 [NavOracleAutomation.constructor(address,uint256).lossManager_](contracts/automation/NavOracleAutomation.sol#L55) lacks a zero-check on :
 		- [lossManager = lossManager_](contracts/automation/NavOracleAutomation.sol#L64)
 
@@ -172,7 +206,22 @@ contracts/automation/NavOracleAutomation.sol#L55
 ## reentrancy-benign
 Impact: Low
 Confidence: Medium
- - [ ] ID-22
+ - [ ] ID-27
+Reentrancy in [LossManager.applyLoss(uint256)](contracts/LossManager.sol#L93-L117):
+	External calls:
+	- [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L107)
+	- [(burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss))](contracts/LossManager.sol#L109)
+		- [ITranche(t0).burnMZUSD(burn0)](contracts/LossManager.sol#L173)
+		- [ITranche(t1).burnMZUSD(burn1)](contracts/LossManager.sol#L178)
+		- [ITranche(t0).burnMZUSD(burnAmount)](contracts/LossManager.sol#L193)
+	State variables written after the call(s):
+	- [lastUncoveredLossMZ = uncoveredMZ](contracts/LossManager.sol#L111)
+	- [totalUncoveredLossMZ += uncoveredMZ](contracts/LossManager.sol#L113)
+
+contracts/LossManager.sol#L93-L117
+
+
+ - [ ] ID-28
 Reentrancy in [ReservoirUSDC.deposit(uint256)](contracts/ReservoirUSDC.sol#L52-L59):
 	External calls:
 	- [usdc.transferFrom(msg.sender,address(this),amount)](contracts/ReservoirUSDC.sol#L54)
@@ -182,37 +231,10 @@ Reentrancy in [ReservoirUSDC.deposit(uint256)](contracts/ReservoirUSDC.sol#L52-L
 contracts/ReservoirUSDC.sol#L52-L59
 
 
- - [ ] ID-23
-Reentrancy in [LossManager.applyLoss(uint256)](contracts/LossManager.sol#L116-L140):
-	External calls:
-	- [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L130)
-	- [(burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss))](contracts/LossManager.sol#L132)
-		- [ITranche(t0).burnMZUSD(burn0)](contracts/LossManager.sol#L324)
-		- [ITranche(t1).burnMZUSD(burn1)](contracts/LossManager.sol#L329)
-		- [ITranche(t0).burnMZUSD(burnAmount)](contracts/LossManager.sol#L344)
-	State variables written after the call(s):
-	- [lastUncoveredLossMZ = uncoveredMZ](contracts/LossManager.sol#L134)
-	- [totalUncoveredLossMZ += uncoveredMZ](contracts/LossManager.sol#L136)
-
-contracts/LossManager.sol#L116-L140
-
-
 ## reentrancy-events
 Impact: Low
 Confidence: Medium
- - [ ] ID-24
-Reentrancy in [IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L691-L709):
-	External calls:
-	- [usdc.approve(address(reservoir),sent)](contracts/IssuanceVault.sol#L699)
-	- [reservoir.deposit(sent)](contracts/IssuanceVault.sol#L700)
-	- [reservoir.withdraw(pulled,address(this))](contracts/IssuanceVault.sol#L706)
-	Event emitted after the call(s):
-	- [Rebalanced(sent,pulled,usdc.balanceOf(address(this)))](contracts/IssuanceVault.sol#L708)
-
-contracts/IssuanceVault.sol#L691-L709
-
-
- - [ ] ID-25
+ - [ ] ID-29
 Reentrancy in [ReservoirUSDC.deposit(uint256)](contracts/ReservoirUSDC.sol#L52-L59):
 	External calls:
 	- [usdc.transferFrom(msg.sender,address(this),amount)](contracts/ReservoirUSDC.sol#L54)
@@ -222,18 +244,30 @@ Reentrancy in [ReservoirUSDC.deposit(uint256)](contracts/ReservoirUSDC.sol#L52-L
 contracts/ReservoirUSDC.sol#L52-L59
 
 
- - [ ] ID-26
-Reentrancy in [IssuanceVault.withdraw(address,uint256)](contracts/IssuanceVault.sol#L184-L198):
+ - [ ] ID-30
+Reentrancy in [IssuanceVault.withdraw(address,uint256)](contracts/IssuanceVault.sol#L191-L205):
 	External calls:
-	- [reservoir.withdraw(amount - idle,address(this))](contracts/IssuanceVault.sol#L193)
-	- [usdc.transfer(to,amount)](contracts/IssuanceVault.sol#L196)
+	- [reservoir.withdraw(amount - idle,address(this))](contracts/IssuanceVault.sol#L200)
+	- [usdc.transfer(to,amount)](contracts/IssuanceVault.sol#L203)
 	Event emitted after the call(s):
-	- [WithdrawnUSDCFromVault(to,amount)](contracts/IssuanceVault.sol#L197)
+	- [WithdrawnUSDCFromVault(to,amount)](contracts/IssuanceVault.sol#L204)
 
-contracts/IssuanceVault.sol#L184-L198
+contracts/IssuanceVault.sol#L191-L205
 
 
- - [ ] ID-27
+ - [ ] ID-31
+Reentrancy in [IssuanceVault._rebalance()](contracts/IssuanceVault.sol#L807-L825):
+	External calls:
+	- [usdc.approve(address(reservoir),sent)](contracts/IssuanceVault.sol#L815)
+	- [reservoir.deposit(sent)](contracts/IssuanceVault.sol#L816)
+	- [reservoir.withdraw(pulled,address(this))](contracts/IssuanceVault.sol#L822)
+	Event emitted after the call(s):
+	- [Rebalanced(sent,pulled,usdc.balanceOf(address(this)))](contracts/IssuanceVault.sol#L824)
+
+contracts/IssuanceVault.sol#L807-L825
+
+
+ - [ ] ID-32
 Reentrancy in [Tranche.claim(uint256)](contracts/Tranche.sol#L234-L250):
 	External calls:
 	- [IERC20(asset()).transfer(msg.sender,userAssets)](contracts/Tranche.sol#L247)
@@ -243,7 +277,7 @@ Reentrancy in [Tranche.claim(uint256)](contracts/Tranche.sol#L234-L250):
 contracts/Tranche.sol#L234-L250
 
 
- - [ ] ID-28
+ - [ ] ID-33
 Reentrancy in [MZUSD.requestWithdrawal(uint256)](contracts/MZUSD.sol#L135-L151):
 	External calls:
 	- [vault.withdraw(msg.sender,usdcOut)](contracts/MZUSD.sol#L148)
@@ -253,7 +287,7 @@ Reentrancy in [MZUSD.requestWithdrawal(uint256)](contracts/MZUSD.sol#L135-L151):
 contracts/MZUSD.sol#L135-L151
 
 
- - [ ] ID-29
+ - [ ] ID-34
 Reentrancy in [NavOracleAutomation._applyPending()](contracts/automation/NavOracleAutomation.sol#L150-L164):
 	External calls:
 	- [IVault(vault).distributeYield(deltaUSDC)](contracts/automation/NavOracleAutomation.sol#L158)
@@ -264,21 +298,7 @@ Reentrancy in [NavOracleAutomation._applyPending()](contracts/automation/NavOrac
 contracts/automation/NavOracleAutomation.sol#L150-L164
 
 
- - [ ] ID-30
-Reentrancy in [LossManager.applyLoss(uint256)](contracts/LossManager.sol#L116-L140):
-	External calls:
-	- [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L130)
-	- [(burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss))](contracts/LossManager.sol#L132)
-		- [ITranche(t0).burnMZUSD(burn0)](contracts/LossManager.sol#L324)
-		- [ITranche(t1).burnMZUSD(burn1)](contracts/LossManager.sol#L329)
-		- [ITranche(t0).burnMZUSD(burnAmount)](contracts/LossManager.sol#L344)
-	Event emitted after the call(s):
-	- [LossApplied(usdcLoss,_toMZ(usdcLoss),burnedMZ,uncoveredMZ,totalUncoveredLossMZ)](contracts/LossManager.sol#L139)
-
-contracts/LossManager.sol#L116-L140
-
-
- - [ ] ID-31
+ - [ ] ID-35
 Reentrancy in [PolJuniorTranche.notifyYield(uint256)](contracts/PolJuniorTranche.sol#L87-L93):
 	External calls:
 	- [mzusd.transfer(polPayout,yieldAmount)](contracts/PolJuniorTranche.sol#L91)
@@ -288,28 +308,67 @@ Reentrancy in [PolJuniorTranche.notifyYield(uint256)](contracts/PolJuniorTranche
 contracts/PolJuniorTranche.sol#L87-L93
 
 
+ - [ ] ID-36
+Reentrancy in [LossManager.applyLoss(uint256)](contracts/LossManager.sol#L93-L117):
+	External calls:
+	- [IVault(vault).advanceEpoch()](contracts/LossManager.sol#L107)
+	- [(burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss))](contracts/LossManager.sol#L109)
+		- [ITranche(t0).burnMZUSD(burn0)](contracts/LossManager.sol#L173)
+		- [ITranche(t1).burnMZUSD(burn1)](contracts/LossManager.sol#L178)
+		- [ITranche(t0).burnMZUSD(burnAmount)](contracts/LossManager.sol#L193)
+	Event emitted after the call(s):
+	- [LossApplied(usdcLoss,_toMZ(usdcLoss),burnedMZ,uncoveredMZ,totalUncoveredLossMZ)](contracts/LossManager.sol#L116)
+
+contracts/LossManager.sol#L93-L117
+
+
+## costly-loop
+Impact: Informational
+Confidence: Medium
+ - [ ] ID-37
+[IssuanceVault.setTrancheConfig(IssuanceVault.TrancheInfo[],bool[],uint16)](contracts/IssuanceVault.sol#L342-L386) has costly operations inside a loop:
+	- [delete tranchePairedTo[tranches[i_scope_0].tranche]](contracts/IssuanceVault.sol#L366)
+
+contracts/IssuanceVault.sol#L342-L386
+
+
+## cyclomatic-complexity
+Impact: Informational
+Confidence: High
+ - [ ] ID-38
+[IssuanceVault._allocateYieldToTranches(uint256)](contracts/IssuanceVault.sol#L681-L792) has a high cyclomatic complexity (15).
+
+contracts/IssuanceVault.sol#L681-L792
+
+
+ - [ ] ID-39
+[IssuanceVault.setTrancheConfig(IssuanceVault.TrancheInfo[],bool[],uint16)](contracts/IssuanceVault.sol#L342-L386) has a high cyclomatic complexity (14).
+
+contracts/IssuanceVault.sol#L342-L386
+
+
 ## redundant-statements
 Impact: Informational
 Confidence: High
- - [ ] ID-32
+ - [ ] ID-40
 Redundant expression "[performData](contracts/automation/NavOracleAutomation.sol#L136)" in[NavOracleAutomation](contracts/automation/NavOracleAutomation.sol#L17-L190)
 
 contracts/automation/NavOracleAutomation.sol#L136
 
 
- - [ ] ID-33
+ - [ ] ID-41
 Redundant expression "[checkData](contracts/automation/NavOracleAutomation.sol#L126)" in[NavOracleAutomation](contracts/automation/NavOracleAutomation.sol#L17-L190)
 
 contracts/automation/NavOracleAutomation.sol#L126
 
 
- - [ ] ID-34
+ - [ ] ID-42
 Redundant expression "[performData](contracts/automation/UmbrellaEpochFinalizer.sol#L56)" in[UmbrellaEpochFinalizer](contracts/automation/UmbrellaEpochFinalizer.sol#L12-L67)
 
 contracts/automation/UmbrellaEpochFinalizer.sol#L56
 
 
- - [ ] ID-35
+ - [ ] ID-43
 Redundant expression "[checkData](contracts/automation/UmbrellaEpochFinalizer.sol#L44)" in[UmbrellaEpochFinalizer](contracts/automation/UmbrellaEpochFinalizer.sol#L12-L67)
 
 contracts/automation/UmbrellaEpochFinalizer.sol#L44
@@ -318,7 +377,7 @@ contracts/automation/UmbrellaEpochFinalizer.sol#L44
 ## unused-import
 Impact: Informational
 Confidence: High
- - [ ] ID-36
+ - [ ] ID-44
 The following unused import(s) in contracts/AccessManagerImport.sol should be removed:
 	-import "@openzeppelin/contracts/access/manager/AccessManager.sol"; (contracts/AccessManagerImport.sol#4)
 
@@ -332,9 +391,13 @@ The following unused import(s) in contracts/AccessManagerImport.sol should be re
 
 INFO:Detectors:
 
-IssuanceVault.withdraw(address,uint256) (contracts/IssuanceVault.sol#184-198) ignores return value by usdc.transfer(to,amount) (contracts/IssuanceVault.sol#196)
+IssuanceVault.withdraw(address,uint256) (contracts/IssuanceVault.sol#191-205) ignores return value by usdc.transfer(to,amount) (contracts/IssuanceVault.sol#203)
 
-IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#615-676) ignores return value by mzusdToken.transfer(t.tranche,totalShare) (contracts/IssuanceVault.sol#665)
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) ignores return value by mzusdToken.transfer(t.tranche,share0) (contracts/IssuanceVault.sol#750)
+
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) ignores return value by mzusdToken.transfer(pairedAddr,share1) (contracts/IssuanceVault.sol#754)
+
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) ignores return value by mzusdToken.transfer(t.tranche,totalShare) (contracts/IssuanceVault.sol#779)
 
 MZUSD.deposit(uint256) (contracts/MZUSD.sol#110-123) ignores return value by usdc.transferFrom(msg.sender,address(vault),amountUSDC) (contracts/MZUSD.sol#117)
 
@@ -352,11 +415,17 @@ Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#uncheck
 
 INFO:Detectors:
 
-IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#615-676) performs a multiplication on the result of a division:
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) performs a multiplication on the result of a division:
 
-	- basePool = (allocatableMZUSD * baseRewardBps) / BPS (contracts/IssuanceVault.sol#621)
+	- basePool = (allocatableMZUSD * baseRewardBps) / BPS (contracts/IssuanceVault.sol#687)
 
-	- baseShare = (basePool * trancheTvl) / totalTvl (contracts/IssuanceVault.sol#654)
+	- baseShare = (basePool * trancheTvl) / totalTvl (contracts/IssuanceVault.sol#773)
+
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) performs a multiplication on the result of a division:
+
+	- basePool = (allocatableMZUSD * baseRewardBps) / BPS (contracts/IssuanceVault.sol#687)
+
+	- pairBaseShare = (basePool * pairTvl) / totalTvl (contracts/IssuanceVault.sol#733)
 
 MZUSD.requestWithdrawal(uint256) (contracts/MZUSD.sol#135-151) performs a multiplication on the result of a division:
 
@@ -368,35 +437,39 @@ Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#divide-
 
 INFO:Detectors:
 
-IssuanceVault._rebalance() (contracts/IssuanceVault.sol#691-709) uses a dangerous strict equality:
+IssuanceVault._rebalance() (contracts/IssuanceVault.sol#807-825) uses a dangerous strict equality:
 
-	- available == 0 (contracts/IssuanceVault.sol#704)
+	- available == 0 (contracts/IssuanceVault.sol#820)
 
-IssuanceVault.setBuffer(uint256,uint16) (contracts/IssuanceVault.sol#357-377) uses a dangerous strict equality:
+IssuanceVault.setBuffer(uint256,uint16) (contracts/IssuanceVault.sol#391-411) uses a dangerous strict equality:
 
-	- available == 0 (contracts/IssuanceVault.sol#371)
+	- available == 0 (contracts/IssuanceVault.sol#405)
 
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#dangerous-strict-equalities
 
 INFO:Detectors:
 
-IssuanceVault._allocateYieldToTranches(uint256).totalTvl (contracts/IssuanceVault.sol#623) is a local variable never initialized
+IssuanceVault._allocateYieldToTranches(uint256).lastNonZeroIndex (contracts/IssuanceVault.sol#690) is a local variable never initialized
 
-IssuanceVault._allocateYieldToTranches(uint256).lastNonZeroIndex (contracts/IssuanceVault.sol#624) is a local variable never initialized
+IssuanceVault._allocateYieldToTranches(uint256).share0 (contracts/IssuanceVault.sol#738) is a local variable never initialized
 
-IssuanceVault._rebalance().sent (contracts/IssuanceVault.sol#695) is a local variable never initialized
+IssuanceVault._allocateYieldToTranches(uint256).allocated (contracts/IssuanceVault.sol#708) is a local variable never initialized
 
-IssuanceVault._rebalance().pulled (contracts/IssuanceVault.sol#696) is a local variable never initialized
+IssuanceVault._rebalance().sent (contracts/IssuanceVault.sol#811) is a local variable never initialized
 
-IssuanceVault._allocateYieldToTranches(uint256).allocated (contracts/IssuanceVault.sol#644) is a local variable never initialized
+IssuanceVault._allocateYieldToTranches(uint256).share1 (contracts/IssuanceVault.sol#739) is a local variable never initialized
+
+IssuanceVault._allocateYieldToTranches(uint256).totalTvl (contracts/IssuanceVault.sol#689) is a local variable never initialized
+
+IssuanceVault._rebalance().pulled (contracts/IssuanceVault.sol#812) is a local variable never initialized
 
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#uninitialized-local-variables
 
 INFO:Detectors:
 
-IssuanceVault._rebalance() (contracts/IssuanceVault.sol#691-709) ignores return value by usdc.approve(address(reservoir),sent) (contracts/IssuanceVault.sol#699)
+IssuanceVault._rebalance() (contracts/IssuanceVault.sol#807-825) ignores return value by usdc.approve(address(reservoir),sent) (contracts/IssuanceVault.sol#815)
 
-LossManager.applyLoss(uint256) (contracts/LossManager.sol#116-140) ignores return value by IVault(vault).advanceEpoch() (contracts/LossManager.sol#130)
+LossManager.applyLoss(uint256) (contracts/LossManager.sol#93-117) ignores return value by IVault(vault).advanceEpoch() (contracts/LossManager.sol#107)
 
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-return
 
@@ -418,25 +491,25 @@ Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#missing
 
 INFO:Detectors:
 
-Reentrancy in LossManager.applyLoss(uint256) (contracts/LossManager.sol#116-140):
+Reentrancy in LossManager.applyLoss(uint256) (contracts/LossManager.sol#93-117):
 
 	External calls:
 
-	- IVault(vault).advanceEpoch() (contracts/LossManager.sol#130)
+	- IVault(vault).advanceEpoch() (contracts/LossManager.sol#107)
 
-	- (burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss)) (contracts/LossManager.sol#132)
+	- (burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss)) (contracts/LossManager.sol#109)
 
-		- ITranche(t0).burnMZUSD(burn0) (contracts/LossManager.sol#324)
+		- ITranche(t0).burnMZUSD(burn0) (contracts/LossManager.sol#173)
 
-		- ITranche(t1).burnMZUSD(burn1) (contracts/LossManager.sol#329)
+		- ITranche(t1).burnMZUSD(burn1) (contracts/LossManager.sol#178)
 
-		- ITranche(t0).burnMZUSD(burnAmount) (contracts/LossManager.sol#344)
+		- ITranche(t0).burnMZUSD(burnAmount) (contracts/LossManager.sol#193)
 
 	State variables written after the call(s):
 
-	- lastUncoveredLossMZ = uncoveredMZ (contracts/LossManager.sol#134)
+	- lastUncoveredLossMZ = uncoveredMZ (contracts/LossManager.sol#111)
 
-	- totalUncoveredLossMZ += uncoveredMZ (contracts/LossManager.sol#136)
+	- totalUncoveredLossMZ += uncoveredMZ (contracts/LossManager.sol#113)
 
 Reentrancy in ReservoirUSDC.deposit(uint256) (contracts/ReservoirUSDC.sol#52-59):
 
@@ -464,37 +537,37 @@ Reentrancy in NavOracleAutomation._applyPending() (contracts/automation/NavOracl
 
 	- NavApplied(isYield,deltaUSDC,readyAt) (contracts/automation/NavOracleAutomation.sol#163)
 
-Reentrancy in IssuanceVault._rebalance() (contracts/IssuanceVault.sol#691-709):
+Reentrancy in IssuanceVault._rebalance() (contracts/IssuanceVault.sol#807-825):
 
 	External calls:
 
-	- usdc.approve(address(reservoir),sent) (contracts/IssuanceVault.sol#699)
+	- usdc.approve(address(reservoir),sent) (contracts/IssuanceVault.sol#815)
 
-	- reservoir.deposit(sent) (contracts/IssuanceVault.sol#700)
+	- reservoir.deposit(sent) (contracts/IssuanceVault.sol#816)
 
-	- reservoir.withdraw(pulled,address(this)) (contracts/IssuanceVault.sol#706)
+	- reservoir.withdraw(pulled,address(this)) (contracts/IssuanceVault.sol#822)
 
 	Event emitted after the call(s):
 
-	- Rebalanced(sent,pulled,usdc.balanceOf(address(this))) (contracts/IssuanceVault.sol#708)
+	- Rebalanced(sent,pulled,usdc.balanceOf(address(this))) (contracts/IssuanceVault.sol#824)
 
-Reentrancy in LossManager.applyLoss(uint256) (contracts/LossManager.sol#116-140):
+Reentrancy in LossManager.applyLoss(uint256) (contracts/LossManager.sol#93-117):
 
 	External calls:
 
-	- IVault(vault).advanceEpoch() (contracts/LossManager.sol#130)
+	- IVault(vault).advanceEpoch() (contracts/LossManager.sol#107)
 
-	- (burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss)) (contracts/LossManager.sol#132)
+	- (burnedMZ,uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss)) (contracts/LossManager.sol#109)
 
-		- ITranche(t0).burnMZUSD(burn0) (contracts/LossManager.sol#324)
+		- ITranche(t0).burnMZUSD(burn0) (contracts/LossManager.sol#173)
 
-		- ITranche(t1).burnMZUSD(burn1) (contracts/LossManager.sol#329)
+		- ITranche(t1).burnMZUSD(burn1) (contracts/LossManager.sol#178)
 
-		- ITranche(t0).burnMZUSD(burnAmount) (contracts/LossManager.sol#344)
+		- ITranche(t0).burnMZUSD(burnAmount) (contracts/LossManager.sol#193)
 
 	Event emitted after the call(s):
 
-	- LossApplied(usdcLoss,_toMZ(usdcLoss),burnedMZ,uncoveredMZ,totalUncoveredLossMZ) (contracts/LossManager.sol#139)
+	- LossApplied(usdcLoss,_toMZ(usdcLoss),burnedMZ,uncoveredMZ,totalUncoveredLossMZ) (contracts/LossManager.sol#116)
 
 Reentrancy in Tranche.claim(uint256) (contracts/Tranche.sol#234-250):
 
@@ -536,19 +609,35 @@ Reentrancy in MZUSD.requestWithdrawal(uint256) (contracts/MZUSD.sol#135-151):
 
 	- Withdrawal(msg.sender,usdcOut) (contracts/MZUSD.sol#150)
 
-Reentrancy in IssuanceVault.withdraw(address,uint256) (contracts/IssuanceVault.sol#184-198):
+Reentrancy in IssuanceVault.withdraw(address,uint256) (contracts/IssuanceVault.sol#191-205):
 
 	External calls:
 
-	- reservoir.withdraw(amount - idle,address(this)) (contracts/IssuanceVault.sol#193)
+	- reservoir.withdraw(amount - idle,address(this)) (contracts/IssuanceVault.sol#200)
 
-	- usdc.transfer(to,amount) (contracts/IssuanceVault.sol#196)
+	- usdc.transfer(to,amount) (contracts/IssuanceVault.sol#203)
 
 	Event emitted after the call(s):
 
-	- WithdrawnUSDCFromVault(to,amount) (contracts/IssuanceVault.sol#197)
+	- WithdrawnUSDCFromVault(to,amount) (contracts/IssuanceVault.sol#204)
 
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-3
+
+INFO:Detectors:
+
+IssuanceVault.setTrancheConfig(IssuanceVault.TrancheInfo[],bool[],uint16) (contracts/IssuanceVault.sol#342-386) has costly operations inside a loop:
+
+	- delete tranchePairedTo[tranches[i_scope_0].tranche] (contracts/IssuanceVault.sol#366)
+
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#costly-operations-inside-a-loop
+
+INFO:Detectors:
+
+IssuanceVault.setTrancheConfig(IssuanceVault.TrancheInfo[],bool[],uint16) (contracts/IssuanceVault.sol#342-386) has a high cyclomatic complexity (14).
+
+IssuanceVault._allocateYieldToTranches(uint256) (contracts/IssuanceVault.sol#681-792) has a high cyclomatic complexity (15).
+
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#cyclomatic-complexity
 
 INFO:Detectors:
 
@@ -570,5 +659,5 @@ The following unused import(s) in contracts/AccessManagerImport.sol should be re
 
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-imports
 
-INFO:Slither:. analyzed (65 contracts with 91 detectors), 37 result(s) found
+INFO:Slither:. analyzed (65 contracts with 91 detectors), 45 result(s) found
 

@@ -960,6 +960,44 @@ describe("IssuanceVault Yield Allocation Math", () => {
                 )
             ).to.emit(vault, "TrancheConfigUpdated");
         });
+
+        it("should round-trip pair flags and clear stale pairing on reconfiguration", async () => {
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 3000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [true, true, false],
+                7000
+            );
+
+            expect(await vault.tranchePairedTo(senior.target)).to.equal(mezzanine.target);
+            expect(await vault.tranchePairedTo(mezzanine.target)).to.equal(senior.target);
+            expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
+
+            const [orderBefore, flagsBefore] = await vault.getTrancheOrderAndPairs();
+            expect(orderBefore).to.deep.equal([senior.target, mezzanine.target, junior.target]);
+            expect(flagsBefore).to.deep.equal([true, true, false]);
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, false, false],
+                10000
+            );
+
+            expect(await vault.tranchePairedTo(senior.target)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(mezzanine.target)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
+
+            const [orderAfter, flagsAfter] = await vault.getTrancheOrderAndPairs();
+            expect(orderAfter).to.deep.equal([junior.target, senior.target, mezzanine.target]);
+            expect(flagsAfter).to.deep.equal([false, false, false]);
+        });
     });
 
     // ── Paired tranche yield distribution ────────────────────────────

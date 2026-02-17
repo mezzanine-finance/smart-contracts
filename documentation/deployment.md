@@ -4,10 +4,9 @@ This guide describes deployment and post-deploy wiring for the current contracts
 
 ## Scope and topology
 
-- Vault supports up to `MAX_TRANCHES = 50`.
+- IssuanceVault supports up to `MAX_TRANCHES = 50`.
 - Typical topology:
   - 3 user tranches (`Tranche`): Senior, Mezzanine, Junior.
-  - optional `PolJuniorTranche` for protocol-owned liquidity.
 
 User tranches are all instances of the same `Tranche` contract with different config.
 
@@ -18,38 +17,38 @@ User tranches are all instances of the same `Tranche` contract with different co
 3. USDC (real token or `MockUSDC`)
 4. `ReservoirUSDC` (UUPS proxy)
 5. `MZUSD` (UUPS proxy)
-6. `Vault` (UUPS proxy)
+6. `IssuanceVault` (UUPS proxy)
 7. User `Tranche` proxies
-8. `PolJuniorTranche` proxy (optional)
-9. `LossManager` proxy
-10. `NavOracleAutomation`
-11. `UmbrellaEpochFinalizer` per umbrella tranche (optional)
+8. `LossManager` proxy
+9. `NavOracleAutomation`
+10. `UmbrellaEpochFinalizer` per umbrella tranche (optional)
 
 ## Wiring checklist
 
 ### Required core wiring
 
-- `MZUSD.setVault(Vault)` (one-time)
-- `ReservoirUSDC.setVault(Vault)` (one-time, tracking only)
-- `Vault.setLossManager(LossManager)` (one-time)
-- `Vault.setNavOracle(NavOracleAutomation)` (updatable, strict reference checks)
+- `MZUSD.setVault(IssuanceVault)` (one-time)
+- `ReservoirUSDC.setVault(IssuanceVault)` (one-time, tracking only)
+- `IssuanceVault.setLossManager(LossManager)` (one-time)
+- `IssuanceVault.setNavOracle(NavOracleAutomation)` (updatable, strict reference checks)
 
 Notes:
 
-- `Vault.setNavOracle` requires `lossManager` already set.
+- `IssuanceVault.setNavOracle` requires `lossManager` already set.
 - Current loss flow burns via `MZUSD.burn` role-gating (`restricted`/`BURNER_ROLE`),
   so no extra LossManager wiring is required in MZUSD.
 
 ### Vault configuration
 
-- Fees are initialized in `Vault.initialize`.
+- Fees are initialized in `IssuanceVault.initialize`.
 - Optional:
   - `setBuffer(idleBufferUSDC, hysteresisBps)` (updates config and triggers `_rebalance`)
   - `setEpochConfig(epochDurationSec)` (queued for next epoch)
-- Register tranches with `addTranche(...)`.
-- Configure distribution with `setYieldDistribution(baseRewardBps, riskPremiumsBps[], enabled[])`.
+- Register tranches with `registerTranche(trancheAddress)`.
+- Configure order/pairs + distribution with
+  `setTrancheConfig((tranche,riskPremiumBps,enabled)[], isPairedWithNext[], baseRewardBps)`.
 
-`setYieldDistribution` invariant:
+`setTrancheConfig` invariant:
 
 - `baseRewardBps + sum(riskPremiumsBps) == 10_000`
 
@@ -64,18 +63,15 @@ Notes:
 
 ### LossManager configuration
 
-- Initialize with:
-  - `order[]`
-  - `isPairedWithNext[]` (`true,true` contiguous encoding for pairs)
-  - optional `maxLossPerTxUSDC`
-- Optional update later:
-  - `setTrancheOrderAndPairs`
-  - `setMaxLossPerTxUSDC`
+- Initialize with optional `maxLossPerTxUSDC`.
+- Loss burn order and pair flags are configured on `IssuanceVault.setTrancheConfig(...)`
+  and read by `LossManager` at runtime.
+- Optional update later: `setMaxLossPerTxUSDC`.
 
 ### Seeding
 
-- Mint MZUSD + fund Vault via `MZUSD.deposit(amountUSDC)`.
-- Optional direct USDC transfer to Vault.
+- Mint MZUSD + fund IssuanceVault via `MZUSD.deposit(amountUSDC)`.
+- Optional direct USDC transfer to IssuanceVault.
 - Optional `ReservoirUSDC.deposit(amountUSDC)`.
 - Optional initial tranche deposits via `Tranche.deposit`.
 
@@ -94,19 +90,19 @@ Other rebalance failures (for example access-control or pause conditions) still 
 For NAV oracle rotation:
 
 1. resolve/reject pending NAV on old oracle,
-2. deploy new oracle with same Vault/LossManager/MZUSD references,
+2. deploy new oracle with same IssuanceVault/LossManager/MZUSD references,
 3. grant new permissions,
-4. call `Vault.setNavOracle(newOracle)`,
+4. call `IssuanceVault.setNavOracle(newOracle)`,
 5. revoke old permissions.
 
 ## Access control setup
 
 Recommended role mapping follows `scripts/deployment/deploy.ts`:
 
-- Vault:
+- IssuanceVault:
   - `rebalance` -> `KEEPER_ROLE`
   - admin setters (`setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
-    `setBuffer`, `setEpochConfig`, `addTranche`, `setYieldDistribution`) -> `ADMIN_ROLE`
+    `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`) -> `ADMIN_ROLE`
 - MZUSD:
   - `burn` -> `BURNER_ROLE`
   - admin setters (`setVault`, redemption config) -> `ADMIN_ROLE`
@@ -114,7 +110,7 @@ Recommended role mapping follows `scripts/deployment/deploy.ts`:
   - `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
   - `setVault` -> `ADMIN_ROLE`
 - LossManager:
-  - `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
+  - `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
 - NavOracleAutomation:
   - `submitNav` -> `ORACLE_ROLE`
   - `rejectPendingNav`, `setVetoPeriod` -> `ADMIN_ROLE`
@@ -160,7 +156,6 @@ Important fields:
   - fee bps, receivers, optional buffer/epoch config
 - `tranches[]`:
   - `key`, `trancheId`, `riskPremiumBps`, `enabled`, `directWithdrawEnabled`, optional limits
-- optional `polJunior`
 - `lossManager.order`, `lossManager.isPairedWithNext`, optional `maxLossPerTxUSDC`
 - `navOracle.vetoPeriodSec`, `navOracle.oracles`
 - optional seeding and post-deploy options
@@ -184,7 +179,7 @@ MZUSD:
 - `mzusd.redemptionCapUSDC`: required, non-zero.
 - `mzusd.redemptionWindowDurationSec` (optional): queued via setter if different from current/pending.
 
-Vault:
+IssuanceVault:
 
 - `vault.performanceFeeBps`, `vault.protocolFeeBps`: required; combined max `5000`.
 - `vault.performanceFeeReceiver`, `vault.protocolFeeReceiver`: required addresses.
@@ -196,21 +191,15 @@ Tranches:
 - `tranches[].key`: unique logical key.
 - `tranches[].trancheId`: required (`id` alias still accepted for backward compatibility).
 - `tranches[].directWithdrawEnabled`: immutable deployment mode flag.
-- `tranches[].riskPremiumBps` + `enabled`: used in Vault distribution.
+- `tranches[].riskPremiumBps` + `enabled`: used in IssuanceVault distribution config.
 - `tranches[].depositLimits` (optional):
   - `capMZUSD` preferred;
   - `capUSDC` accepted as deprecated alias (converted to MZUSD by script);
   - `tvlBps` optional.
 
-Pol junior (optional):
-
-- `polJunior.enabled`: deploy POL tranche.
-- `polJunior.registerInVault`: if true, adds POL tranche to Vault distribution.
-- `polJunior.riskPremiumBps`: required when `registerInVault=true`.
-
 Loss manager:
 
-- `lossManager.order`: tranche key order (supports `polJunior` key if enabled).
+- `lossManager.order`: tranche key order for loss handling and tranche config ordering.
 - `lossManager.isPairedWithNext`: same length as order; contiguous `true,true` encodes a pair.
 - `lossManager.maxLossPerTxUSDC` optional (`0` disables).
 
@@ -231,12 +220,11 @@ Seed/post:
 Validation behavior from scripts:
 
 - `vault.performanceFeeBps + vault.protocolFeeBps <= 5000`
-- deploy config validator enforces distinct fee receivers, even though the Vault contract allows equal receivers.
+- deploy config validator enforces distinct fee receivers, even though the IssuanceVault contract allows equal receivers.
 
 ## Notes and decisions
 
-- `Vault.mzusd`, `Vault.reservoir` are immutable constructor params.
+- `IssuanceVault.mzusd`, `IssuanceVault.reservoir` are immutable constructor params.
 - `Tranche.vault`, `PolJuniorTranche.vault`, `LossManager.vault` are immutable constructor params.
 - `directWithdrawEnabled` is immutable per tranche.
-- `PolJuniorTranche` can be registered into Vault distribution, or kept outside it.
 - Keep production configs explicit and review defaults before mainnet deployment.

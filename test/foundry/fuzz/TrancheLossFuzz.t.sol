@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Tranche} from "contracts/Tranche.sol";
-import {Vault} from "contracts/Vault.sol";
+import {IssuanceVault} from "contracts/IssuanceVault.sol";
 import {LossManager} from "contracts/LossManager.sol";
 import {MockNavOracleAutomationRef} from "contracts/test/MockNavOracleAutomationRef.sol";
 import {MZUSD} from "contracts/MZUSD.sol";
@@ -57,9 +57,9 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
 
         // Configure default order: [junior, senior] with equal yield
         {
-            Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](2);
-            infos[0] = Vault.TrancheInfo(address(junior), 5000, true);
-            infos[1] = Vault.TrancheInfo(address(senior), 5000, true);
+            IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](2);
+            infos[0] = IssuanceVault.TrancheInfo(address(junior), 5000, true);
+            infos[1] = IssuanceVault.TrancheInfo(address(senior), 5000, true);
             bool[] memory pf = new bool[](2);
             vault.setTrancheConfig(infos, pf, 0);
         }
@@ -420,13 +420,13 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
     }
 
     function _setOrderAndPairs2(address t0, address t1, bool paired) internal {
-        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](2);
-        infos[0] = Vault.TrancheInfo(t0, 5000, true);
-        infos[1] = Vault.TrancheInfo(t1, 5000, true);
+        IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](2);
+        infos[0] = IssuanceVault.TrancheInfo(t0, 5000, true);
+        infos[1] = IssuanceVault.TrancheInfo(t1, paired ? 0 : 5000, true);
         bool[] memory pairFlags = new bool[](2);
         pairFlags[0] = paired;
         pairFlags[1] = paired;
-        vault.setTrancheConfig(infos, pairFlags, 0);
+        vault.setTrancheConfig(infos, pairFlags, paired ? 5000 : 0);
     }
 
     function _setOrderAndPairs3(address t0, address t1, address t2, bool pairFirst) internal {
@@ -435,15 +435,15 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         if (!vault.isTranche(t1)) vault.registerTranche(t1);
         if (!vault.isTranche(t2)) vault.registerTranche(t2);
 
-        Vault.TrancheInfo[] memory infos = new Vault.TrancheInfo[](3);
-        infos[0] = Vault.TrancheInfo(t0, 3333, true);
-        infos[1] = Vault.TrancheInfo(t1, 3333, true);
-        infos[2] = Vault.TrancheInfo(t2, 3334, true);
+        IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](3);
+        infos[0] = IssuanceVault.TrancheInfo(t0, 3333, true);
+        infos[1] = IssuanceVault.TrancheInfo(t1, pairFirst ? 0 : 3333, true);
+        infos[2] = IssuanceVault.TrancheInfo(t2, 3334, true);
         bool[] memory pairFlags = new bool[](3);
         pairFlags[0] = pairFirst;
         pairFlags[1] = pairFirst;
         pairFlags[2] = false;
-        vault.setTrancheConfig(infos, pairFlags, 0);
+        vault.setTrancheConfig(infos, pairFlags, pairFirst ? 3333 : 0);
     }
 
     function _assumeValidUser(address user) internal view {

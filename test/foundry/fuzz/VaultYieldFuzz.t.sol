@@ -245,30 +245,19 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         uint256 expectedProt = (mintedGross * protBps) / BPS;
         uint256 allocatable = mintedGross - expectedPerf - expectedProt;
 
-        uint256[3] memory trancheTvls;
-        trancheTvls[0] = tranche0.totalAssets();
-        trancheTvls[1] = tranche1.totalAssets();
-        trancheTvls[2] = tranche2.totalAssets();
-
-        bool[3] memory participating;
-        uint256 totalTvl;
-        uint256 lastParticipatingIdx;
-        bool hasParticipants;
-
-        for (uint256 i; i < 3; ++i) {
-            if (!enabled[i] || trancheTvls[i] == 0) continue;
-            participating[i] = true;
-            hasParticipants = true;
-            totalTvl += trancheTvls[i];
-            lastParticipatingIdx = i;
-        }
+        uint256 t0Tvl = tranche0.totalAssets();
+        uint256 t1Tvl = tranche1.totalAssets();
+        uint256 t2Tvl = tranche2.totalAssets();
+        bool p0 = infos[0].enabled && t0Tvl != 0;
+        bool p1 = infos[1].enabled && t1Tvl != 0;
+        bool p2 = infos[2].enabled && t2Tvl != 0;
+        bool hasParticipants = p0 || p1 || p2;
 
         uint256 feeReceiverBefore = mzusd.balanceOf(address(this));
         uint256 supplyBefore = mzusd.totalSupply();
-        uint256[3] memory trancheBalancesBefore;
-        trancheBalancesBefore[0] = mzusd.balanceOf(address(tranche0));
-        trancheBalancesBefore[1] = mzusd.balanceOf(address(tranche1));
-        trancheBalancesBefore[2] = mzusd.balanceOf(address(tranche2));
+        uint256 b0Before = mzusd.balanceOf(address(tranche0));
+        uint256 b1Before = mzusd.balanceOf(address(tranche1));
+        uint256 b2Before = mzusd.balanceOf(address(tranche2));
 
         vm.warp(block.timestamp + 1 days + 1);
 
@@ -282,39 +271,160 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         vm.prank(navOracle);
         vault.distributeYield(usdcReported);
 
-        uint256[3] memory expectedShares;
-        uint256 basePool = (allocatable * baseRewardBps) / BPS;
-        uint256 allocated;
-        for (uint256 i; i < 3; ++i) {
-            if (!participating[i]) continue;
-            uint256 baseShare = (basePool * trancheTvls[i]) / totalTvl;
-            uint256 riskShare = (allocatable * risk[i]) / BPS;
-            uint256 totalShare = baseShare + riskShare;
-
-            if (i == lastParticipatingIdx) {
-                totalShare = allocatable - allocated;
-            }
-
-            expectedShares[i] = totalShare;
-            allocated += totalShare;
-        }
-
-        uint256[3] memory trancheBalancesAfter;
-        trancheBalancesAfter[0] = mzusd.balanceOf(address(tranche0));
-        trancheBalancesAfter[1] = mzusd.balanceOf(address(tranche1));
-        trancheBalancesAfter[2] = mzusd.balanceOf(address(tranche2));
-
+        uint256 b0After = mzusd.balanceOf(address(tranche0));
+        uint256 b1After = mzusd.balanceOf(address(tranche1));
+        uint256 b2After = mzusd.balanceOf(address(tranche2));
         uint256 supplyAfter = mzusd.totalSupply();
         uint256 feeReceiverAfter = mzusd.balanceOf(address(this));
+        uint256 d0 = b0After - b0Before;
+        uint256 d1 = b1After - b1Before;
+        uint256 d2 = b2After - b2Before;
 
         assertEq(supplyAfter - supplyBefore, mintedGross);
         assertEq(feeReceiverAfter - feeReceiverBefore, expectedPerf + expectedProt);
         assertEq(mzusd.balanceOf(address(vault)), 0);
+        assertEq(d0 + d1 + d2, allocatable);
+        if (!p0) assertEq(d0, 0);
+        if (!p1) assertEq(d1, 0);
+        if (!p2) assertEq(d2, 0);
+    }
 
-        assertEq(trancheBalancesAfter[0] - trancheBalancesBefore[0], expectedShares[0]);
-        assertEq(trancheBalancesAfter[1] - trancheBalancesBefore[1], expectedShares[1]);
-        assertEq(trancheBalancesAfter[2] - trancheBalancesBefore[2], expectedShares[2]);
-        assertEq(expectedShares[0] + expectedShares[1] + expectedShares[2], allocatable);
+    function testFuzz_DistributeYieldWithPairedConfigMatchesModel(
+        uint96 usdcReportedSeed,
+        uint16 perfBpsSeed,
+        uint16 protBpsSeed,
+        uint96 deposit0Seed,
+        uint96 deposit1Seed,
+        uint96 deposit2Seed,
+        uint16 pairRiskSeed,
+        uint16 juniorRiskSeed
+    ) public {
+        uint16 perfBps = uint16(bound(perfBpsSeed, 0, 5_000));
+        uint16 protBps = uint16(bound(protBpsSeed, 0, 5_000));
+        vm.assume(uint256(perfBps) + uint256(protBps) <= vault.MAX_TOTAL_FEE_BPS());
+
+        uint16 pairRisk = uint16(bound(uint256(pairRiskSeed), 0, BPS));
+        uint16 juniorRisk = uint16(bound(uint256(juniorRiskSeed), 0, BPS - pairRisk));
+        uint16 baseRewardBps = uint16(BPS - pairRisk - juniorRisk);
+
+        uint256 deposit0 = bound(uint256(deposit0Seed), 0, 3_000_000e6);
+        uint256 deposit1 = bound(uint256(deposit1Seed), 0, 3_000_000e6);
+        uint256 deposit2 = bound(uint256(deposit2Seed), 0, 3_000_000e6);
+
+        if (deposit0 != 0) _fundAndDeposit(vm.addr(501), tranche0, deposit0);
+        if (deposit1 != 0) _fundAndDeposit(vm.addr(502), tranche1, deposit1);
+        if (deposit2 != 0) _fundAndDeposit(vm.addr(503), tranche2, deposit2);
+
+        IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](3);
+        infos[0] = IssuanceVault.TrancheInfo(address(tranche0), pairRisk, true);
+        infos[1] = IssuanceVault.TrancheInfo(address(tranche1), 0, true);
+        infos[2] = IssuanceVault.TrancheInfo(address(tranche2), juniorRisk, true);
+        bool[] memory pairFlags = new bool[](3);
+        pairFlags[0] = true;
+        pairFlags[1] = true;
+        vault.setTrancheConfig(infos, pairFlags, baseRewardBps);
+        vault.setFeeRates(perfBps, protBps);
+
+        uint256 usdcReported = bound(uint256(usdcReportedSeed), 1, 5_000_000e6);
+        uint256 mintedGross = usdcReported * SCALE;
+        uint256 allocatable = mintedGross -
+            ((mintedGross * perfBps) / BPS) -
+            ((mintedGross * protBps) / BPS);
+
+        uint256 b0Before = mzusd.balanceOf(address(tranche0));
+        uint256 b1Before = mzusd.balanceOf(address(tranche1));
+        uint256 b2Before = mzusd.balanceOf(address(tranche2));
+        uint256 pairBefore = b0Before + b1Before;
+
+        vm.warp(block.timestamp + 1 days + 1);
+        if (pairBefore + b2Before == 0) {
+            vm.expectRevert(IssuanceVault.TVLZero.selector);
+            vm.prank(navOracle);
+            vault.distributeYield(usdcReported);
+            return;
+        }
+
+        vm.prank(navOracle);
+        vault.distributeYield(usdcReported);
+
+        uint256 d0 = mzusd.balanceOf(address(tranche0)) - b0Before;
+        uint256 d1 = mzusd.balanceOf(address(tranche1)) - b1Before;
+        uint256 d2 = mzusd.balanceOf(address(tranche2)) - b2Before;
+        uint256 pairDelta = d0 + d1;
+
+        assertEq(pairDelta + d2, allocatable);
+        assertEq(mzusd.balanceOf(address(vault)), 0);
+
+        if (pairBefore == 0) {
+            assertEq(pairDelta, 0);
+        }
+        if (b2Before == 0 && pairBefore != 0) {
+            assertEq(d2, 0);
+            assertEq(pairDelta, allocatable);
+        }
+        if (b0Before == 0) {
+            assertEq(d0, 0);
+        }
+        if (b1Before == 0) {
+            assertEq(d1, 0);
+        }
+        if (b0Before != 0 && b1Before != 0 && pairDelta != 0) {
+            uint256 lhs = d0 * pairBefore;
+            uint256 rhs = pairDelta * b0Before;
+            uint256 diff = lhs > rhs ? lhs - rhs : rhs - lhs;
+            assertLe(diff, pairBefore);
+        }
+    }
+
+    function testFuzz_SetTrancheConfigPairFlagsRoundTrip(uint8 modeSeed) public {
+        IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](3);
+        infos[0] = IssuanceVault.TrancheInfo(address(tranche0), 0, true);
+        infos[1] = IssuanceVault.TrancheInfo(address(tranche1), 0, true);
+        infos[2] = IssuanceVault.TrancheInfo(address(tranche2), 0, true);
+
+        bool[] memory pairFlags = new bool[](3);
+        uint8 mode = uint8(bound(uint256(modeSeed), 0, 2));
+        if (mode == 1) {
+            pairFlags[0] = true;
+            pairFlags[1] = true;
+            infos[0].riskPremiumBps = 1000;
+        } else if (mode == 2) {
+            pairFlags[1] = true;
+            pairFlags[2] = true;
+            infos[1].riskPremiumBps = 1000;
+        }
+
+        uint16 base = uint16(
+            BPS - infos[0].riskPremiumBps - infos[1].riskPremiumBps - infos[2].riskPremiumBps
+        );
+        vault.setTrancheConfig(infos, pairFlags, base);
+
+        (address[] memory order, bool[] memory roundtripFlags) = vault.getTrancheOrderAndPairs();
+        assertEq(order.length, 3);
+        assertEq(order[0], address(tranche0));
+        assertEq(order[1], address(tranche1));
+        assertEq(order[2], address(tranche2));
+        assertEq(roundtripFlags.length, 3);
+        assertEq(roundtripFlags[0], pairFlags[0]);
+        assertEq(roundtripFlags[1], pairFlags[1]);
+        assertEq(roundtripFlags[2], pairFlags[2]);
+
+        address p0 = vault.tranchePairedTo(address(tranche0));
+        address p1 = vault.tranchePairedTo(address(tranche1));
+        address p2 = vault.tranchePairedTo(address(tranche2));
+        if (mode == 1) {
+            assertEq(p0, address(tranche1));
+            assertEq(p1, address(tranche0));
+            assertEq(p2, address(0));
+        } else if (mode == 2) {
+            assertEq(p0, address(0));
+            assertEq(p1, address(tranche2));
+            assertEq(p2, address(tranche1));
+        } else {
+            assertEq(p0, address(0));
+            assertEq(p1, address(0));
+            assertEq(p2, address(0));
+        }
     }
 
     function _deployTranche(
