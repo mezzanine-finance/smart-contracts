@@ -227,6 +227,9 @@ describe("MZUSD <-> USDC conversion", () => {
             await expect(mzusd.setRedemptionWindowDuration(duration + 1n))
                 .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
+            await expect(mzusd.setWithdrawalFeeBps(1))
+                .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
         });
     });
 
@@ -428,6 +431,66 @@ describe("MZUSD <-> USDC conversion", () => {
                 expect(aliceMZAfter).to.equal(0n);
                 expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
             });
+        });
+    });
+
+    describe("Withdrawal fee", () => {
+        it("Charges withdrawal fee and keeps fee amount in IssuanceVault", async () => {
+            const feeBps = 500; // 5%
+            const depositAmountUSDC = to6(100n);
+            const feeAmountUSDC = (depositAmountUSDC * BigInt(feeBps)) / 10_000n;
+            const netAmountUSDC = depositAmountUSDC - feeAmountUSDC;
+
+            await expect(mzusd.setWithdrawalFeeBps(feeBps))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(feeBps);
+
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            const aliceMZ = await mzusd.balanceOf(alice.address);
+            const vaultUSDCBefore = await usdc.balanceOf(vault.target);
+            expect(vaultUSDCBefore).to.equal(depositAmountUSDC);
+
+            await expect(mzusd.connect(alice).requestWithdrawal(aliceMZ))
+                .to.emit(mzusd, "Withdrawal")
+                .withArgs(alice.address, netAmountUSDC);
+
+            expect(await usdc.balanceOf(alice.address)).to.equal(netAmountUSDC);
+            expect(await usdc.balanceOf(vault.target)).to.equal(feeAmountUSDC);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
+        });
+
+        it("Counts gross withdrawal against cap even when fee is enabled", async () => {
+            const feeBps = 5000; // 50%
+            const capUSDC = to6(100n);
+            const depositAmountUSDC = to6(200n);
+
+            await mzusd.setWithdrawalFeeBps(feeBps);
+            await mzusd.setGlobalRedemptionCap(capUSDC);
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            await mzusd.connect(alice).requestWithdrawal(to18(100n));
+
+            const [, usedUSDC, remainingUSDC] = await mzusd.getRemainingRedemptionCap();
+            expect(usedUSDC).to.equal(capUSDC);
+            expect(remainingUSDC).to.equal(0n);
+
+            await expect(mzusd.connect(alice).requestWithdrawal(to18(1n)))
+                .to.be.revertedWithCustomError(mzusd, "GlobalRedemptionCapExceeded")
+                .withArgs(capUSDC, capUSDC + to6(1n), to6(1n));
+        });
+
+        it("Validates withdrawal fee bps bounds and same-value updates", async () => {
+            await expect(mzusd.setWithdrawalFeeBps(10_001)).to.be.revertedWithCustomError(
+                mzusd,
+                "TooBigBps"
+            );
+
+            await mzusd.setWithdrawalFeeBps(250);
+            await expect(mzusd.setWithdrawalFeeBps(250)).to.be.revertedWithCustomError(
+                mzusd,
+                "SameValue"
+            );
         });
     });
 
