@@ -50,6 +50,7 @@ contract Tranche is
     bool public depositLimitEnabled;
     uint256 public maxDepositCap;
     /// @notice Limits how much the users can deposit into Tranche in total based on the asset's TVL and specified BPS.
+    /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint256 public maxDepositTvlBps;
 
     // YIELD STREAMING (linear distribution over epoch)
@@ -327,7 +328,7 @@ contract Tranche is
 
     /// @notice Update deposit limits.
     /// @param cap Absolute cap in MZUSD units; use `type(uint256).max` as no-cap sentinel.
-    /// @param tvlBps TVL share limit in bps.
+    /// @param tvlBps TVL share limit in bps (10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%).
     function setDepositLimits(
         uint256 cap,
         uint256 tvlBps

@@ -298,22 +298,6 @@
         "type": "error"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "grossShares",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "minimumRequiredGrossShares",
-                "type": "uint256"
-            }
-        ],
-        "name": "InitialDepositTooSmall",
-        "type": "error"
-    },
-    {
         "inputs": [],
         "name": "InvalidAmount",
         "type": "error"
@@ -503,25 +487,6 @@
             }
         ],
         "name": "AuthorityUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "lockedShares",
-                "type": "uint256"
-            },
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "receiver",
-                "type": "address"
-            }
-        ],
-        "name": "DeadSharesLocked",
         "type": "event"
     },
     {
@@ -840,33 +805,7 @@
     },
     {
         "inputs": [],
-        "name": "DEAD_SHARES_RECEIVER",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
         "name": "MAX_UNSTAKE_DELAY_EPOCHS",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "MINIMUM_LOCKED_SHARES",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -1095,7 +1034,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "shares",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1416,7 +1355,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1474,7 +1413,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "shares",
+                "name": "",
                 "type": "uint256"
             }
         ],
@@ -1493,7 +1432,7 @@
         "outputs": [
             {
                 "internalType": "uint256",
-                "name": "assets",
+                "name": "",
                 "type": "uint256"
             }
         ],

@@ -55,7 +55,21 @@
         "epochDurationSec": 86400
     },
     "seed": {
-        "mzusdDepositUSDC": "1000000"
+        "mzusdDepositUSDC": "1000000",
+        "deadShares": [
+            {
+                "key": "senior",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "mezzanine",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "1"
+            }
+        ]
     },
     "tranches": [
         {

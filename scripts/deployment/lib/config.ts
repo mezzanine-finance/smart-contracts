@@ -56,6 +56,7 @@ export interface UsdcConfig {
 export interface MZUSDConfig {
     redemptionCapUSDC: string;
     redemptionWindowDurationSec?: number;
+    withdrawalFeeBps?: number;
 }
 
 export interface VaultConfig {
@@ -117,10 +118,16 @@ export interface TrancheSeedConfig {
     receiver: string;
 }
 
+export interface TrancheDeadSharesConfig {
+    key: string;
+    amountMZUSD: string;
+}
+
 export interface SeedConfig {
     mzusdDepositUSDC?: string;
     vaultUSDC?: string;
     reservoirUSDC?: string;
+    deadShares?: TrancheDeadSharesConfig[];
     trancheDeposits?: TrancheSeedConfig[];
 }
 
@@ -309,6 +316,27 @@ function validateConfig(config: DeployConfig, filePath: string) {
     if (seed?.reservoirUSDC) {
         parseUSDC(seed.reservoirUSDC);
     }
+    if (seed?.deadShares) {
+        const seenDeadShares = new Set<string>();
+        for (const deadShare of seed.deadShares) {
+            assert(deadShare.key, "seed.deadShares.key is required");
+            assert(
+                keys.has(deadShare.key),
+                `seed.deadShares references unknown tranche: ${deadShare.key}`
+            );
+            assert(
+                !seenDeadShares.has(deadShare.key),
+                `seed.deadShares has duplicate tranche key: ${deadShare.key}`
+            );
+            seenDeadShares.add(deadShare.key);
+            assert(
+                deadShare.amountMZUSD !== undefined,
+                `seed.deadShares for ${deadShare.key}: amountMZUSD is required`
+            );
+            const amount = parseMZUSD(deadShare.amountMZUSD);
+            assert(amount > 0n, `seed.deadShares for ${deadShare.key}: amountMZUSD must be > 0`);
+        }
+    }
     if (seed?.trancheDeposits) {
         for (const deposit of seed.trancheDeposits) {
             assert(deposit.key, "seed.trancheDeposits.key is required");
@@ -340,5 +368,9 @@ function validateConfig(config: DeployConfig, filePath: string) {
             "umbrellaFinalizer.startEpoch must be a safe integer"
         );
         assert(config.umbrellaFinalizer.startEpoch > 0, "umbrellaFinalizer.startEpoch must be > 0");
+    }
+
+    if (config.mzusd.withdrawalFeeBps !== undefined) {
+        parseBps(config.mzusd.withdrawalFeeBps);
     }
 }

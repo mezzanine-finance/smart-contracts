@@ -28,11 +28,13 @@ contract IssuanceVault is
     /// @notice Info for each registered tranche.
     struct TrancheInfo {
         address tranche;
-        uint16 riskPremiumBps;
+        uint16 riskPremiumBps; // 500 = 5%, 50 = 0.5%, 5 = 0.05%
         bool enabled;
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
+    /// @notice Basis points denominator used across vault fee/yield parameters.
+    /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
     // Max allowed tranche weight (relative, not bps).
@@ -63,10 +65,10 @@ contract IssuanceVault is
     uint64 public epochDuration; // duration of each epoch in seconds
     uint64 public currentEpochId; // current epoch ID for yield distribution
 
-    uint16 public hysteresisBps; // hysteresis band around idle buffer target
-    uint16 public performanceFeeBps; // portion of yield allocated to performance fees (bps of total yield)
-    uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (bps of total yield)
-    uint16 public baseRewardBps; // portion of yield allocated to the base reward pool
+    uint16 public hysteresisBps; // hysteresis band around idle buffer target (500 = 5%, 50 = 0.5%)
+    uint16 public performanceFeeBps; // portion of yield allocated to performance fees (500 = 5%, 50 = 0.5%)
+    uint16 public protocolFeeBps; // portion of yield allocated to protocol fees (500 = 5%, 50 = 0.5%)
+    uint16 public baseRewardBps; // portion of yield allocated to the base reward pool (500 = 5%, 50 = 0.5%)
     address public lossManager; // canonical loss manager (set once)
     address public navOracle; // canonical NAV automation address
     uint64 public pendingEpochDuration; // queued duration to apply on next epoch
@@ -155,9 +157,9 @@ contract IssuanceVault is
     }
 
     /// @notice Initialize the IssuanceVault.
-    /// @param _performanceFeeBps Performance fee in bps (0 allowed).
+    /// @param _performanceFeeBps Performance fee in bps (0 allowed; 500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _performanceFeeReceiver Recipient of performance fees.
-    /// @param _protocolFeeBps Protocol fee in bps (0 allowed).
+    /// @param _protocolFeeBps Protocol fee in bps (0 allowed; 500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
     /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
     function initialize(
@@ -290,7 +292,9 @@ contract IssuanceVault is
     }
 
     /// @notice Update fee rates (bps).
-    /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
+    /// @param _performanceFeeBps Performance fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @param _protocolFeeBps Protocol fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS.
     function setFeeRates(
         uint16 _performanceFeeBps,
         uint16 _protocolFeeBps
@@ -337,8 +341,9 @@ contract IssuanceVault is
     /// @notice Configure tranche order, pairing, and yield distribution in one call.
     /// @param _tranches Tranche info structs in desired burn/allocation order (must all be registered).
     /// @param _isPairedWithNext Pair flags aligned with `_tranches` (contiguous true,true for pairs).
-    /// @param _baseRewardBps Base reward pool share in bps.
+    /// @param _baseRewardBps Base reward pool share in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @dev Enforces: all registered, no duplicates, pair contiguity, _baseRewardBps + sum(riskPremiums) == BPS.
+    /// @dev Each `_tranches[i].riskPremiumBps` uses the same scale (10_000 = 100%).
     function setTrancheConfig(
         TrancheInfo[] calldata _tranches,
         bool[] calldata _isPairedWithNext,
@@ -387,7 +392,7 @@ contract IssuanceVault is
 
     /// @notice Update idle USDC buffer and hysteresis band.
     /// @param target Target idle USDC buffer (6 decimals).
-    /// @param bandBps Hysteresis band in bps.
+    /// @param bandBps Hysteresis band in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     function setBuffer(
         uint256 target,
         uint16 bandBps
@@ -585,9 +590,9 @@ contract IssuanceVault is
     }
 
     /// @notice Internal function to set fee rates.
-    /// @param _performanceFeeBps Performance fee in bps.
-    /// @param _protocolFeeBps Protocol fee in bps.
-    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS
+    /// @param _performanceFeeBps Performance fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @param _protocolFeeBps Protocol fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @dev Sum of _performanceFeeBps and _protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS.
     function _setFeeRates(uint16 _performanceFeeBps, uint16 _protocolFeeBps) internal {
         if (_performanceFeeBps + _protocolFeeBps > MAX_TOTAL_FEE_BPS) revert TooBigBps();
         performanceFeeBps = _performanceFeeBps;
@@ -649,7 +654,7 @@ contract IssuanceVault is
     }
 
     /// @notice Mint a fee in MZUSD.
-    /// @param bps Fee in basis points.
+    /// @param bps Fee in basis points (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param receiver Recipient of the fee.
     /// @param mintedGross Gross MZUSD minted for yield distribution (18 decimals).
     /// @return feeAmount MZUSD minted as the fee.

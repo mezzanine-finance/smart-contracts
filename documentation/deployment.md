@@ -73,7 +73,8 @@ Notes:
 - Mint MZUSD + fund IssuanceVault via `MZUSD.deposit(amountUSDC)`.
 - Optional direct USDC transfer to IssuanceVault.
 - Optional `ReservoirUSDC.deposit(amountUSDC)`.
-- Optional initial tranche deposits via `Tranche.deposit`.
+- Optional dead-share seeding via `seed.deadShares[]` (deposits to `0x000000000000000000000000000000000000dEaD` only when tranche `totalSupply == 0`).
+- Optional tranche seeding via regular `Tranche.deposit(assets, receiver)`.
 
 `setBuffer` has one non-reverting skip case:
 if pull is needed (`idle < low`) and Reservoir USDC balance is zero, it emits `BufferRebalanceSkipped`.
@@ -105,10 +106,12 @@ Recommended role mapping follows `scripts/deployment/deploy.ts`:
     `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`) -> `ADMIN_ROLE`
 - MZUSD:
   - `burn` -> `BURNER_ROLE`
-  - admin setters (`setVault`, redemption config) -> `ADMIN_ROLE`
+  - admin setters (`setVault`, redemption config, `setWithdrawalFeeBps`) -> `ADMIN_ROLE`
 - Reservoir:
   - `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
   - `setVault` -> `ADMIN_ROLE`
+- Tranche:
+  - admin setters (`setUnstakeDelayEpochs`, `setDepositLimits`, `setDepositLimitEnabled`) -> `ADMIN_ROLE`
 - LossManager:
   - `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
 - NavOracleAutomation:
@@ -178,6 +181,7 @@ MZUSD:
 
 - `mzusd.redemptionCapUSDC`: required, non-zero.
 - `mzusd.redemptionWindowDurationSec` (optional): queued via setter if different from current/pending.
+- `mzusd.withdrawalFeeBps` (optional): withdrawal fee in bps. If omitted, deploy script does not set it.
 
 IssuanceVault:
 
@@ -213,6 +217,7 @@ Automation:
 Seed/post:
 
 - `seed.mzusdDepositUSDC`, `seed.vaultUSDC`, `seed.reservoirUSDC` are optional USDC amounts.
+- `seed.deadShares[]` seeds per-tranche dead shares (`amountMZUSD`) to keep supply non-zero; skipped when tranche supply is already non-zero.
 - `seed.trancheDeposits[]` supports `amountMZUSD` (preferred) and deprecated `amountUSDC` alias.
 - `postDeploy.renounceDeployerRoles` controls automatic role handoff/cleanup flow.
 - `verify.enabled` toggles verification (local networks still skip verification).
