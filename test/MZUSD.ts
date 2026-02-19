@@ -481,13 +481,19 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Validates withdrawal fee bps bounds and same-value updates", async () => {
+            await expect(mzusd.setWithdrawalFeeBps(10_000)).to.be.revertedWithCustomError(
+                mzusd,
+                "TooBigBps"
+            );
             await expect(mzusd.setWithdrawalFeeBps(10_001)).to.be.revertedWithCustomError(
                 mzusd,
                 "TooBigBps"
             );
 
-            await mzusd.setWithdrawalFeeBps(250);
-            await expect(mzusd.setWithdrawalFeeBps(250)).to.be.revertedWithCustomError(
+            await expect(mzusd.setWithdrawalFeeBps(9_999))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(9_999);
+            await expect(mzusd.setWithdrawalFeeBps(9_999)).to.be.revertedWithCustomError(
                 mzusd,
                 "SameValue"
             );

@@ -240,7 +240,7 @@ contract MZUSD is
     function setWithdrawalFeeBps(
         uint16 newFeeBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (newFeeBps > BPS) revert TooBigBps();
+        if (newFeeBps >= BPS) revert TooBigBps();
         if (withdrawalFeeBps == newFeeBps) revert SameValue();
         withdrawalFeeBps = newFeeBps;
         emit WithdrawalFeeUpdated(newFeeBps);
