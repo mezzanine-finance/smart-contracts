@@ -40,6 +40,7 @@ interface DeployResult<T extends BaseContract> {
 
 const MZUSD_SCALE = 1_000_000_000_000n;
 const BPS = 10_000n;
+const DEAD_SHARES_RECEIVER = "0x000000000000000000000000000000000000dEaD";
 
 function isEnvFlagEnabled(name: string): boolean {
     const raw = process.env[name];
@@ -637,6 +638,35 @@ async function main() {
             log.success(`Reservoir seed ${seed.reservoirUSDC}`);
         }
 
+        if (seed.deadShares && seed.deadShares.length > 0) {
+            for (const deadShare of seed.deadShares) {
+                const tranche = trancheByKey.get(deadShare.key);
+                assert(
+                    tranche !== undefined,
+                    `Unknown tranche key in deadShares: ${deadShare.key}`
+                );
+
+                const trancheSupply = await tranche.contract.totalSupply();
+                if (trancheSupply > 0n) {
+                    log.info(
+                        `Skipping Tranche.deadShares ${deadShare.key}: totalSupply already non-zero`
+                    );
+                    continue;
+                }
+
+                const amountMzusd = parseMZUSD(deadShare.amountMZUSD);
+                const mzBalance = await mzusd.contract.balanceOf(seedAddress);
+                assert(
+                    mzBalance >= amountMzusd,
+                    `Insufficient MZUSD for deadShares seed ${deadShare.key}`
+                );
+                await (await mzusdSeeder.approve(tranche.address, amountMzusd)).wait();
+                const trancheSeeder = tranche.contract.connect(seedSigner);
+                await (await trancheSeeder.deposit(amountMzusd, DEAD_SHARES_RECEIVER)).wait();
+                log.success(`Tranche.deadShares ${deadShare.key} ${deadShare.amountMZUSD}`);
+            }
+        }
+
         if (seed.trancheDeposits && seed.trancheDeposits.length > 0) {
             for (const deposit of seed.trancheDeposits) {
                 const tranche = trancheByKey.get(deposit.key);
@@ -651,11 +681,8 @@ async function main() {
                     `Insufficient MZUSD for tranche seed ${deposit.key}`
                 );
                 await (await mzusdSeeder.approve(tranche.address, amountMzusd)).wait();
-                await (
-                    await tranche.contract
-                        .connect(seedSigner)
-                        .deposit(amountMzusd, deposit.receiver)
-                ).wait();
+                const trancheSeeder = tranche.contract.connect(seedSigner);
+                await (await trancheSeeder.deposit(amountMzusd, deposit.receiver)).wait();
                 log.success(
                     `Tranche.seed ${deposit.key} ${deposit.amountMZUSD ?? `${deposit.amountUSDC} USDC eq`}`
                 );
@@ -708,6 +735,15 @@ async function main() {
         if (current !== BigInt(desired) && next !== BigInt(desired)) {
             await (await mzusdAdmin.setRedemptionWindowDuration(desired)).wait();
             log.success("MZUSD.setRedemptionWindowDuration");
+        }
+    }
+
+    if (config.mzusd.withdrawalFeeBps !== undefined) {
+        const current = await mzusd.contract.withdrawalFeeBps();
+        const desired = BigInt(config.mzusd.withdrawalFeeBps);
+        if (current !== desired) {
+            await (await mzusdAdmin.setWithdrawalFeeBps(config.mzusd.withdrawalFeeBps)).wait();
+            log.success("MZUSD.setWithdrawalFeeBps");
         }
     }
 
@@ -829,6 +865,7 @@ async function main() {
             mzusd.contract.interface.getFunction("setVault").selector,
             mzusd.contract.interface.getFunction("setGlobalRedemptionCap").selector,
             mzusd.contract.interface.getFunction("setRedemptionWindowDuration").selector,
+            mzusd.contract.interface.getFunction("setWithdrawalFeeBps").selector,
         ],
         adminRole
     );
