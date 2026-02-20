@@ -493,6 +493,19 @@
         "anonymous": false,
         "inputs": [
             {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newBps",
+                "type": "uint256"
+            }
+        ],
+        "name": "CancelUnstakeFeeBpsUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": true,
                 "internalType": "address",
                 "name": "sender",
@@ -688,6 +701,19 @@
             }
         ],
         "name": "UnstakeRequested",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newBps",
+                "type": "uint256"
+            }
+        ],
+        "name": "UnstakeYieldReductionBpsUpdated",
         "type": "event"
     },
     {
@@ -954,6 +980,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "cancelUnstakeFeeBps",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
@@ -1098,6 +1137,11 @@
             {
                 "internalType": "uint256",
                 "name": "totalAssets",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "finalizationPrice",
                 "type": "uint256"
             }
         ],
@@ -1574,6 +1618,19 @@
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "bps",
+                "type": "uint256"
+            }
+        ],
+        "name": "setCancelUnstakeFeeBps",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "bool",
                 "name": "enabled",
                 "type": "bool"
@@ -1611,6 +1668,19 @@
             }
         ],
         "name": "setUnstakeDelayEpochs",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "bps",
+                "type": "uint256"
+            }
+        ],
+        "name": "setUnstakeYieldReductionBps",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1766,6 +1836,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "unstakeYieldReductionBps",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -1797,6 +1880,30 @@
             }
         ],
         "name": "userSharesByEpoch",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "userSnapshotPrice",
         "outputs": [
             {
                 "internalType": "uint256",
