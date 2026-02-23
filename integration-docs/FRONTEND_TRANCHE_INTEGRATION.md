@@ -9,8 +9,8 @@ Metrics (APR/APY/TVL) are typically sourced from subgraph/indexer, with on-chain
 - Tranche share token uses `_decimalsOffset() = 3`, so `Tranche.decimals()` is `21`.
 - `PolJuniorTranche` is admin-only (no ERC4626 shares), do not expose it as a public user vault.
 - Withdrawal UX depends on `directWithdrawEnabled()`:
-  - `true`: `requestWithdrawal(shares)` redeems immediately (equivalent end result to `redeem` to self).
-  - `false`: `requestWithdrawal(shares)` enters umbrella flow (wait + finalize + claim).
+    - `true`: `requestWithdrawal(shares)` redeems immediately (equivalent end result to `redeem` to self).
+    - `false`: `requestWithdrawal(shares)` enters umbrella flow (wait + finalize + claim).
 
 When `directWithdrawEnabled() == false`, direct `withdraw()`/`redeem()` paths revert by design.
 
@@ -44,12 +44,14 @@ POL page (if any):
 - `getDepositLimitInfo()` (enabled, limit, limitByTvl, capEffective)
 - `maxDeposit(user)` is ERC4626-default and may stay `MAX_UINT`; use `getDepositLimitInfo()` for protocol deposit limits
 - `unstakeDelayEpochs()`
+- `unstakeYieldReductionBps()` (bps, `< 10_000`)
+- `cancelUnstakeFeeBps()` (bps, `< 10_000`)
 - `pauseManager()`
 - User-specific:
-  - `balanceOf(user)`
-  - `getUserEpochInfo(user, epochId)` -> `(pendingShares, claimableAssets)`
+    - `balanceOf(user)`
+    - `getUserEpochInfo(user, epochId)` -> `(pendingShares, claimableAssets)`
 - Optional epoch-level:
-  - `getEpochInfo(epochId)` -> `(umbrellaShares, isFinalized, totalShares, totalAssets)`
+    - `getEpochInfo(epochId)` -> `(umbrellaShares, isFinalized, totalShares, totalAssets)`
 
 ### From Vault
 
@@ -93,7 +95,7 @@ When `depositLimitEnabled == false`, effective limit is `MAX_UINT`.
 - when limits are disabled: `MAX_UINT`.
 - when limits are enabled: exactly the configured value (`maxDepositCap`) including `0` or `MAX_UINT`.
 - note: with limits enabled, `maxDepositCap == 0` means effective cap is zero.
-When enabled:
+  When enabled:
 
 - `tvl = totalAssets()`
 - `supply = asset.totalSupply()` (MZUSD total supply)
@@ -164,6 +166,10 @@ Rounding behavior:
 
 - Claims are pro-rata with floor division for each user.
 - Rounding dust may remain in `reservedAssets` after all users claim for that epoch.
+- In umbrella mode, claim can include optional yield slashing:
+    - `snapshot = userSnapshotPrice[user][epochId]` (captured at request time);
+    - if `finalizationPrice <= snapshot` -> slashing is zero;
+    - if `finalizationPrice > snapshot` -> slash applies on positive pending yield using `unstakeYieldReductionBps`.
 
 Errors:
 
@@ -183,6 +189,11 @@ Pre-checks:
 - `Vault.currentEpochId() <= epochId`
 
 Tx: `Tranche.cancelUnstake(epochId, shares)`.
+
+If `cancelUnstakeFeeBps > 0`, part of canceled shares is burned:
+
+- `sharesToBurn = shares * cancelUnstakeFeeBps / 10_000`
+- `returnShares = shares - sharesToBurn`
 
 Errors:
 

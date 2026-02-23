@@ -32,6 +32,9 @@ It is a technical overview intended for engineers, integrators, and auditors.
 - Two withdrawal modes:
     - direct mode (`directWithdrawEnabled = true`): `requestWithdrawal(shares)` redeems immediately;
     - umbrella mode (`directWithdrawEnabled = false`): request -> finalize epoch -> claim.
+- Umbrella mode includes optional unstake economics:
+    - `unstakeYieldReductionBps`: slashes a share of positive pending-withdrawal yield at claim time;
+    - `cancelUnstakeFeeBps`: burns a share of canceled unstake shares.
 - Streams notified yield linearly over `IssuanceVault.epochDuration()`.
 - `totalAssets()` uses virtual NAV:
     - `balance(asset) - unaccruedYield - reservedAssets`.
@@ -135,7 +138,10 @@ Notes:
     1. User calls `requestWithdrawal(shares)`.
     2. Shares are escrowed to target epoch: `currentEpochId + unstakeDelayEpochs`.
     3. Anyone (or automation) finalizes passed epoch via `finalizeEpoch(epochId)`.
-    4. User claims MZUSD via `claim(epochId)`.
+    4. User claims MZUSD via `claim(epochId)`:
+        - base payout is floor pro-rata from finalized epoch pool;
+        - if `finalizationPrice > userSnapshotPrice`, optional yield slashing reduces payout;
+        - if `finalizationPrice <= userSnapshotPrice`, slashing is zero.
 
 Note:
 

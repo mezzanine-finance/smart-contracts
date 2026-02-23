@@ -17,10 +17,12 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
       non-standard tokens, we can switch to `SafeERC20`.
 
 - `divide-before-multiply` (Medium)
-    - Files: `contracts/MZUSD.sol`, `contracts/IssuanceVault.sol`.
+    - Files: `contracts/MZUSD.sol`, `contracts/IssuanceVault.sol`, `contracts/Tranche.sol`.
     - Reason: rounding down to 6-decimal USDC is intentional; burn uses the
       rounded amount to avoid dust mismatch in `MZUSD.requestWithdrawal`; in IssuanceVault
-      this is expected integer arithmetic with accepted rounding.
+      this is expected integer arithmetic with accepted rounding. In Tranche slashing
+      math (`claim`/`getUserEpochInfo`), division ordering intentionally mirrors on-chain
+      payout semantics (floor rounding and slash capped by claimable assets).
 
 - `incorrect-equality` (Medium)
     - File: `contracts/IssuanceVault.sol` (`available == 0` in `setBuffer` and `_rebalance`).

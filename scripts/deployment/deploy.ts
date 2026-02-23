@@ -558,6 +558,24 @@ async function main() {
                 log.success(`Tranche.setUnstakeDelayEpochs ${tranche.key}`);
             }
         }
+        if (tranche.unstakeYieldReductionBps !== undefined) {
+            const current = await trancheContract.contract.unstakeYieldReductionBps();
+            if (current !== BigInt(tranche.unstakeYieldReductionBps)) {
+                await (
+                    await trancheAdmin.setUnstakeYieldReductionBps(tranche.unstakeYieldReductionBps)
+                ).wait();
+                log.success(`Tranche.setUnstakeYieldReductionBps ${tranche.key}`);
+            }
+        }
+        if (tranche.cancelUnstakeFeeBps !== undefined) {
+            const current = await trancheContract.contract.cancelUnstakeFeeBps();
+            if (current !== BigInt(tranche.cancelUnstakeFeeBps)) {
+                await (
+                    await trancheAdmin.setCancelUnstakeFeeBps(tranche.cancelUnstakeFeeBps)
+                ).wait();
+                log.success(`Tranche.setCancelUnstakeFeeBps ${tranche.key}`);
+            }
+        }
 
         if (tranche.depositLimits) {
             const enabled = await trancheContract.contract.depositLimitEnabled();
@@ -920,6 +938,8 @@ async function main() {
             tranche.address,
             [
                 tranche.contract.interface.getFunction("setUnstakeDelayEpochs").selector,
+                tranche.contract.interface.getFunction("setUnstakeYieldReductionBps").selector,
+                tranche.contract.interface.getFunction("setCancelUnstakeFeeBps").selector,
                 tranche.contract.interface.getFunction("setDepositLimits").selector,
                 tranche.contract.interface.getFunction("setDepositLimitEnabled").selector,
             ],
