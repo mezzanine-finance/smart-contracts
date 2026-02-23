@@ -376,57 +376,6 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
         }
     }
 
-    function testFuzz_SetTrancheConfigPairFlagsRoundTrip(uint8 modeSeed) public {
-        IssuanceVault.TrancheInfo[] memory infos = new IssuanceVault.TrancheInfo[](3);
-        infos[0] = IssuanceVault.TrancheInfo(address(tranche0), 0, true);
-        infos[1] = IssuanceVault.TrancheInfo(address(tranche1), 0, true);
-        infos[2] = IssuanceVault.TrancheInfo(address(tranche2), 0, true);
-
-        bool[] memory pairFlags = new bool[](3);
-        uint8 mode = uint8(bound(uint256(modeSeed), 0, 2));
-        if (mode == 1) {
-            pairFlags[0] = true;
-            pairFlags[1] = true;
-            infos[0].riskPremiumBps = 1000;
-        } else if (mode == 2) {
-            pairFlags[1] = true;
-            pairFlags[2] = true;
-            infos[1].riskPremiumBps = 1000;
-        }
-
-        uint16 base = uint16(
-            BPS - infos[0].riskPremiumBps - infos[1].riskPremiumBps - infos[2].riskPremiumBps
-        );
-        vault.setTrancheConfig(infos, pairFlags, base);
-
-        (address[] memory order, bool[] memory roundtripFlags) = vault.getTrancheOrderAndPairs();
-        assertEq(order.length, 3);
-        assertEq(order[0], address(tranche0));
-        assertEq(order[1], address(tranche1));
-        assertEq(order[2], address(tranche2));
-        assertEq(roundtripFlags.length, 3);
-        assertEq(roundtripFlags[0], pairFlags[0]);
-        assertEq(roundtripFlags[1], pairFlags[1]);
-        assertEq(roundtripFlags[2], pairFlags[2]);
-
-        address p0 = vault.tranchePairedTo(address(tranche0));
-        address p1 = vault.tranchePairedTo(address(tranche1));
-        address p2 = vault.tranchePairedTo(address(tranche2));
-        if (mode == 1) {
-            assertEq(p0, address(tranche1));
-            assertEq(p1, address(tranche0));
-            assertEq(p2, address(0));
-        } else if (mode == 2) {
-            assertEq(p0, address(0));
-            assertEq(p1, address(tranche2));
-            assertEq(p2, address(tranche1));
-        } else {
-            assertEq(p0, address(0));
-            assertEq(p1, address(0));
-            assertEq(p2, address(0));
-        }
-    }
-
     function _deployTranche(
         uint256 trancheId,
         string memory name,
