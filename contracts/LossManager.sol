@@ -12,7 +12,7 @@ import {IVault} from "./interfaces/IVault.sol";
 
 /// @title LossManager
 /// @notice Burns MZUSD from tranches in configured order to materialize protocol losses.
-/// @dev Pairing is encoded by contiguous flags in `isPairedWithNext`.
+/// @dev Tranche order and pairing are owned by the Vault; LossManager queries them at runtime.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
 contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedUpgradeable {
@@ -20,15 +20,10 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Protocol stablecoin contract.
     IMZUSD public mzusd;
-    /// @notice Burn priority order for loss application.
-    address[] public trancheOrder;
     /// @notice Max loss allowed per transaction in USDC 6d (0 disables the limit).
     uint256 public maxLossPerTxUSDC;
-    /// @notice Vault reference used for mandatory epoch advancement on every loss apply.
+    /// @notice IssuanceVault reference used for mandatory epoch advancement on every loss apply.
     address public immutable vault;
-
-    /// @notice Pairing lookup. If non-zero, tranche shares loss with the paired tranche.
-    mapping(address => address) public tranchePairedTo;
 
     /// @notice Uncovered loss from the latest `applyLoss` call (MZUSD 18d).
     uint256 public lastUncoveredLossMZ;
@@ -48,9 +43,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         uint256 uncoveredMZ,
         uint256 totalUncoveredMZ
     );
-    /// @notice Emitted when tranche order (and implied pair mapping) is updated.
-    /// @param newOrder New tranche burn order.
-    event TrancheOrderUpdated(address[] newOrder);
     /// @notice Emitted when max loss per transaction is updated.
     /// @param newLimitUSDC New max loss value in USDC 6 decimals.
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
@@ -59,16 +51,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error ZeroAddress();
     /// @notice Thrown when amount is zero for a non-zero-required operation.
     error ZeroAmount();
-    /// @notice Thrown when tranche order is empty.
-    error ZeroLength();
-    /// @notice Thrown when tranche order contains duplicate addresses.
-    error DuplicateTranche(address tranche);
     /// @notice Thrown when configured max per tx limit is exceeded.
     error LimitExceeded();
-    /// @notice Thrown when pair flags are malformed (must be contiguous `true,true`).
-    error PairNotContiguous(uint256 index);
-    /// @notice Thrown when order and pair-flags lengths differ.
-    error LengthMismatch(uint256 orderLen, uint256 flagsLen);
     /// @notice Thrown when caller is not configured NAV oracle.
     error NotNavOracle();
     /// @notice Thrown when requested loss exceeds current MZUSD total supply scaled to USDC.
@@ -83,14 +67,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Initialize LossManager.
     /// @dev AccessManager and PauseManager are sourced from the provided MZUSD contract.
-    /// @param order Tranche burn order.
-    /// @param isPairedWithNext Pairing flags aligned with `order`.
     /// @param _maxLossPerTxUSDC Max loss per tx in USDC 6d (0 disables the limit).
-    function initialize(
-        address[] memory order,
-        bool[] memory isPairedWithNext,
-        uint256 _maxLossPerTxUSDC
-    ) external initializer {
+    function initialize(uint256 _maxLossPerTxUSDC) external initializer {
         IMZUSD token = IMZUSD(IVault(vault).mzusd());
         address accessManager = token.authority();
         address pauseManager_ = token.pauseManager();
@@ -100,7 +78,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         __PauseManaged_init(pauseManager_);
 
         mzusd = token;
-        _setTrancheOrderAndPairs(order, isPairedWithNext);
         maxLossPerTxUSDC = _maxLossPerTxUSDC;
     }
 
@@ -141,17 +118,6 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     // SETTERS
 
-    /// @notice Set tranche burn order and pair flags in one call.
-    /// @param order Tranche burn order.
-    /// @param isPairedWithNext Pair flags aligned with `order`.
-    /// @dev A valid pair is represented by two contiguous `true` flags.
-    function setTrancheOrderAndPairs(
-        address[] memory order,
-        bool[] memory isPairedWithNext
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        _setTrancheOrderAndPairs(order, isPairedWithNext);
-    }
-
     /// @notice Set max loss per tx in USDC 6d; 0 disables the limit.
     /// @param maxLossValue Max loss value in USDC 6 decimals.
     function setMaxLossPerTxUSDC(
@@ -161,80 +127,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         emit MaxLossPerTxUpdated(maxLossValue);
     }
 
-    // GETTERS
-
-    /// @notice Returns configured tranche order length.
-    function trancheOrderLength() external view returns (uint256 length) {
-        length = trancheOrder.length;
-    }
-
-    /// @notice Returns current tranche burn order.
-    function getTrancheOrder() external view returns (address[] memory order) {
-        uint256 orderLen = trancheOrder.length;
-        order = new address[](orderLen);
-        for (uint256 i; i < orderLen; ++i) {
-            order[i] = trancheOrder[i];
-        }
-    }
-
-    /// @notice Returns current tranche order and pair flags.
-    /// @dev Pair is represented symmetrically as `true,true` at indices `i` and `i+1`.
-    function getTrancheOrderAndPairs()
-        external
-        view
-        returns (address[] memory order, bool[] memory isPairedWithNext)
-    {
-        uint256 orderLen = trancheOrder.length;
-        order = new address[](orderLen);
-        isPairedWithNext = new bool[](orderLen);
-
-        for (uint256 i; i < orderLen; ++i) {
-            address tranche = trancheOrder[i];
-            order[i] = tranche;
-            if (i + 1 < orderLen && tranchePairedTo[tranche] == trancheOrder[i + 1]) {
-                isPairedWithNext[i] = true;
-                isPairedWithNext[i + 1] = true;
-            }
-        }
-    }
-
     // INTERNAL HELPERS
-
-    /// @notice Validates and applies tranche order and pair configuration.
-    /// @param order Tranche burn order.
-    /// @param isPairedWithNext Pair flags aligned with order.
-    /// @dev Clears previous pair mapping before applying new config.
-    function _setTrancheOrderAndPairs(
-        address[] memory order,
-        bool[] memory isPairedWithNext
-    ) internal {
-        _validateTrancheConfig(order, isPairedWithNext);
-
-        // Clear old mapping to avoid stale pair links after reconfiguration.
-        uint256 oldLen = trancheOrder.length;
-        for (uint256 i; i < oldLen; ++i) {
-            delete tranchePairedTo[trancheOrder[i]];
-        }
-
-        trancheOrder = order;
-
-        // Build pair mapping from contiguous `true,true` flags.
-        uint256 orderLen = order.length;
-        for (uint256 i; i < orderLen; ) {
-            if (!isPairedWithNext[i]) {
-                ++i;
-                continue;
-            }
-
-            address t0 = order[i];
-            address t1 = order[i + 1];
-            tranchePairedTo[t0] = t1;
-            tranchePairedTo[t1] = t0;
-            i += 2;
-        }
-
-        emit TrancheOrderUpdated(order);
-    }
 
     /// @notice Converts USDC 6-decimal amount to MZUSD 18-decimal amount.
     /// @param usdcAmount USDC amount in 6 decimals.
@@ -243,53 +136,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         mzAmount = usdcAmount * SCALE;
     }
 
-    /// @notice Validates tranche order and pair flags.
-    /// @param order Tranche burn order.
-    /// @param isPairedWithNext Pair flags aligned with order.
-    /// @dev Validation checks:
-    ///      - non-zero length
-    ///      - matching lengths
-    ///      - non-zero tranche addresses
-    ///      - no duplicate tranches
-    ///      - pairs must be contiguous `true,true`
-    /// @dev Examples:
-    ///      order=[A,B,C,D], flags=[false,true,true,false] -> valid pair (B,C)
-    ///      order=[A,B,C,D], flags=[true,true,false,false] -> valid pair (A,B)
-    ///      order=[A,B,C,D], flags=[true,false,true,false] -> invalid (non-contiguous)
-    function _validateTrancheConfig(
-        address[] memory order,
-        bool[] memory isPairedWithNext
-    ) internal pure {
-        uint256 orderLen = order.length;
-        if (orderLen == 0) revert ZeroLength();
-        if (isPairedWithNext.length != orderLen) {
-            revert LengthMismatch(orderLen, isPairedWithNext.length);
-        }
-
-        // Ensure order does not contain zero addresses or duplicates.
-        for (uint256 i; i < orderLen; ++i) {
-            address tranche = order[i];
-            if (tranche == address(0)) revert ZeroAddress();
-            for (uint256 j; j < i; ++j) {
-                if (order[j] == tranche) revert DuplicateTranche(tranche);
-            }
-        }
-
-        // Validate `true,true` pair encoding and contiguity.
-        for (uint256 i; i < orderLen; ) {
-            if (!isPairedWithNext[i]) {
-                ++i;
-                continue;
-            }
-
-            if (i + 1 >= orderLen) revert PairNotContiguous(i);
-            if (!isPairedWithNext[i + 1]) revert PairNotContiguous(i);
-
-            i += 2;
-        }
-    }
-
-    /// @notice Burns up to `requestedMZ` from tranches by configured order.
+    /// @notice Burns up to `requestedMZ` from tranches by order configured in the Vault.
     /// @param requestedMZ Requested loss amount in MZUSD 18 decimals.
     /// @return burnedMZ Total amount actually burned in MZUSD 18 decimals.
     /// @return uncoveredMZ Uncovered remainder in MZUSD 18 decimals.
@@ -297,19 +144,21 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     function _applyLossAcrossOrder(
         uint256 requestedMZ
     ) internal returns (uint256 burnedMZ, uint256 uncoveredMZ) {
-        uint256 orderLen = trancheOrder.length;
+        IVault vaultRef = IVault(vault);
+        address[] memory order = vaultRef.getTrancheOrder();
+        uint256 orderLen = order.length;
 
         // Remaining amount is progressively reduced as cuts are applied by order.
         uint256 remainingMZ = requestedMZ;
 
         for (uint256 i; remainingMZ != 0 && i < orderLen; ) {
             // Current tranche and its optional paired tranche.
-            address t0 = trancheOrder[i];
-            address t1 = tranchePairedTo[t0];
+            address t0 = order[i];
+            address t1 = vaultRef.tranchePairedTo(t0);
 
             // Process pair only at the left side to keep a single linear pass
             // and avoid re-processing the second tranche.
-            if (i + 1 < orderLen && t1 != address(0) && trancheOrder[i + 1] == t1) {
+            if (i + 1 < orderLen && t1 != address(0) && order[i + 1] == t1) {
                 uint256 tvl0 = ITranche(t0).totalAssets();
                 uint256 tvl1 = ITranche(t1).totalAssets();
                 uint256 pairTVL = tvl0 + tvl1;

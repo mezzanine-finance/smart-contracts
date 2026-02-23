@@ -240,6 +240,11 @@
         "type": "error"
     },
     {
+        "inputs": [],
+        "name": "TooBigBps",
+        "type": "error"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
@@ -487,6 +492,32 @@
         ],
         "name": "Withdrawal",
         "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newFeeBps",
+                "type": "uint256"
+            }
+        ],
+        "name": "WithdrawalFeeUpdated",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [],
@@ -916,6 +947,19 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint16",
+                "name": "newFeeBps",
+                "type": "uint16"
+            }
+        ],
+        "name": "setWithdrawalFeeBps",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "symbol",
         "outputs": [
@@ -1059,6 +1103,19 @@
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "withdrawalFeeBps",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",

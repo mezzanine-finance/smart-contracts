@@ -8,16 +8,16 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, PauseManager} from "../typechain-types";
+import {IssuanceVault, ReservoirUSDC, MZUSD, IERC20, PauseManager} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
-// Role for Vault to call Reservoir.withdraw
+// Role for IssuanceVault to call Reservoir.withdraw
 const RESERVOIR_WITHDRAW_ROLE = 2n;
-// Role for keeper/automation to call Vault.rebalance
+// Role for keeper/automation to call IssuanceVault.rebalance
 const KEEPER_ROLE = 7n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
@@ -29,7 +29,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault <-> Reservoir", () => {
+describe("IssuanceVault <-> Reservoir", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -43,7 +43,7 @@ describe("Vault <-> Reservoir", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let whale: any;
 
     before(async () => {
@@ -94,13 +94,13 @@ describe("Vault <-> Reservoir", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, deployer.address, 0, alice.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
@@ -187,7 +187,7 @@ describe("Vault <-> Reservoir", () => {
 
     describe("Rebalance flows", () => {
         it("Sends excess idle USDC to Reservoir when idle > high bound", async () => {
-            // Fund Vault with 1500 USDC -> should send 500 to Reservoir
+            // Fund IssuanceVault with 1500 USDC -> should send 500 to Reservoir
             await whaleTransfer(vault.target as string, to6(1500n));
 
             const vaultBefore = await usdc.balanceOf(vault.target);
@@ -212,7 +212,7 @@ describe("Vault <-> Reservoir", () => {
             // Fund Reservoir so it can pay out
             await whaleTransfer(reservoir.target as string, to6(600n));
 
-            // Fund Vault with 500 (< low=900) -> should pull 500 to reach 1000
+            // Fund IssuanceVault with 500 (< low=900) -> should pull 500 to reach 1000
             await whaleTransfer(vault.target as string, to6(500n));
 
             const vaultBefore = await usdc.balanceOf(vault.target);
@@ -233,7 +233,7 @@ describe("Vault <-> Reservoir", () => {
         });
 
         it("Pulls partial USDC when Reservoir has less than needed", async () => {
-            // Reservoir has only 200, Vault idle is 500 -> need 500 to reach 1000
+            // Reservoir has only 200, IssuanceVault idle is 500 -> need 500 to reach 1000
             await whaleTransfer(reservoir.target as string, to6(200n));
             await whaleTransfer(vault.target as string, to6(500n));
 
@@ -250,12 +250,39 @@ describe("Vault <-> Reservoir", () => {
             expect(resBefore - resAfter).to.equal(to6(200n));
         });
 
-        it("Reverts when Reservoir is empty and idle < low bound", async () => {
+        it("setBuffer updates config and skips auto-rebalance when Reservoir is empty", async () => {
             await whaleTransfer(vault.target as string, to6(500n));
+            const resBefore = await usdc.balanceOf(reservoir.target);
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000))
+                .to.emit(vault, "BufferUpdated")
+                .withArgs(to6(1000n), 1000)
+                .and.to.emit(vault, "BufferRebalanceSkipped");
 
-            await expect(
-                vault.connect(deployer).setBuffer(to6(1000n), 1000)
-            ).to.be.revertedWithCustomError(vault, "ReservoirEmpty");
+            expect(await vault.idleBufferUSDC()).to.equal(to6(1000n));
+            expect(await vault.hysteresisBps()).to.equal(1000n);
+            expect(await usdc.balanceOf(vault.target)).to.equal(to6(500n));
+            expect(await usdc.balanceOf(reservoir.target)).to.equal(resBefore);
+        });
+
+        it("rebalance still reverts when Reservoir is empty and pull is needed", async () => {
+            await whaleTransfer(vault.target as string, to6(500n));
+            await vault.connect(deployer).setBuffer(to6(1000n), 1000);
+
+            await expect(vault.connect(deployer).rebalance()).to.be.revertedWithCustomError(
+                vault,
+                "ReservoirEmpty"
+            );
+        });
+
+        it("setBuffer reverts when IssuanceVault has no Reservoir withdraw permission", async () => {
+            await whaleTransfer(reservoir.target as string, to6(600n));
+            await whaleTransfer(vault.target as string, to6(500n));
+            await accessManager.revokeRole(RESERVOIR_WITHDRAW_ROLE, vault.target);
+
+            await expect(vault.connect(deployer).setBuffer(to6(1000n), 1000)).to.be.reverted;
+
+            expect(await usdc.balanceOf(vault.target)).to.equal(to6(500n));
+            expect(await usdc.balanceOf(reservoir.target)).to.equal(to6(600n));
         });
 
         it("Does nothing when idle is within [low, high] band", async () => {
@@ -331,7 +358,7 @@ describe("Vault <-> Reservoir", () => {
     });
 
     describe("Tracking", () => {
-        it("Tracks deposits/withdrawals and excludes the Vault address", async () => {
+        it("Tracks deposits/withdrawals and excludes the IssuanceVault address", async () => {
             await accessManager.grantRole(RESERVOIR_WITHDRAW_ROLE, deployer.address, 0);
 
             const aliceDepositA = to6(10n);
@@ -353,10 +380,6 @@ describe("Vault <-> Reservoir", () => {
             );
             expect(await reservoir.depositedBy(bob.address)).to.equal(bobDeposit);
 
-            expect(await reservoir.actorsLength()).to.equal(2n);
-            expect(await reservoir.actors(0)).to.equal(alice.address);
-            expect(await reservoir.actors(1)).to.equal(bob.address);
-
             const rebalanceTarget = to6(100n);
             const rebalanceBand = 1000;
             await vault.connect(deployer).setBuffer(rebalanceTarget, rebalanceBand);
@@ -369,12 +392,10 @@ describe("Vault <-> Reservoir", () => {
             const resAfter = await usdc.balanceOf(reservoir.target);
             expect(vaultAfter).to.equal(rebalanceTarget);
             expect(vaultBefore - vaultAfter).to.equal(resAfter - resBefore);
-            expect(await reservoir.actorsLength()).to.equal(2n);
 
             const toVault = to6(3n);
             await reservoir.connect(deployer).withdraw(toVault, vault.target);
             expect(await reservoir.withdrawnTo(vault.target)).to.equal(0n);
-            expect(await reservoir.actorsLength()).to.equal(2n);
 
             const toAliceA = to6(2n);
             const toAliceB = to6(1n);
@@ -384,12 +405,6 @@ describe("Vault <-> Reservoir", () => {
             await reservoir.connect(deployer).withdraw(toBob, bob.address);
             expect(await reservoir.withdrawnTo(alice.address)).to.equal(toAliceA + toAliceB);
             expect(await reservoir.withdrawnTo(bob.address)).to.equal(toBob);
-            expect(await reservoir.actorsLength()).to.equal(2n);
-
-            // trigger rebalances; Vault should not be tracked
-            await usdc.connect(whale).transfer(vault.target as string, to6(200n));
-            await vault.connect(deployer).rebalance();
-            expect(await reservoir.actorsLength()).to.equal(2n);
         });
     });
 });

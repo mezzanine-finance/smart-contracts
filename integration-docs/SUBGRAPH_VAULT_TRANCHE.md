@@ -6,7 +6,7 @@ This document describes indexing strategy for Vault/Tranche metrics (TVL, share 
 
 Primary contracts:
 
-- `contracts/Vault.sol`
+- `contracts/IssuanceVault.sol`
 - `contracts/Tranche.sol`
 
 Optional supporting contracts:
@@ -41,22 +41,30 @@ Key caveat:
 
 - USDC: 6 decimals.
 - MZUSD: 18 decimals.
+- Tranche shares: `Tranche.decimals()` (currently `21`, due to `_decimalsOffset() = 3`).
 - Scale: `1 USDC = 1e12 MZUSD units`.
 
-All tranche TVL/share price/yield metrics are in MZUSD units (18d).
+Tranche TVL/share-price/yield metrics are in MZUSD units (18d); share balances/supply are in tranche share units.
 
 ## Events to index
 
-### Vault
+### IssuanceVault
 
 - `TrancheRegistered(address tranche)`
-- `YieldDistributionUpdated(uint16 baseRewardBps, uint16[] riskPremiumsBps, bool[] enabled)`
+- `TrancheConfigUpdated()`
 - `YieldDistributed(usdcUsed, mintedMZUSD, epochId)`
 - `EpochAdvanced(epochId, startTs)`
 - `EpochDurationSet(epochDuration)`
 - `FeesPaid(performanceMZUSD, protocolMZUSD, epochId)` (optional)
 
-`TrancheUpdated` exists in ABI but is not produced by current live flows (`updateTranche` function is commented out).
+`EpochAdvanced.startTs` semantics:
+
+- `startTs` is the block timestamp of the tx that advanced the epoch.
+- It is not computed as previous `epochStart + epochDuration`.
+- If advancement is delayed, wall-clock gaps can appear between epoch boundaries.
+
+Risk premium, enabled flags, order, and pair updates are set through
+`IssuanceVault.setTrancheConfig(...)`; indexers can refresh tranche config on each `TrancheConfigUpdated`.
 
 ### Tranche
 
@@ -88,7 +96,8 @@ Alternative:
 
 Note:
 
-- When share supply is zero, ERC4626-style math returns 1 share ~= 1 asset unit (`1e18` in this setup).
+- When share supply is zero, `pricePerShare()` still returns ~`1e18` (1 MZUSD per whole share token),
+  even though share token decimals are 21.
 
 ### APR/APY
 
@@ -154,6 +163,6 @@ Tranche:
 ## Minimal entity set
 
 - `Vault { id, currentEpochId, epochDuration, baseRewardBps }`
-- `Tranche { id, vault, trancheId, name, symbol, riskPremiumBps, enabled, isPolTranche }`
+- `Tranche { id, vault, trancheId, name, symbol, decimals, riskPremiumBps, enabled, isPolTranche }`
 - `TrancheSnapshot { tranche, timestamp, tvl, sharePrice, apr }`
 - `TrancheYield { tranche, txHash, yieldAmount, streamStart, streamEnd, apr, apy, epochId? }`

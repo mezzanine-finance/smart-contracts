@@ -7,11 +7,10 @@ import type {
     MockUSDC,
     NavOracleAutomation,
     PauseManager,
-    PolJuniorTranche,
     ReservoirUSDC,
     Tranche,
     UmbrellaEpochFinalizer,
-    Vault,
+    IssuanceVault,
 } from "../../typechain-types";
 import {loadConfig} from "./lib/config";
 import {
@@ -41,6 +40,13 @@ interface DeployResult<T extends BaseContract> {
 
 const MZUSD_SCALE = 1_000_000_000_000n;
 const BPS = 10_000n;
+const DEAD_SHARES_RECEIVER = "0x000000000000000000000000000000000000dEaD";
+
+function isEnvFlagEnabled(name: string): boolean {
+    const raw = process.env[name];
+    if (!raw) return false;
+    return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
 
 async function hasCode(address: string) {
     const code = await ethers.provider.getCode(address);
@@ -129,10 +135,10 @@ async function ensureProxyDeployment<T extends BaseContract>(
 
 async function main() {
     const configPath = getArg("--config");
-    const fresh = hasFlag("--fresh");
-    const skipVerify = hasFlag("--skip-verify");
-    const forceRenounce = hasFlag("--renounce");
-    const skipRenounce = hasFlag("--no-renounce");
+    const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
+    const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
+    const forceRenounce = hasFlag("--renounce") || isEnvFlagEnabled("DEPLOY_RENOUNCE");
+    const skipRenounce = hasFlag("--no-renounce") || isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
 
     const config = loadConfig(network.name, configPath);
     upgrades.silenceWarnings();
@@ -146,6 +152,7 @@ async function main() {
     log.info(`Deployer: ${format.addr(deployerAddress)}`);
     log.info(`Dev deployer: ${format.addr(devDeployer)}`);
     log.info(`Final admin: ${format.addr(config.roles.admin)}`);
+    log.info(`Fresh deploy: ${fresh}`);
     log.info(
         `Config: ${format.addr(configPath ?? `scripts/deployment/config/${network.name}.json`)}`
     );
@@ -270,13 +277,13 @@ async function main() {
         deployments
     );
 
-    const VaultFactory = await ethers.getContractFactory("Vault", deployer);
-    const vault = await ensureProxyDeployment<Vault>(
-        "Vault",
-        VaultFactory,
+    const IssuanceVaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
+    const vault = await ensureProxyDeployment<IssuanceVault>(
+        "IssuanceVault",
+        IssuanceVaultFactory,
         async () =>
             upgrades.deployProxy(
-                VaultFactory,
+                IssuanceVaultFactory,
                 [
                     config.vault.performanceFeeBps,
                     config.vault.performanceFeeReceiver,
@@ -321,29 +328,7 @@ async function main() {
         trancheByKey.set(tranche.key, result);
     }
 
-    let polJunior: DeployResult<PolJuniorTranche> | undefined;
-    if (config.polJunior?.enabled) {
-        const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
-        polJunior = await ensureProxyDeployment<PolJuniorTranche>(
-            "PolJuniorTranche",
-            PolFactory,
-            async () =>
-                upgrades.deployProxy(PolFactory, [config.polJunior!.polPayout], {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [vault.address],
-                }),
-            fresh,
-            deployments
-        );
-    }
-
     const orderAddresses = config.lossManager.order.map((key) => {
-        if (key === "polJunior") {
-            assert(polJunior, "polJunior is required for lossManager.order");
-            return polJunior.address;
-        }
         const tranche = trancheByKey.get(key);
         assert(tranche !== undefined, `Unknown tranche key in lossManager.order: ${key}`);
         return tranche.address;
@@ -356,11 +341,7 @@ async function main() {
         async () =>
             upgrades.deployProxy(
                 LossManagerFactory,
-                [
-                    orderAddresses,
-                    config.lossManager.isPairedWithNext,
-                    parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0"),
-                ],
+                [parseUSDC(config.lossManager.maxLossPerTxUSDC ?? "0")],
                 {
                     kind: "uups",
                     initializer: "initialize",
@@ -459,12 +440,12 @@ async function main() {
 
     if ((await vault.contract.lossManager()) === ethers.ZeroAddress) {
         await (await vaultAdmin.setLossManager(lossManager.address)).wait();
-        log.success("Vault.setLossManager wired");
+        log.success("IssuanceVault.setLossManager wired");
     }
 
     if ((await vault.contract.navOracle()) !== navOracle.address) {
         await (await vaultAdmin.setNavOracle(navOracle.address)).wait();
-        log.success("Vault.setNavOracle wired");
+        log.success("IssuanceVault.setNavOracle wired");
     }
 
     // === Register tranches ===
@@ -484,56 +465,35 @@ async function main() {
 
         const isRegistered = await vault.contract.isTranche(trancheContract.address);
         if (!isRegistered) {
-            await (await vaultAdmin.addTranche(trancheContract.address)).wait();
-            log.success(`Vault.addTranche ${tranche.key}`);
+            await (await vaultAdmin.registerTranche(trancheContract.address)).wait();
+            log.success(`IssuanceVault.registerTranche ${tranche.key}`);
         }
     }
 
-    if (config.polJunior?.enabled && config.polJunior.registerInVault) {
-        assert(polJunior, "polJunior deployment missing");
-        const enabled = config.polJunior.enabledInVault ?? true;
-        const riskPremiumBps = config.polJunior.riskPremiumBps ?? 0;
-
-        desiredYieldConfigByAddress.set(polJunior.address.toLowerCase(), {
-            key: "polJunior",
-            riskPremiumBps,
-            enabled,
-        });
-
-        const isRegistered = await vault.contract.isTranche(polJunior.address);
-        if (!isRegistered) {
-            await (await vaultAdmin.addTranche(polJunior.address)).wait();
-            log.success("Vault.addTranche polJunior");
-        }
-    }
-
-    // === Configure yield distribution on Vault (base reward + per-tranche risk premiums) ===
-    const trancheCount = Number(await vault.contract.tranchesLength());
+    const trancheInfos: {tranche: string; riskPremiumBps: number; enabled: boolean}[] = [];
+    // === Configure tranche order, pairs, and yield distribution on IssuanceVault ===
+    // Build desired yield config arrays aligned with the order from lossManager config.
     const riskPremiumsBps: number[] = [];
     const enabledFlags: boolean[] = [];
     let riskPremiumSum = 0;
-    let distributionNeedsUpdate = false;
 
-    for (let i = 0; i < trancheCount; i += 1) {
-        const info = await vault.contract.tranches(i);
-        const trancheAddress = info.tranche.toLowerCase();
-        const desired = desiredYieldConfigByAddress.get(trancheAddress);
-
+    for (const addr of orderAddresses) {
+        const desired = desiredYieldConfigByAddress.get(addr.toLowerCase());
         const desiredRiskPremium = desired?.riskPremiumBps ?? 0;
         const desiredEnabled = desired?.enabled ?? false;
         if (!desired) {
             log.warn(
-                `Tranche ${info.tranche} has no config entry. Applying default yield settings: riskPremiumBps=0, enabled=false`
+                `Tranche ${addr} has no config entry. Applying default yield settings: riskPremiumBps=0, enabled=false`
             );
         }
-
+        trancheInfos.push({
+            tranche: addr,
+            riskPremiumBps: desiredRiskPremium,
+            enabled: desiredEnabled,
+        });
         riskPremiumsBps.push(desiredRiskPremium);
         enabledFlags.push(desiredEnabled);
         riskPremiumSum += desiredRiskPremium;
-
-        if (info.riskPremiumBps !== BigInt(desiredRiskPremium) || info.enabled !== desiredEnabled) {
-            distributionNeedsUpdate = true;
-        }
     }
 
     assert(
@@ -541,15 +501,49 @@ async function main() {
         `Configured tranche risk premiums exceed ${BPS.toString()} bps`
     );
     const baseRewardBps = Number(BPS) - riskPremiumSum;
-    if ((await vault.contract.baseRewardBps()) !== BigInt(baseRewardBps)) {
-        distributionNeedsUpdate = true;
+
+    // Check if setTrancheConfig needs to be called.
+    let trancheConfigNeedsUpdate = false;
+    const trancheCount = Number(await vault.contract.tranchesLength());
+    if (trancheCount !== orderAddresses.length) {
+        trancheConfigNeedsUpdate = true;
+    } else {
+        // Check order, pairs, yield config
+        const [currentOrder, currentPairFlags] = await vault.contract.getTrancheOrderAndPairs();
+        const orderMatch = currentOrder.every(
+            (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
+        );
+        const pairFlagsMatch = currentPairFlags.every(
+            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
+        );
+        if (!orderMatch || !pairFlagsMatch) {
+            trancheConfigNeedsUpdate = true;
+        }
+
+        if ((await vault.contract.baseRewardBps()) !== BigInt(baseRewardBps)) {
+            trancheConfigNeedsUpdate = true;
+        }
+
+        for (let i = 0; i < trancheCount && !trancheConfigNeedsUpdate; i += 1) {
+            const info = await vault.contract.tranches(i);
+            if (
+                info.riskPremiumBps !== BigInt(riskPremiumsBps[i]) ||
+                info.enabled !== enabledFlags[i]
+            ) {
+                trancheConfigNeedsUpdate = true;
+            }
+        }
     }
 
-    if (distributionNeedsUpdate) {
+    if (trancheConfigNeedsUpdate) {
         await (
-            await vaultAdmin.setYieldDistribution(baseRewardBps, riskPremiumsBps, enabledFlags)
+            await vaultAdmin.setTrancheConfig(
+                trancheInfos,
+                config.lossManager.isPairedWithNext,
+                baseRewardBps
+            )
         ).wait();
-        log.success("Vault.setYieldDistribution");
+        log.success("IssuanceVault.setTrancheConfig");
     }
 
     // === Apply tranche parameters ===
@@ -576,7 +570,7 @@ async function main() {
                     ? parseMZUSD(tranche.depositLimits.capMZUSD)
                     : tranche.depositLimits.capUSDC !== undefined
                       ? parseUSDC(tranche.depositLimits.capUSDC) * MZUSD_SCALE
-                      : 0n;
+                      : ethers.MaxUint256;
             const targetTvl = BigInt(tranche.depositLimits.tvlBps ?? 0);
 
             const configNeedsUpdate = cap !== targetCap || tvl !== targetTvl;
@@ -601,15 +595,6 @@ async function main() {
                     log.success(`Tranche.setDepositLimits ${tranche.key}`);
                 }
             }
-        }
-    }
-
-    if (polJunior) {
-        const polJuniorAdmin = polJunior.contract.connect(adminSigner);
-        const payout = await polJunior.contract.polPayout();
-        if (payout.toLowerCase() !== config.polJunior!.polPayout.toLowerCase()) {
-            await (await polJuniorAdmin.setPolPayout(config.polJunior!.polPayout)).wait();
-            log.success("PolJuniorTranche.setPolPayout");
         }
     }
 
@@ -644,13 +629,42 @@ async function main() {
 
         if (seedVaultUsdc > 0n) {
             await (await usdcSeeder.transfer(vault.address, seedVaultUsdc)).wait();
-            log.success(`Vault seed ${seed.vaultUSDC}`);
+            log.success(`IssuanceVault seed ${seed.vaultUSDC}`);
         }
 
         if (seedReservoirUsdc > 0n) {
             await (await usdcSeeder.approve(reservoir.address, seedReservoirUsdc)).wait();
             await (await reservoirSeeder.deposit(seedReservoirUsdc)).wait();
             log.success(`Reservoir seed ${seed.reservoirUSDC}`);
+        }
+
+        if (seed.deadShares && seed.deadShares.length > 0) {
+            for (const deadShare of seed.deadShares) {
+                const tranche = trancheByKey.get(deadShare.key);
+                assert(
+                    tranche !== undefined,
+                    `Unknown tranche key in deadShares: ${deadShare.key}`
+                );
+
+                const trancheSupply = await tranche.contract.totalSupply();
+                if (trancheSupply > 0n) {
+                    log.info(
+                        `Skipping Tranche.deadShares ${deadShare.key}: totalSupply already non-zero`
+                    );
+                    continue;
+                }
+
+                const amountMzusd = parseMZUSD(deadShare.amountMZUSD);
+                const mzBalance = await mzusd.contract.balanceOf(seedAddress);
+                assert(
+                    mzBalance >= amountMzusd,
+                    `Insufficient MZUSD for deadShares seed ${deadShare.key}`
+                );
+                await (await mzusdSeeder.approve(tranche.address, amountMzusd)).wait();
+                const trancheSeeder = tranche.contract.connect(seedSigner);
+                await (await trancheSeeder.deposit(amountMzusd, DEAD_SHARES_RECEIVER)).wait();
+                log.success(`Tranche.deadShares ${deadShare.key} ${deadShare.amountMZUSD}`);
+            }
         }
 
         if (seed.trancheDeposits && seed.trancheDeposits.length > 0) {
@@ -667,11 +681,8 @@ async function main() {
                     `Insufficient MZUSD for tranche seed ${deposit.key}`
                 );
                 await (await mzusdSeeder.approve(tranche.address, amountMzusd)).wait();
-                await (
-                    await tranche.contract
-                        .connect(seedSigner)
-                        .deposit(amountMzusd, deposit.receiver)
-                ).wait();
+                const trancheSeeder = tranche.contract.connect(seedSigner);
+                await (await trancheSeeder.deposit(amountMzusd, deposit.receiver)).wait();
                 log.success(
                     `Tranche.seed ${deposit.key} ${deposit.amountMZUSD ?? `${deposit.amountUSDC} USDC eq`}`
                 );
@@ -695,7 +706,7 @@ async function main() {
                 config.vault.protocolFeeBps
             )
         ).wait();
-        log.success("Vault.setFeeRates");
+        log.success("IssuanceVault.setFeeRates");
     }
     if (
         currentPerfReceiver.toLowerCase() !== config.vault.performanceFeeReceiver.toLowerCase() ||
@@ -707,7 +718,7 @@ async function main() {
                 config.vault.protocolFeeReceiver
             )
         ).wait();
-        log.success("Vault.setFeeReceivers");
+        log.success("IssuanceVault.setFeeReceivers");
     }
 
     const cap = await mzusd.contract.globalRedemptionCapUSDC();
@@ -727,6 +738,15 @@ async function main() {
         }
     }
 
+    if (config.mzusd.withdrawalFeeBps !== undefined) {
+        const current = await mzusd.contract.withdrawalFeeBps();
+        const desired = BigInt(config.mzusd.withdrawalFeeBps);
+        if (current !== desired) {
+            await (await mzusdAdmin.setWithdrawalFeeBps(config.mzusd.withdrawalFeeBps)).wait();
+            log.success("MZUSD.setWithdrawalFeeBps");
+        }
+    }
+
     if (config.vault.idleBufferUSDC !== undefined || config.vault.hysteresisBps !== undefined) {
         assert(
             config.vault.idleBufferUSDC !== undefined && config.vault.hysteresisBps !== undefined,
@@ -743,11 +763,11 @@ async function main() {
             const low = (desiredBuffer * (BPS - desiredHysteresis)) / BPS;
             if (vaultUsdc < low && reservoirUsdc === 0n) {
                 throw new Error(
-                    "Vault.setBuffer requires seeded USDC in Vault or Reservoir before rebalance"
+                    "IssuanceVault.setBuffer requires seeded USDC in IssuanceVault or Reservoir before rebalance"
                 );
             }
             await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
-            log.success("Vault.setBuffer");
+            log.success("IssuanceVault.setBuffer");
         }
     }
 
@@ -757,29 +777,8 @@ async function main() {
         const desired = config.vault.epochDurationSec;
         if (current !== BigInt(desired) && pending !== BigInt(desired)) {
             await (await vaultAdmin.setEpochConfig(desired)).wait();
-            log.success("Vault.setEpochConfig queued");
+            log.success("IssuanceVault.setEpochConfig queued");
         }
-    }
-
-    const [currentOrder, currentPairFlags] = await lossManager.contract.getTrancheOrderAndPairs();
-    const orderMatch =
-        currentOrder.length === orderAddresses.length &&
-        currentOrder.every(
-            (addr: string, i: number) => addr.toLowerCase() === orderAddresses[i].toLowerCase()
-        );
-    const pairFlagsMatch =
-        currentPairFlags.length === config.lossManager.isPairedWithNext.length &&
-        currentPairFlags.every(
-            (flag: boolean, i: number) => flag === config.lossManager.isPairedWithNext[i]
-        );
-    if (!orderMatch || !pairFlagsMatch) {
-        await (
-            await lossManagerAdmin.setTrancheOrderAndPairs(
-                orderAddresses,
-                config.lossManager.isPairedWithNext
-            )
-        ).wait();
-        log.success("LossManager.setTrancheOrderAndPairs");
     }
 
     if (config.lossManager.maxLossPerTxUSDC !== undefined) {
@@ -841,8 +840,8 @@ async function main() {
             vault.contract.interface.getFunction("setFeeReceivers").selector,
             vault.contract.interface.getFunction("setBuffer").selector,
             vault.contract.interface.getFunction("setEpochConfig").selector,
-            vault.contract.interface.getFunction("addTranche").selector,
-            vault.contract.interface.getFunction("setYieldDistribution").selector,
+            vault.contract.interface.getFunction("registerTranche").selector,
+            vault.contract.interface.getFunction("setTrancheConfig").selector,
         ],
         adminRole
     );
@@ -866,6 +865,7 @@ async function main() {
             mzusd.contract.interface.getFunction("setVault").selector,
             mzusd.contract.interface.getFunction("setGlobalRedemptionCap").selector,
             mzusd.contract.interface.getFunction("setRedemptionWindowDuration").selector,
+            mzusd.contract.interface.getFunction("setWithdrawalFeeBps").selector,
         ],
         adminRole
     );
@@ -904,10 +904,7 @@ async function main() {
     await ensureTargetRole(
         accessManagerAdmin,
         lossManager.address,
-        [
-            lossManager.contract.interface.getFunction("setTrancheOrderAndPairs").selector,
-            lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector,
-        ],
+        [lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector],
         adminRole
     );
     await ensureTargetRole(
@@ -932,24 +929,6 @@ async function main() {
             accessManagerAdmin,
             tranche.address,
             [tranche.contract.interface.getFunction("upgradeToAndCall").selector],
-            roleIds.UPGRADER_ROLE
-        );
-    }
-
-    if (polJunior) {
-        await ensureTargetRole(
-            accessManagerAdmin,
-            polJunior.address,
-            [
-                polJunior.contract.interface.getFunction("withdraw").selector,
-                polJunior.contract.interface.getFunction("setPolPayout").selector,
-            ],
-            adminRole
-        );
-        await ensureTargetRole(
-            accessManagerAdmin,
-            polJunior.address,
-            [polJunior.contract.interface.getFunction("upgradeToAndCall").selector],
             roleIds.UPGRADER_ROLE
         );
     }
@@ -1049,9 +1028,6 @@ async function main() {
     }
 
     const burnerMembers = new Set<string>(Array.from(trancheByKey.values(), (t) => t.address));
-    if (polJunior) {
-        burnerMembers.add(polJunior.address);
-    }
     for (const addr of burnerMembers) {
         await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
     }
@@ -1060,7 +1036,7 @@ async function main() {
     log.step("Post-deploy checks");
     assert(
         (await vault.contract.mzusd()).toLowerCase() === mzusd.address.toLowerCase(),
-        "Vault.mzusd mismatch"
+        "IssuanceVault.mzusd mismatch"
     );
     assert(
         (await mzusd.contract.vault()).toLowerCase() === vault.address.toLowerCase(),
@@ -1068,11 +1044,11 @@ async function main() {
     );
     assert(
         (await vault.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
-        "Vault.lossManager mismatch"
+        "IssuanceVault.lossManager mismatch"
     );
     assert(
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
-        "Vault.navOracle mismatch"
+        "IssuanceVault.navOracle mismatch"
     );
 
     for (const tranche of trancheByKey.values()) {
@@ -1080,14 +1056,6 @@ async function main() {
         assert(
             trancheVault.toLowerCase() === vault.address.toLowerCase(),
             "Tranche.vault mismatch"
-        );
-    }
-
-    if (polJunior) {
-        const polVault = await polJunior.contract.vault();
-        assert(
-            polVault.toLowerCase() === vault.address.toLowerCase(),
-            "PolJuniorTranche.vault mismatch"
         );
     }
 
@@ -1125,9 +1093,6 @@ async function main() {
             );
         }
     }
-    if (polJunior?.implementation) {
-        await verifyContract(polJunior.implementation, [vault.address], shouldVerify);
-    }
     if (lossManager.implementation) {
         await verifyContract(lossManager.implementation, [vault.address], shouldVerify);
     }
@@ -1146,13 +1111,10 @@ async function main() {
     log.info(`PauseManager (proxy): ${pauseManager.address}`);
     log.info(`USDC: ${usdcAddress}`);
     log.info(`ReservoirUSDC (proxy): ${reservoir.address}`);
-    log.info(`Vault (proxy): ${vault.address}`);
+    log.info(`IssuanceVault (proxy): ${vault.address}`);
     log.info(`MZUSD (proxy): ${mzusd.address}`);
     for (const [key, tranche] of trancheByKey.entries()) {
         log.info(`Tranche ${key}: ${tranche.address}`);
-    }
-    if (polJunior) {
-        log.info(`PolJuniorTranche: ${polJunior.address}`);
     }
     log.info(`LossManager (proxy): ${lossManager.address}`);
     log.info(`NavOracleAutomation: ${navOracle.address}`);

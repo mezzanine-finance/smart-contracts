@@ -10,4 +10,6 @@ interface IVault {
     function lossManager() external view returns (address lossManager);
     function navOracle() external view returns (address navOracleAddress);
     function mzusd() external view returns (address mzusdAddress);
+    function getTrancheOrder() external view returns (address[] memory order);
+    function tranchePairedTo(address tranche) external view returns (address paired);
 }

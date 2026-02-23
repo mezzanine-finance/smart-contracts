@@ -17,7 +17,7 @@ import {
     NavOracleAutomation,
     ReservoirUSDC,
     Tranche,
-    Vault,
+    IssuanceVault,
     PauseManager,
 } from "../typechain-types";
 import {grantPausePermissions} from "./helpers/pause";
@@ -51,7 +51,7 @@ describe("NavSubmitterAutomation", () => {
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let tranche: Tranche;
     let lossManager: LossManager;
     let navAutomation: NavOracleAutomation;
@@ -102,13 +102,13 @@ describe("NavSubmitterAutomation", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
@@ -119,16 +119,12 @@ describe("NavSubmitterAutomation", () => {
         })) as unknown as Tranche;
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-        lossManager = (await upgrades.deployProxy(
-            LossManagerFactory,
-            [[tranche.target], [false], 0],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [vault.target],
-            }
-        )) as unknown as LossManager;
+        lossManager = (await upgrades.deployProxy(LossManagerFactory, [0], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as LossManager;
 
         const NavAutomationFactory = await ethers.getContractFactory(
             "NavOracleAutomation",
@@ -160,7 +156,7 @@ describe("NavSubmitterAutomation", () => {
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const setVaultLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
@@ -208,8 +204,12 @@ describe("NavSubmitterAutomation", () => {
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
 
-        await vault.addTranche(tranche);
-        await vault.setYieldDistribution(7000, [3000], [true]);
+        await vault.registerTranche(tranche);
+        await vault.setTrancheConfig(
+            [{tranche: tranche, riskPremiumBps: 3000, enabled: true}],
+            [false],
+            7000
+        );
 
         snapshot = await takeSnapshot();
     });

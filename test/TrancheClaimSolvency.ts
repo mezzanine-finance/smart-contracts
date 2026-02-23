@@ -11,7 +11,7 @@ import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
     MZUSD,
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     IERC20,
     Tranche,
@@ -48,7 +48,7 @@ describe("Tranche claim solvency", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
@@ -109,14 +109,14 @@ describe("Tranche claim solvency", () => {
             }
         )) as unknown as MZUSD;
 
-        // Deploy Vault
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        // Deploy IssuanceVault
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // Deploy Tranche (umbrella mode, unstakeDelay=0)
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -133,7 +133,7 @@ describe("Tranche claim solvency", () => {
         const vaultAddr = await vault.getAddress();
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-        lossManager = (await upgrades.deployProxy(LossManagerFactory, [[trancheAddr], [false], 0], {
+        lossManager = (await upgrades.deployProxy(LossManagerFactory, [0], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
@@ -159,7 +159,7 @@ describe("Tranche claim solvency", () => {
 
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSel = vault.interface.getFunction("registerTranche").selector;
         const setVaultLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setVaultNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
 
@@ -180,7 +180,7 @@ describe("Tranche claim solvency", () => {
         await vault.setNavOracle(navOracleRef.target);
 
         // Register tranche (100% weight)
-        await vault.addTranche(trancheAddr);
+        await vault.registerTranche(trancheAddr);
 
         snapshot = await takeSnapshot();
     });

@@ -25,6 +25,9 @@ contract MZUSD is
 
     uint8 public constant USDC_DECIMALS = 6;
     uint8 public constant MZ_DECIMALS = 18;
+    /// @notice Basis points denominator used across fee math.
+    /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
+    uint16 public constant BPS = 10_000;
     /// @notice Decimal conversion scale between USDC (6d) and MZUSD (18d): 1 USDC = 1e12 MZUSD units.
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
@@ -44,9 +47,13 @@ contract MZUSD is
     uint256 transient _txDepositedUSDC;
     /// @notice Next redemption window duration to apply when the window rolls.
     uint32 public nextRedemptionWindowDuration;
+    /// @notice Redemption fee charged on withdrawal in bps; fee stays in IssuanceVault.
+    /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
+    uint16 public withdrawalFeeBps;
 
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
+    event WithdrawalFeeUpdated(uint256 newFeeBps);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
@@ -60,6 +67,7 @@ contract MZUSD is
     error VaultNotSet();
     error NotVault();
     error InvalidRedemptionWindowDuration();
+    error TooBigBps();
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
@@ -106,7 +114,7 @@ contract MZUSD is
     /// @param amountUSDC USDC amount in 6 decimals.
     /// @dev Minted amount is amountUSDC * SCALE, so conversion is exact (no rounding loss on deposit).
     /// @dev Example: deposit 15_000_000 (15 USDC in 6d) -> mint 15_000_000_000_000_000_000 (15 MZUSD in 18d).
-    /// @dev USDC is transferred directly to the Vault, MZUSD is minted to the depositor.
+    /// @dev USDC is transferred directly to the IssuanceVault, MZUSD is minted to the depositor.
     function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
         if (amountUSDC == 0) revert ZeroAmount();
 
@@ -133,11 +141,11 @@ contract MZUSD is
     /// @dev Example: if amountMZ = SCALE + 123, then usdcOut = 1, burnAmount = SCALE, and 123 MZUSD-wei remain.
     /// @dev If amountMZ < SCALE, tx reverts with `TooSmallWithdrawalAmount`.
     function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
-        uint256 usdcOut = amountMZ / SCALE;
-        if (usdcOut == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOut);
-        uint256 burnAmount = usdcOut * SCALE;
+        uint256 usdcOutGross = amountMZ / SCALE;
+        if (usdcOutGross == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOutGross);
+        uint256 burnAmount = usdcOutGross * SCALE;
 
-        uint256 effectiveForLimit = _applyAtomicNetting(usdcOut);
+        uint256 effectiveForLimit = _applyAtomicNetting(usdcOutGross);
         if (effectiveForLimit != 0) {
             _checkAndConsumeGlobalCap(effectiveForLimit);
         }
@@ -145,9 +153,13 @@ contract MZUSD is
         _burn(msg.sender, burnAmount);
 
         if (address(vault) == address(0)) revert VaultNotSet();
-        vault.withdraw(msg.sender, usdcOut);
+        uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps) / BPS;
+        uint256 usdcOutNet = usdcOutGross - feeUSDC;
+        if (usdcOutNet != 0) {
+            vault.withdraw(msg.sender, usdcOutNet);
+        }
 
-        emit Withdrawal(msg.sender, usdcOut);
+        emit Withdrawal(msg.sender, usdcOutNet);
     }
 
     function transfer(
@@ -192,7 +204,7 @@ contract MZUSD is
     //SETTERS
 
     /// @notice Set global redemption cap in USDC (6 decimals).
-    /// @param newCapUSDC New cap value; must be > 0 and <= USDC total supply.
+    /// @param newCapUSDC New cap value; must be > 0.
     function setGlobalRedemptionCap(
         uint256 newCapUSDC
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -223,8 +235,19 @@ contract MZUSD is
         emit RedemptionWindowDurationQueued(newDuration);
     }
 
-    /// @notice Set Vault address (one-time).
-    /// @dev Vault is immutable at the application level: once set, it cannot be changed.
+    /// @notice Set withdrawal fee in bps (charged on USDC output).
+    /// @param newFeeBps New fee rate in bps (10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    function setWithdrawalFeeBps(
+        uint16 newFeeBps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (newFeeBps >= BPS) revert TooBigBps();
+        if (withdrawalFeeBps == newFeeBps) revert SameValue();
+        withdrawalFeeBps = newFeeBps;
+        emit WithdrawalFeeUpdated(newFeeBps);
+    }
+
+    /// @notice Set IssuanceVault address (one-time).
+    /// @dev IssuanceVault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
         if (address(vault) != address(0)) revert VaultAlreadySet();

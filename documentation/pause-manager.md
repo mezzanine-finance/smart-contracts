@@ -59,7 +59,7 @@ If paused, call reverts with `CategoryPaused(category)`.
 - `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`
 - `PROTOCOL`: `mint`, `burn`
 
-Note: `setVault` and `setLossManager` are `restricted` but not pause-gated.
+Note: `setVault` is `restricted` but not pause-gated.
 
 ### Tranche
 
@@ -74,16 +74,16 @@ Important implementation detail:
   mint/burn/transfer internals, pausing `TRANSFERS` also blocks share mint/burn paths
   (`deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal`, `cancelUnstake`, `finalizeEpoch`).
 
-### Vault
+### IssuanceVault
 
 - `WITHDRAWALS`: `withdraw`
 - `ADMIN`: `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
-  `setBuffer`, `setEpochConfig`, `addTranche`, `setYieldDistribution`
+  `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`
 - `PROTOCOL`: `distributeYield`, `rebalance`, `advanceEpoch`
 
 ### LossManager
 
-- `ADMIN`: `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC`
+- `ADMIN`: `setMaxLossPerTxUSDC`
 - `PROTOCOL`: `applyLoss`
 
 ### ReservoirUSDC

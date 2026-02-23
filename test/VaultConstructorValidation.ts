@@ -1,12 +1,12 @@
 import {expect} from "chai";
 import {ethers, upgrades} from "hardhat";
 
-import {PauseManager, ReservoirUSDC, Vault} from "../typechain-types";
+import {PauseManager, ReservoirUSDC, IssuanceVault} from "../typechain-types";
 
 // Mainnet USDC constants
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-describe("Vault constructor and initializer validation", () => {
+describe("IssuanceVault constructor and initializer validation", () => {
     let deployer: any;
     let bob: any;
 
@@ -61,17 +61,17 @@ describe("Vault constructor and initializer validation", () => {
     }
 
     async function deployVaultWithConstructor(mzusdAddr: string, reservoirAddr: string) {
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         return (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoirAddr],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
     }
 
     it("reverts when MZUSD address is zero", async () => {
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(
             deployVaultWithConstructor(ethers.ZeroAddress, reservoir.target as string)
         ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
@@ -79,7 +79,7 @@ describe("Vault constructor and initializer validation", () => {
 
     it("reverts when Reservoir address is zero", async () => {
         const mock = await deployMockMZUSD(MAINNET_USDC, bob.address, 18);
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(
             deployVaultWithConstructor(mock.target as string, ethers.ZeroAddress)
         ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
@@ -88,7 +88,7 @@ describe("Vault constructor and initializer validation", () => {
     it("reverts when MZUSD decimals are not 18", async () => {
         const mock = await deployMockMZUSD(MAINNET_USDC, bob.address, 6);
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(deployVaultWithConstructor(mock.target as string, reservoir.target as string))
             .to.be.revertedWithCustomError(VaultFactory, "InvalidMZUSDDecimals")
             .withArgs(6);
@@ -97,7 +97,7 @@ describe("Vault constructor and initializer validation", () => {
     it("reverts when MZUSD usdc is zero", async () => {
         const mock = await deployMockMZUSD(ethers.ZeroAddress, bob.address, 18);
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(deployVaultWithConstructor(mock.target as string, reservoir.target as string))
             .to.be.revertedWithCustomError(VaultFactory, "InvalidMZUSDUSDC")
             .withArgs(ethers.ZeroAddress);
@@ -106,7 +106,7 @@ describe("Vault constructor and initializer validation", () => {
     it("reverts when Reservoir USDC mismatches MZUSD USDC", async () => {
         const mock = await deployMockMZUSD(bob.address, bob.address, 18);
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(deployVaultWithConstructor(mock.target as string, reservoir.target as string))
             .to.be.revertedWithCustomError(VaultFactory, "InvalidReservoirUSDC")
             .withArgs(MAINNET_USDC);
@@ -133,7 +133,7 @@ describe("Vault constructor and initializer validation", () => {
             pauseManager.target as string
         );
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(deployVaultWithConstructor(mock.target as string, reservoir.target as string))
             .to.be.revertedWithCustomError(VaultFactory, "InvalidMZUSDAccessManager")
             .withArgs(ethers.ZeroAddress);
@@ -148,7 +148,7 @@ describe("Vault constructor and initializer validation", () => {
             ethers.ZeroAddress
         );
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(deployVaultWithConstructor(mock.target as string, reservoir.target as string))
             .to.be.revertedWithCustomError(VaultFactory, "InvalidMZUSDPauseManager")
             .withArgs(ethers.ZeroAddress);
@@ -182,7 +182,7 @@ describe("Vault constructor and initializer validation", () => {
         )) as unknown as ReservoirUSDC;
 
         const mock = await deployMockMZUSD(MAINNET_USDC, bob.address, 18);
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(
             deployVaultWithConstructor(mock.target as string, altReservoir.target as string)
         )
@@ -214,7 +214,7 @@ describe("Vault constructor and initializer validation", () => {
         )) as unknown as ReservoirUSDC;
 
         const mock = await deployMockMZUSD(MAINNET_USDC, bob.address, 18);
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         await expect(
             deployVaultWithConstructor(mock.target as string, altReservoir.target as string)
         )

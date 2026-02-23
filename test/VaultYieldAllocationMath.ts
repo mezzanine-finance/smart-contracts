@@ -9,7 +9,15 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {Vault, ReservoirUSDC, MZUSD, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {
+    IssuanceVault,
+    ReservoirUSDC,
+    MZUSD,
+    IERC20,
+    Tranche,
+    PolJuniorTranche,
+    PauseManager,
+} from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
 // Mainnet USDC constants
@@ -25,7 +33,7 @@ async function imp(addr: string) {
     return ethers.getSigner(addr);
 }
 
-describe("Vault Yield Allocation Math", () => {
+describe("IssuanceVault Yield Allocation Math", () => {
     let snapshot: SnapshotRestorer;
 
     let deployer: any;
@@ -40,7 +48,7 @@ describe("Vault Yield Allocation Math", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let lossManagerRef: any;
     let navOracleRef: any;
     let navOracleSigner: any;
@@ -48,6 +56,7 @@ describe("Vault Yield Allocation Math", () => {
     let junior: Tranche;
     let mezzanine: Tranche;
     let senior: Tranche;
+    let juniorPol: PolJuniorTranche;
 
     let whale: any;
 
@@ -102,13 +111,13 @@ describe("Vault Yield Allocation Math", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         // ── Tranches ────────────────────────────────────────────────
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -138,6 +147,14 @@ describe("Vault Yield Allocation Math", () => {
             constructorArgs: [vault.target, false],
         })) as unknown as Tranche;
 
+        const PolFactory = await ethers.getContractFactory("PolJuniorTranche", deployer);
+        juniorPol = (await upgrades.deployProxy(PolFactory, [bob.address], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as PolJuniorTranche;
+
         const MockLossManagerFactory = await ethers.getContractFactory(
             "MockLossManagerRef",
             deployer
@@ -161,14 +178,14 @@ describe("Vault Yield Allocation Math", () => {
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
-        // Vault admin selectors
+        // IssuanceVault admin selectors
         const vaultSelectors = [
             vault.interface.getFunction("distributeYield").selector,
             vault.interface.getFunction("advanceEpoch").selector,
             vault.interface.getFunction("setLossManager").selector,
             vault.interface.getFunction("setNavOracle").selector,
-            vault.interface.getFunction("addTranche").selector,
-            vault.interface.getFunction("setYieldDistribution").selector,
+            vault.interface.getFunction("registerTranche").selector,
+            vault.interface.getFunction("setTrancheConfig").selector,
             vault.interface.getFunction("setFeeRates").selector,
             vault.interface.getFunction("setFeeReceivers").selector,
             vault.interface.getFunction("setEpochConfig").selector,
@@ -194,13 +211,22 @@ describe("Vault Yield Allocation Math", () => {
         await vault.setNavOracle(navOracleRef);
 
         // Register tranches (riskPremiumBps=0 initially, configured via setYieldDistribution)
-        // Order: senior=idx0, mezzanine=idx1, junior=idx2
-        await vault.addTranche(senior.target);
-        await vault.addTranche(mezzanine.target);
-        await vault.addTranche(junior.target);
+        // Order: senior=idx0, mezzanine=idx1, junior=idx2, juniorPol=idx3
+        await vault.registerTranche(senior.target);
+        await vault.registerTranche(mezzanine.target);
+        await vault.registerTranche(junior.target);
+        await vault.registerTranche(juniorPol.target);
 
         // Default yield distribution: baseReward 40%, senior 20%, mezzanine 20%, junior 20%
-        await vault.setYieldDistribution(4000, [2000, 2000, 2000], [true, true, true]);
+        await vault.setTrancheConfig(
+            [
+                {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+            ],
+            [false, false, false],
+            4000
+        );
 
         snapshot = await takeSnapshot();
     });
@@ -258,6 +284,11 @@ describe("Vault Yield Allocation Math", () => {
         }
     }
 
+    /** Deposit MZUSD into the POL Junior tranche (direct transfer, user deposits disabled). */
+    async function depositMZIntoPol(mzAmount18: bigint) {
+        await mzusd.connect(deployer).transfer(juniorPol.target as string, mzAmount18);
+    }
+
     // ── Risk Premium Sheet scenarios ─────────────────────────────────
 
     describe("Risk Premium Sheet scenarios", () => {
@@ -268,7 +299,15 @@ describe("Vault Yield Allocation Math", () => {
             // ── Configure yield distribution ──────────────────────
             // riskPremium: senior=0%, mezzanine=12%, junior=18%
             // baseRewardBps = 10000 - (0 + 1200 + 1800) = 7000 (70%)
-            await vault.setYieldDistribution(7000, [0, 1200, 1800], [true, true, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                ],
+                [false, false, false],
+                7000
+            );
 
             // Protocol fee = 10%, no performance fee
             await vault.setFeeRates(0, 1000);
@@ -359,7 +398,7 @@ describe("Vault Yield Allocation Math", () => {
             // Protocol fee minted to carol (protocolFeeReceiver from init)
             expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify APR from yield amounts (exact) ─────────────
@@ -403,6 +442,170 @@ describe("Vault Yield Allocation Math", () => {
                 .and.lte(expectedJuniorPPS);
         });
 
+        it("Scenario 1b: 30/30/8/2 TVL split with paired Junior+JuniorPOL — same as Scenario 1 but pair splits the junior share", async () => {
+            const TOTAL_USDC = to6(1_000_000);
+            const YIELD_USDC = to6(100_000);
+
+            // ── Configure yield distribution ──────────────────────
+            // Same risk premiums as Scenario 1: senior=0%, mezzanine=12%, junior=18%
+            // Junior and JuniorPOL are paired; JuniorPOL riskPremiumBps must be 0.
+            // baseRewardBps = 10000 - (0 + 1200 + 1800 + 0) = 7000 (70%)
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, false, true, true],
+                7000
+            );
+
+            // Protocol fee = 10%, no performance fee (same as Scenario 1)
+            await vault.setFeeRates(0, 1000);
+
+            // ── Seed TVL: 30% senior, 30% mezz, 8% junior, 2% juniorPOL ──
+            await depositIntoTranches(TOTAL_USDC, [
+                {tranche: senior, user: alice, pct: 30},
+                {tranche: mezzanine, user: bob, pct: 30},
+                {tranche: junior, user: carol, pct: 8},
+            ]);
+            // POL: mint MZUSD and transfer directly (user deposits disabled)
+            const polMz = await mintMZUSDFor(deployer, (TOTAL_USDC * 2n) / 100n);
+            await depositMZIntoPol(polMz);
+
+            // 30% idle MZUSD (not in any tranche)
+            await mintMZUSDFor(deployer, (TOTAL_USDC * 30n) / 100n);
+
+            // ── Verify initial state ─────────────────────────────
+            const seniorTVL = await senior.totalAssets();
+            const mezzTVL = await mezzanine.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            const juniorPolTVL = await juniorPol.totalAssets();
+            expect(seniorTVL).to.equal(to18(300_000));
+            expect(mezzTVL).to.equal(to18(300_000));
+            expect(juniorTVL).to.equal(to18(80_000));
+            expect(juniorPolTVL).to.equal(to18(20_000));
+            expect(await mzusd.totalSupply()).to.equal(to18(1_000_000));
+
+            // ── Distribute yield ─────────────────────────────────
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            // ── Expected yield math ──────────────────────────────
+            //
+            // mintedGross      = 100,000 MZUSD
+            // protocolFee      = 100,000 × 10%       = 10,000 MZUSD
+            // allocatable      = 100,000 − 10,000    = 90,000 MZUSD
+            //
+            // basePool         = 90,000 × 70%        = 63,000 MZUSD
+            // totalTvl         = 300k + 300k + 80k + 20k = 700,000 MZUSD
+            //
+            // Same totalTvl as Scenario 1 (700k), so senior & mezzanine
+            // get identical amounts:
+            //
+            // ┌───────────────┬──────────────────────────────────────┬──────────────┬────────────┐
+            // │ Tranche       │ baseShare (pool×tvl/totalTvl)        │ riskPremium  │ total      │
+            // ├───────────────┼──────────────────────────────────────┼──────────────┼────────────┤
+            // │ Senior        │ 63,000 × 300k/700k = 27,000          │ 90k×0% = 0   │ 27,000     │
+            // │ Mezzanine     │ 63,000 × 300k/700k = 27,000          │90k×12%=10.8k │ 37,800     │
+            // │ Junior+POL    │ combined base + risk premium          │ (pair)       │ 25,200     │
+            // │   → Junior    │ 25,200 × 80k/100k = 20,160           │              │ 20,160     │
+            // │   → JuniorPOL │ 25,200 − 20,160    = 5,040           │              │  5,040     │
+            // └───────────────┴──────────────────────────────────────┴──────────────┴────────────┘
+            //
+            // Junior+POL pair total cross-check:
+            //   pairTvl   = 80k + 20k = 100k
+            //   baseShare = 63,000 × 100k/700k = 9,000
+            //   riskPrem  = 90,000 × 18% = 16,200
+            //   total     = 9,000 + 16,200 = 25,200 (same as Scenario 1 junior solo)
+
+            const allocatable = to18(90_000);
+            const protocolFee = to18(10_000);
+            const totalTvl = seniorTVL + mezzTVL + juniorTVL + juniorPolTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Senior: base share only (identical to Scenario 1)
+            const seniorBaseShare = (basePool * seniorTVL) / totalTvl;
+            const expectedSeniorYield = seniorBaseShare; // 27,000
+
+            // Mezzanine: base share + risk premium (identical to Scenario 1)
+            const mezzBaseShare = (basePool * mezzTVL) / totalTvl;
+            const mezzRiskPremium = (allocatable * 1200n) / BPS;
+            const expectedMezzYield = mezzBaseShare + mezzRiskPremium; // 37,800
+
+            // Junior+POL pair: dust catch-all (last non-zero index is in the pair)
+            const pairTotal = allocatable - expectedSeniorYield - expectedMezzYield; // 25,200
+            const pairTvl = juniorTVL + juniorPolTVL;
+            const expectedJuniorYield = (pairTotal * juniorTVL) / pairTvl; // 20,160
+            const expectedJuniorPolYield = pairTotal - expectedJuniorYield; //  5,040
+
+            // Verify key intermediates match Scenario 1
+            expect(basePool).to.equal(to18(63_000));
+            expect(expectedSeniorYield).to.equal(to18(27_000));
+            expect(expectedMezzYield).to.equal(to18(37_800));
+            expect(pairTotal).to.equal(to18(25_200));
+            expect(expectedJuniorYield).to.equal(to18(20_160));
+            expect(expectedJuniorPolYield).to.equal(to18(5_040));
+
+            // ── Verify on-chain yield amounts ────────────────────
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(expectedMezzYield);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            // POL tranche forwards yield immediately to polPayout (bob.address),
+            // so check bob's MZUSD balance instead of yieldStreamingAmount.
+            expect(await mzusd.balanceOf(bob.address)).to.equal(expectedJuniorPolYield);
+
+            // POL tranche TVL unchanged (yield was forwarded out)
+            expect(await juniorPol.totalAssets()).to.equal(juniorPolTVL);
+
+            // Protocol fee minted to carol (protocolFeeReceiver from init)
+            expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
+
+            // Vault retains no MZUSD
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+
+            // ── Verify APR from yield amounts (exact) ─────────────
+            //
+            // Senior:     27,000 / 300,000     =  9.0%   =  900 bps  (same as Scenario 1)
+            // Mezzanine:  37,800 / 300,000     = 12.6%   = 1260 bps  (same as Scenario 1)
+            // Junior:     20,160 /  80,000     = 25.2%   = 2520 bps  (same as Scenario 1)
+            // JuniorPOL:   5,040 /  20,000     = 25.2%   = 2520 bps  (matches junior — paired split is fair)
+
+            const seniorReturn_bps = (expectedSeniorYield * BPS) / seniorTVL;
+            const mezzReturn_bps = (expectedMezzYield * BPS) / mezzTVL;
+            const juniorReturn_bps = (expectedJuniorYield * BPS) / juniorTVL;
+            const juniorPolReturn_bps = (expectedJuniorPolYield * BPS) / juniorPolTVL;
+
+            expect(seniorReturn_bps).to.equal(900n);
+            expect(mezzReturn_bps).to.equal(1260n);
+            expect(juniorReturn_bps).to.equal(2520n);
+            expect(juniorPolReturn_bps).to.equal(2520n); // same APR as junior (fair TVL split)
+
+            // ── Cross-check: share price reflects yield after full stream
+            await time.increase(DAY);
+
+            const seniorPPSAfter = await senior.pricePerShare();
+            const mezzPPSAfter = await mezzanine.pricePerShare();
+            const juniorPPSAfter = await junior.pricePerShare();
+
+            const WAD = to18(1);
+            const expectedSeniorPPS = ((seniorTVL + expectedSeniorYield) * WAD) / seniorTVL;
+            const expectedMezzPPS = ((mezzTVL + expectedMezzYield) * WAD) / mezzTVL;
+            const expectedJuniorPPS = ((juniorTVL + expectedJuniorYield) * WAD) / juniorTVL;
+
+            expect(seniorPPSAfter)
+                .to.be.gte(expectedSeniorPPS - 1n)
+                .and.lte(expectedSeniorPPS);
+            expect(mezzPPSAfter)
+                .to.be.gte(expectedMezzPPS - 1n)
+                .and.lte(expectedMezzPPS);
+            expect(juniorPPSAfter)
+                .to.be.gte(expectedJuniorPPS - 1n)
+                .and.lte(expectedJuniorPPS);
+        });
+
         it("Scenario 2: 45/40 TVL split, senior 0% / junior 30% risk premium, 10% protocol fee", async () => {
             const TOTAL_USDC = to6(1_000_000);
             const YIELD_USDC = to6(80_000); // 8% APR on 1M
@@ -411,7 +614,15 @@ describe("Vault Yield Allocation Math", () => {
             // Mezzanine disabled, no deposits there.
             // riskPremium: senior=0%, mezzanine=0% (disabled), junior=30%
             // baseRewardBps = 10000 - (0 + 0 + 3000) = 7000 (70%)
-            await vault.setYieldDistribution(7000, [0, 0, 3000], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: junior.target, riskPremiumBps: 3000, enabled: true},
+                ],
+                [false, false, false],
+                7000
+            );
 
             // Protocol fee = 10%, no performance fee
             await vault.setFeeRates(0, 1000);
@@ -488,7 +699,7 @@ describe("Vault Yield Allocation Math", () => {
             // Protocol fee minted to carol
             expect(await mzusd.balanceOf(carol.address)).to.equal(protocolFee);
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify APR from yield amounts ───────────────────
@@ -529,7 +740,15 @@ describe("Vault Yield Allocation Math", () => {
             // Mezzanine disabled, no deposits there.
             // riskPremium: senior=0%, mezzanine=0% (disabled), junior=29.03%
             // baseRewardBps = 10000 - (0 + 0 + 2903) = 7097 (70.97%)
-            await vault.setYieldDistribution(7097, [0, 0, 2903], [true, false, true]);
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: junior.target, riskPremiumBps: 2903, enabled: true},
+                ],
+                [false, false, false],
+                7097
+            );
 
             // No fees
             // Default is already 0, 0 from initialization — set explicitly for clarity
@@ -605,7 +824,7 @@ describe("Vault Yield Allocation Math", () => {
             expect(await mzusd.balanceOf(bob.address)).to.equal(0n); // performanceFeeReceiver
             expect(await mzusd.balanceOf(carol.address)).to.equal(0n); // protocolFeeReceiver
 
-            // Vault retains no MZUSD
+            // IssuanceVault retains no MZUSD
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
 
             // ── Verify return from yield amounts ────────────────
@@ -639,14 +858,22 @@ describe("Vault Yield Allocation Math", () => {
         });
     });
 
-    // ── setYieldDistribution unit tests ───────────────────────────────
+    // ── setTrancheConfig unit tests ───────────────────────────────
 
-    describe("setYieldDistribution", () => {
+    describe("setTrancheConfig", () => {
         it("should update baseRewardBps, per-tranche riskPremiumBps and enabled flags", async () => {
             // 3 tranches registered: senior=idx0, mezzanine=idx1, junior=idx2
-            await expect(vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, false, true]))
-                .to.emit(vault, "YieldDistributionUpdated")
-                .withArgs(5000, [1000, 2000, 2000], [true, false, true]);
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
+            ).to.emit(vault, "TrancheConfigUpdated");
 
             expect(await vault.baseRewardBps()).to.equal(5000);
 
@@ -664,28 +891,281 @@ describe("Vault Yield Allocation Math", () => {
             expect(t2.enabled).to.equal(true);
         });
 
-        it("should revert when riskPremiumsBps array length does not match tranches", async () => {
+        it("should revert when isPairedWithNext array length does not match tranches", async () => {
             await expect(
-                vault.setYieldDistribution(5000, [2500, 2500], [true, true, true])
-            ).to.be.revertedWithCustomError(vault, "LengthMismatch");
-        });
-
-        it("should revert when enabled array length does not match tranches", async () => {
-            await expect(
-                vault.setYieldDistribution(5000, [1000, 2000, 2000], [true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 2500, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2500, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 2500, enabled: true},
+                    ],
+                    [false, false],
+                    2500
+                )
             ).to.be.revertedWithCustomError(vault, "LengthMismatch");
         });
 
         it("should revert when baseRewardBps + sum(riskPremiumsBps) != 10000", async () => {
             // Total = 5000 + 1000 + 1000 + 1000 = 8000 (< 10000)
             await expect(
-                vault.setYieldDistribution(5000, [1000, 1000, 1000], [true, true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
 
             // Total = 5000 + 2000 + 2000 + 2000 = 11000 (> 10000)
             await expect(
-                vault.setYieldDistribution(5000, [2000, 2000, 2000], [true, true, true])
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    5000
+                )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
+        });
+
+        it("should revert when second tranche in a pair has riskPremiumBps != 0", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    ],
+                    [true, true, false],
+                    7000
+                )
+            ).to.be.revertedWithCustomError(vault, "PairedTrancheRiskPremiumMustBeZero");
+        });
+
+        it("should accept paired tranches when second has riskPremiumBps = 0", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 3000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                        {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    ],
+                    [true, true, false],
+                    7000
+                )
+            ).to.emit(vault, "TrancheConfigUpdated");
+        });
+
+        it("should round-trip pair flags and clear stale pairing on reconfiguration", async () => {
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 3000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [true, true, false],
+                7000
+            );
+
+            expect(await vault.tranchePairedTo(senior.target)).to.equal(mezzanine.target);
+            expect(await vault.tranchePairedTo(mezzanine.target)).to.equal(senior.target);
+            expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
+
+            const [orderBefore, flagsBefore] = await vault.getTrancheOrderAndPairs();
+            expect(orderBefore).to.deep.equal([senior.target, mezzanine.target, junior.target]);
+            expect(flagsBefore).to.deep.equal([true, true, false]);
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, false, false],
+                10000
+            );
+
+            expect(await vault.tranchePairedTo(senior.target)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(mezzanine.target)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
+
+            const [orderAfter, flagsAfter] = await vault.getTrancheOrderAndPairs();
+            expect(orderAfter).to.deep.equal([junior.target, senior.target, mezzanine.target]);
+            expect(flagsAfter).to.deep.equal([false, false, false]);
+        });
+    });
+
+    // ── Paired tranche yield distribution ────────────────────────────
+
+    describe("Paired tranche yield distribution", () => {
+        it("Paired tranches receive combined base + risk premium, split by TVL", async () => {
+            const TOTAL_USDC = to6(1_000_000);
+            const YIELD_USDC = to6(100_000);
+
+            // senior + mezzanine paired, junior solo
+            // riskPremium: senior=20% (pair premium), mezzanine=0% (required), junior=10%
+            // baseRewardBps = 10000 - (2000 + 0 + 1000) = 7000
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                ],
+                [true, true, false],
+                7000
+            );
+
+            await vault.setFeeRates(0, 0);
+
+            // TVL: senior=400k, mezzanine=200k, junior=100k
+            await depositIntoTranches(TOTAL_USDC, [
+                {tranche: senior, user: alice, pct: 40},
+                {tranche: mezzanine, user: bob, pct: 20},
+                {tranche: junior, user: carol, pct: 10},
+            ]);
+
+            const seniorTVL = await senior.totalAssets();
+            const mezzTVL = await mezzanine.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            expect(seniorTVL).to.equal(to18(400_000));
+            expect(mezzTVL).to.equal(to18(200_000));
+            expect(juniorTVL).to.equal(to18(100_000));
+
+            const allocatable = to18(100_000);
+            const totalTvl = seniorTVL + mezzTVL + juniorTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Pair (senior+mezzanine): combined base + risk premium
+            const pairTvl = seniorTVL + mezzTVL;
+            const pairBaseShare = (basePool * pairTvl) / totalTvl;
+            const pairRiskPremium = (allocatable * 2000n) / BPS; // senior's riskPremiumBps
+            const pairTotal = pairBaseShare + pairRiskPremium;
+
+            // Split by TVL: senior gets 400k/600k, mezzanine gets 200k/600k
+            const expectedSeniorYield = (pairTotal * seniorTVL) / pairTvl;
+            const expectedMezzYield = pairTotal - expectedSeniorYield;
+
+            // Junior: dust catch-all (last non-zero tranche)
+            const expectedJuniorYield = allocatable - pairTotal;
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(expectedMezzYield);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+        });
+
+        it("Paired tranche with one having 0 TVL — entire pair share goes to the other", async () => {
+            const YIELD_USDC = to6(50_000);
+
+            // senior + mezzanine paired, junior solo
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                ],
+                [true, true, false],
+                7000
+            );
+
+            await vault.setFeeRates(0, 0);
+
+            // Only deposit into senior (mezzanine has 0 TVL) and junior
+            await depositIntoTranches(to6(500_000), [
+                {tranche: senior, user: alice, pct: 60},
+                {tranche: junior, user: carol, pct: 20},
+            ]);
+
+            const seniorTVL = await senior.totalAssets();
+            const mezzTVL = await mezzanine.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            expect(mezzTVL).to.equal(0n);
+
+            const allocatable = to18(50_000);
+            const totalTvl = seniorTVL + juniorTVL; // mezzanine has 0 TVL
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Pair: pairTvl = seniorTVL (mezzTVL is 0), so all goes to senior
+            const pairTvl = seniorTVL; // + 0
+            const pairBaseShare = (basePool * pairTvl) / totalTvl;
+            const pairRiskPremium = (allocatable * 2000n) / BPS;
+            const pairTotal = pairBaseShare + pairRiskPremium;
+
+            // All pair yield goes to senior (mezzanine has 0 TVL)
+            const expectedSeniorYield = pairTotal;
+
+            // Junior: dust catch-all
+            const expectedJuniorYield = allocatable - pairTotal;
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+        });
+
+        it("Dust assignment works when paired tranche is last", async () => {
+            const YIELD_USDC = to6(77_777);
+
+            // junior solo first, then senior + mezzanine paired (last)
+            await vault.setTrancheConfig(
+                [
+                    {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                ],
+                [false, true, true],
+                7000
+            );
+
+            await vault.setFeeRates(0, 0);
+
+            // TVL: junior=100k, senior=300k, mezzanine=200k
+            await depositIntoTranches(to6(600_000), [
+                {tranche: junior, user: carol, pct: 16}, // ~100k
+                {tranche: senior, user: alice, pct: 50}, // 300k
+                {tranche: mezzanine, user: bob, pct: 33}, // ~200k
+            ]);
+
+            const juniorTVL = await junior.totalAssets();
+            const seniorTVL = await senior.totalAssets();
+            const mezzTVL = await mezzanine.totalAssets();
+
+            const allocatable = to18(77_777);
+            const totalTvl = juniorTVL + seniorTVL + mezzTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Junior solo: base + risk premium
+            const juniorBaseShare = (basePool * juniorTVL) / totalTvl;
+            const juniorRiskPremium = (allocatable * 1000n) / BPS;
+            const expectedJuniorYield = juniorBaseShare + juniorRiskPremium;
+
+            // Pair (senior+mezzanine) is last: gets dust (remainder)
+            const pairTotal = allocatable - expectedJuniorYield;
+            const pairTvl = seniorTVL + mezzTVL;
+            const expectedSeniorYield = (pairTotal * seniorTVL) / pairTvl;
+            const expectedMezzYield = pairTotal - expectedSeniorYield;
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(expectedMezzYield);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
     });
 });

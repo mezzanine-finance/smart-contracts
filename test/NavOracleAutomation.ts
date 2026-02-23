@@ -16,7 +16,7 @@ import {
     NavOracleAutomation,
     ReservoirUSDC,
     Tranche,
-    Vault,
+    IssuanceVault,
     PauseManager,
 } from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
@@ -54,7 +54,7 @@ describe("NavOracleAutomation", () => {
     let usdcTotalSupply: bigint;
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let tranche: Tranche;
     let lossManager: LossManager;
     let navAutomation: NavOracleAutomation;
@@ -108,13 +108,13 @@ describe("NavOracleAutomation", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, oracle.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -134,20 +134,12 @@ describe("NavOracleAutomation", () => {
         )) as unknown as Tranche;
 
         const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
-        lossManager = (await upgrades.deployProxy(
-            LossManagerFactory,
-            [
-                [tranche.target],
-                [false],
-                0, // maxLossPerTxUSDC
-            ],
-            {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor", "state-variable-immutable"],
-                constructorArgs: [vault.target],
-            }
-        )) as unknown as LossManager;
+        lossManager = (await upgrades.deployProxy(LossManagerFactory, [0], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vault.target],
+        })) as unknown as LossManager;
 
         const NavAutomationFactory = await ethers.getContractFactory(
             "NavOracleAutomation",
@@ -168,11 +160,11 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(BURNER_ROLE, tranche.target as string, 0);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
-        // Admin-only functions on MZUSD & Vault
+        // Admin-only functions on MZUSD & IssuanceVault
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const setYieldDistributionSelector =
-            vault.interface.getFunction("setYieldDistribution").selector;
+            vault.interface.getFunction("setTrancheConfig").selector;
         const advanceEpochSelector = vault.interface.getFunction("advanceEpoch").selector;
         const setVaultLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
@@ -220,12 +212,16 @@ describe("NavOracleAutomation", () => {
         await accessManager.grantRole(ORACLE_ROLE, oracle.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target, 0);
 
-        // Wire protocol and register tranche in Vault
+        // Wire protocol and register tranche in IssuanceVault
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
 
-        await vault.addTranche(tranche.target);
-        await vault.setYieldDistribution(0, [10_000], [true]);
+        await vault.registerTranche(tranche.target);
+        await vault.setTrancheConfig(
+            [{tranche: tranche.target, riskPremiumBps: 10_000, enabled: true}],
+            [false],
+            0
+        );
 
         snapshot = await takeSnapshot();
     });

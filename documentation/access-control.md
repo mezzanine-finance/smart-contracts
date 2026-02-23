@@ -26,9 +26,9 @@ Role IDs are configurable `uint64` values in deployment config.
 - `UPGRADER_ROLE`
   - Can call `upgradeToAndCall` on UUPS contracts (recommended with delay).
 - `KEEPER_ROLE`
-  - Calls `Vault.rebalance()` to move idle USDC between Vault and Reservoir.
+  - Calls `IssuanceVault.rebalance()` to move idle USDC between IssuanceVault and Reservoir.
 - `RESERVOIR_WITHDRAW_ROLE`
-  - Can call `ReservoirUSDC.withdraw` (Vault + approved operators).
+  - Can call `ReservoirUSDC.withdraw` (IssuanceVault + approved operators).
 - `ORACLE_ROLE`
   - Can call `NavOracleAutomation.submitNav`.
 - `BURNER_ROLE`
@@ -44,20 +44,20 @@ Role IDs are configurable `uint64` values in deployment config.
 
 ### MZUSD (UUPS)
 
-- `mint` -> only configured Vault (`onlyVault`)
+- `mint` -> only configured IssuanceVault (`onlyVault`)
 - `burn` -> `BURNER_ROLE` (`restricted`, plus `PROTOCOL` pause gate)
 - `setGlobalRedemptionCap`, `setRedemptionWindowDuration` -> `ADMIN_ROLE`
 - `setVault` (one-time) -> `ADMIN_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
-### Vault (UUPS)
+### IssuanceVault (UUPS)
 
 - `distributeYield` -> only configured `navOracle`
 - `withdraw` -> only configured MZUSD (`onlyMZUSD`)
 - `advanceEpoch` -> only configured `lossManager`
 - `rebalance` -> `KEEPER_ROLE`
 - `setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`, `setBuffer`,
-  `setEpochConfig`, `addTranche`, `setYieldDistribution` -> `ADMIN_ROLE`
+  `setEpochConfig`, `registerTranche`, `setTrancheConfig` -> `ADMIN_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### Tranche (UUPS)
@@ -85,7 +85,7 @@ Role IDs are configurable `uint64` values in deployment config.
 ### LossManager (UUPS)
 
 - `applyLoss` -> only current `IVault(vault).navOracle()`
-- `setTrancheOrderAndPairs`, `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
+- `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### NavOracleAutomation (non-upgradeable)
@@ -95,17 +95,17 @@ Role IDs are configurable `uint64` values in deployment config.
 
 ## Cross-contract grants and wiring
 
-- `Vault` and approved operators must hold `RESERVOIR_WITHDRAW_ROLE` for `ReservoirUSDC.withdraw`.
-- Keeper addresses must hold `KEEPER_ROLE` for `Vault.rebalance`.
+- `IssuanceVault` and approved operators must hold `RESERVOIR_WITHDRAW_ROLE` for `ReservoirUSDC.withdraw`.
+- Keeper addresses must hold `KEEPER_ROLE` for `IssuanceVault.rebalance`.
 - Tranche/PolJuniorTranche addresses that burn on losses must hold `BURNER_ROLE` on MZUSD.
 - Oracle submitter addresses must hold `ORACLE_ROLE` on `NavOracleAutomation`.
 
 Direct-check wiring:
 
-- `Vault.mzusd` and `Vault.reservoir` are immutable constructor params.
-- `Vault.lossManager` is one-time (`setLossManager`).
-- `Vault.navOracle` is updatable (`setNavOracle`) with strict cross-reference checks.
-- `LossManager.vault` is immutable; `applyLoss` resolves NAV authority from `Vault.navOracle()`.
+- `IssuanceVault.mzusd` and `IssuanceVault.reservoir` are immutable constructor params.
+- `IssuanceVault.lossManager` is one-time (`setLossManager`).
+- `IssuanceVault.navOracle` is updatable (`setNavOracle`) with strict cross-reference checks.
+- `LossManager.vault` is immutable; `applyLoss` resolves NAV authority from `IssuanceVault.navOracle()`.
 - `MZUSD.vault` is one-time and gates `mint`.
 - `Tranche.vault`, `PolJuniorTranche.vault` are immutable and gate `notifyYield`.
 

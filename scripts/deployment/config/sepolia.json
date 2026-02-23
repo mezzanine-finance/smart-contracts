@@ -55,7 +55,38 @@
         "epochDurationSec": 3600
     },
     "seed": {
-        "mzusdDepositUSDC": "1000000"
+        "mzusdDepositUSDC": "1000000",
+        "deadShares": [
+            {
+                "key": "senior",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "mezzanine",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "1"
+            }
+        ],
+        "trancheDeposits": [
+            {
+                "key": "senior",
+                "amountMZUSD": "450000",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            },
+            {
+                "key": "mezzanine",
+                "amountMZUSD": "220000",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "80000",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            }
+        ]
     },
     "tranches": [
         {
@@ -63,7 +94,7 @@
             "trancheId": 1,
             "name": "Senior Tranche",
             "symbol": "sMZUSD",
-            "riskPremiumBps": 1000,
+            "riskPremiumBps": 0,
             "enabled": true,
             "directWithdrawEnabled": true
         },
@@ -72,13 +103,12 @@
             "trancheId": 2,
             "name": "Mezzanine Tranche",
             "symbol": "MLT",
-            "riskPremiumBps": 3000,
+            "riskPremiumBps": 1200,
             "enabled": true,
             "directWithdrawEnabled": false,
-            "unstakeDelayEpochs": 2,
+            "unstakeDelayEpochs": 1,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 3000
             }
         },
@@ -87,25 +117,19 @@
             "trancheId": 3,
             "name": "Junior Tranche",
             "symbol": "JLT",
-            "riskPremiumBps": 4000,
+            "riskPremiumBps": 1800,
             "enabled": true,
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 4,
             "depositLimits": {
                 "enabled": true,
-                "capMZUSD": "0",
                 "tvlBps": 1000
             }
         }
     ],
-    "polJunior": {
-        "enabled": true,
-        "polPayout": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
-        "registerInVault": false
-    },
     "lossManager": {
-        "order": ["polJunior", "junior", "mezzanine", "senior"],
-        "isPairedWithNext": [true, true, false, false],
+        "order": ["junior", "mezzanine", "senior"],
+        "isPairedWithNext": [false, false, false],
         "maxLossPerTxUSDC": "10000000"
     },
     "navOracle": {

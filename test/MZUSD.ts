@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 import {
     MZUSD,
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     IERC20,
     MZUSDNettingHelper,
@@ -44,7 +44,7 @@ describe("MZUSD <-> USDC conversion", () => {
 
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
@@ -120,7 +120,7 @@ describe("MZUSD <-> USDC conversion", () => {
             }
         );
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, charlie.address], {
             kind: "uups",
             initializer: "initialize",
@@ -227,6 +227,9 @@ describe("MZUSD <-> USDC conversion", () => {
             await expect(mzusd.setRedemptionWindowDuration(duration + 1n))
                 .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
+            await expect(mzusd.setWithdrawalFeeBps(1))
+                .to.be.revertedWithCustomError(mzusd, "CategoryPaused")
+                .withArgs(PauseCategory.ADMIN);
         });
     });
 
@@ -288,7 +291,7 @@ describe("MZUSD <-> USDC conversion", () => {
             // Alice's USDC were spent
             expect(aliceUSDCAfter).to.equal(0n);
 
-            // Vault received the USDC
+            // IssuanceVault received the USDC
             expect(vaultUSDCAfter - vaultUSDCBefore).to.equal(depositAmountUSDC);
 
             // Alice received MZUSD 1:1 to USDC in 18 decimals.
@@ -353,7 +356,7 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(aliceUSDCAfterWithdraw).to.equal(depositAmountUSDC);
             expect(supplyAfterWithdraw).to.equal(0n);
 
-            // Vault lost exactly the withdrawn amount
+            // IssuanceVault lost exactly the withdrawn amount
             expect(vaultUSDCAfterDeposit - vaultUSDCAfterWithdraw).to.equal(depositAmountUSDC);
         });
 
@@ -377,13 +380,13 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(mzUsdcAfter).to.equal(mzUsdcBefore);
         });
 
-        it("Should revert with InsufficientLiquidity when Vault does not have enough USDC", async () => {
+        it("Should revert with InsufficientLiquidity when IssuanceVault does not have enough USDC", async () => {
             const depositAmountUSDC = to6(50n);
 
-            // Fund Alice and deposit into MZUSD (USDC goes to Vault)
+            // Fund Alice and deposit into MZUSD (USDC goes to IssuanceVault)
             await fundAndDepositForAlice(depositAmountUSDC);
 
-            // Empty the Vault's USDC by transferring it out to Bob
+            // Empty the IssuanceVault's USDC by transferring it out to Bob
             const vaultSigner = await imp(vault.target);
             const vaultBalance = await usdc.balanceOf(vault.target);
             expect(vaultBalance).to.equal(depositAmountUSDC);
@@ -428,6 +431,72 @@ describe("MZUSD <-> USDC conversion", () => {
                 expect(aliceMZAfter).to.equal(0n);
                 expect(aliceUSDCAfter).to.equal(depositAmountUSDC);
             });
+        });
+    });
+
+    describe("Withdrawal fee", () => {
+        it("Charges withdrawal fee and keeps fee amount in IssuanceVault", async () => {
+            const feeBps = 500; // 5%
+            const depositAmountUSDC = to6(100n);
+            const feeAmountUSDC = (depositAmountUSDC * BigInt(feeBps)) / 10_000n;
+            const netAmountUSDC = depositAmountUSDC - feeAmountUSDC;
+
+            await expect(mzusd.setWithdrawalFeeBps(feeBps))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(feeBps);
+
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            const aliceMZ = await mzusd.balanceOf(alice.address);
+            const vaultUSDCBefore = await usdc.balanceOf(vault.target);
+            expect(vaultUSDCBefore).to.equal(depositAmountUSDC);
+
+            await expect(mzusd.connect(alice).requestWithdrawal(aliceMZ))
+                .to.emit(mzusd, "Withdrawal")
+                .withArgs(alice.address, netAmountUSDC);
+
+            expect(await usdc.balanceOf(alice.address)).to.equal(netAmountUSDC);
+            expect(await usdc.balanceOf(vault.target)).to.equal(feeAmountUSDC);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
+        });
+
+        it("Counts gross withdrawal against cap even when fee is enabled", async () => {
+            const feeBps = 5000; // 50%
+            const capUSDC = to6(100n);
+            const depositAmountUSDC = to6(200n);
+
+            await mzusd.setWithdrawalFeeBps(feeBps);
+            await mzusd.setGlobalRedemptionCap(capUSDC);
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            await mzusd.connect(alice).requestWithdrawal(to18(100n));
+
+            const [, usedUSDC, remainingUSDC] = await mzusd.getRemainingRedemptionCap();
+            expect(usedUSDC).to.equal(capUSDC);
+            expect(remainingUSDC).to.equal(0n);
+
+            await expect(mzusd.connect(alice).requestWithdrawal(to18(1n)))
+                .to.be.revertedWithCustomError(mzusd, "GlobalRedemptionCapExceeded")
+                .withArgs(capUSDC, capUSDC + to6(1n), to6(1n));
+        });
+
+        it("Validates withdrawal fee bps bounds and same-value updates", async () => {
+            await expect(mzusd.setWithdrawalFeeBps(10_000)).to.be.revertedWithCustomError(
+                mzusd,
+                "TooBigBps"
+            );
+            await expect(mzusd.setWithdrawalFeeBps(10_001)).to.be.revertedWithCustomError(
+                mzusd,
+                "TooBigBps"
+            );
+
+            await expect(mzusd.setWithdrawalFeeBps(9_999))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(9_999);
+            await expect(mzusd.setWithdrawalFeeBps(9_999)).to.be.revertedWithCustomError(
+                mzusd,
+                "SameValue"
+            );
         });
     });
 

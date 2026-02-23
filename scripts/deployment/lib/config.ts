@@ -56,6 +56,7 @@ export interface UsdcConfig {
 export interface MZUSDConfig {
     redemptionCapUSDC: string;
     redemptionWindowDurationSec?: number;
+    withdrawalFeeBps?: number;
 }
 
 export interface VaultConfig {
@@ -84,14 +85,6 @@ export interface TrancheConfig {
         capUSDC?: string; // deprecated alias; interpreted as USDC and converted to MZUSD
         tvlBps?: number;
     };
-}
-
-export interface PolJuniorConfig {
-    enabled: boolean;
-    polPayout: string;
-    registerInVault?: boolean;
-    riskPremiumBps?: number;
-    enabledInVault?: boolean;
 }
 
 export interface LossManagerConfig {
@@ -125,10 +118,16 @@ export interface TrancheSeedConfig {
     receiver: string;
 }
 
+export interface TrancheDeadSharesConfig {
+    key: string;
+    amountMZUSD: string;
+}
+
 export interface SeedConfig {
     mzusdDepositUSDC?: string;
     vaultUSDC?: string;
     reservoirUSDC?: string;
+    deadShares?: TrancheDeadSharesConfig[];
     trancheDeposits?: TrancheSeedConfig[];
 }
 
@@ -141,7 +140,6 @@ export interface DeployConfig {
     mzusd: MZUSDConfig;
     vault: VaultConfig;
     tranches: TrancheConfig[];
-    polJunior?: PolJuniorConfig;
     lossManager: LossManagerConfig;
     navOracle: NavOracleConfig;
     umbrellaFinalizer?: UmbrellaFinalizerConfig;
@@ -215,13 +213,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
         parseBps(vault.hysteresisBps);
     }
     if (vault.performanceFeeBps + vault.protocolFeeBps > 5000) {
-        throw new Error("Vault fees exceed MAX_TOTAL_FEE_BPS (5000)");
+        throw new Error("IssuanceVault fees exceed MAX_TOTAL_FEE_BPS (5000)");
     }
     requireAddress(vault.performanceFeeReceiver, "vault.performanceFeeReceiver");
     requireAddress(vault.protocolFeeReceiver, "vault.protocolFeeReceiver");
     assert(
         vault.performanceFeeReceiver.toLowerCase() !== vault.protocolFeeReceiver.toLowerCase(),
-        "Vault fee receivers must be distinct"
+        "IssuanceVault fee receivers must be distinct"
     );
 
     const tranches = config.tranches ?? [];
@@ -256,27 +254,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
         }
     }
 
-    if (config.polJunior?.enabled) {
-        requireAddress(config.polJunior.polPayout, "polJunior.polPayout");
-        if (config.polJunior.registerInVault) {
-            assert(
-                config.polJunior.riskPremiumBps !== undefined,
-                "polJunior.riskPremiumBps required when registerInVault = true"
-            );
-            parseBps(config.polJunior.riskPremiumBps);
-        }
-    }
-
     const loss = config.lossManager;
     assert(
         loss.order.length === loss.isPairedWithNext.length,
         "lossManager order/isPairedWithNext mismatch"
     );
     for (const key of loss.order) {
-        assert(
-            key === "polJunior" || keys.has(key),
-            `lossManager.order references unknown tranche key: ${key}`
-        );
+        assert(keys.has(key), `lossManager.order references unknown tranche key: ${key}`);
     }
 
     for (let i = 0; i < loss.isPairedWithNext.length; ) {
@@ -332,6 +316,27 @@ function validateConfig(config: DeployConfig, filePath: string) {
     if (seed?.reservoirUSDC) {
         parseUSDC(seed.reservoirUSDC);
     }
+    if (seed?.deadShares) {
+        const seenDeadShares = new Set<string>();
+        for (const deadShare of seed.deadShares) {
+            assert(deadShare.key, "seed.deadShares.key is required");
+            assert(
+                keys.has(deadShare.key),
+                `seed.deadShares references unknown tranche: ${deadShare.key}`
+            );
+            assert(
+                !seenDeadShares.has(deadShare.key),
+                `seed.deadShares has duplicate tranche key: ${deadShare.key}`
+            );
+            seenDeadShares.add(deadShare.key);
+            assert(
+                deadShare.amountMZUSD !== undefined,
+                `seed.deadShares for ${deadShare.key}: amountMZUSD is required`
+            );
+            const amount = parseMZUSD(deadShare.amountMZUSD);
+            assert(amount > 0n, `seed.deadShares for ${deadShare.key}: amountMZUSD must be > 0`);
+        }
+    }
     if (seed?.trancheDeposits) {
         for (const deposit of seed.trancheDeposits) {
             assert(deposit.key, "seed.trancheDeposits.key is required");
@@ -363,5 +368,9 @@ function validateConfig(config: DeployConfig, filePath: string) {
             "umbrellaFinalizer.startEpoch must be a safe integer"
         );
         assert(config.umbrellaFinalizer.startEpoch > 0, "umbrellaFinalizer.startEpoch must be > 0");
+    }
+
+    if (config.mzusd.withdrawalFeeBps !== undefined) {
+        parseBps(config.mzusd.withdrawalFeeBps);
     }
 }

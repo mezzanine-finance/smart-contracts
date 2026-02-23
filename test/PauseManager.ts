@@ -152,6 +152,30 @@ describe("PauseManager", () => {
         expect(await mockA.transfers()).to.equal(1n);
     });
 
+    it("Rejects duplicate global pause/unpause calls", async () => {
+        await pauseManager.pauseGlobal(Category.DEPOSITS);
+        await expect(pauseManager.pauseGlobal(Category.DEPOSITS))
+            .to.be.revertedWithCustomError(pauseManager, "AlreadyPaused")
+            .withArgs(Category.DEPOSITS);
+
+        await pauseManager.unpauseGlobal(Category.DEPOSITS);
+        await expect(pauseManager.unpauseGlobal(Category.DEPOSITS))
+            .to.be.revertedWithCustomError(pauseManager, "AlreadyUnpaused")
+            .withArgs(Category.DEPOSITS);
+    });
+
+    it("Rejects duplicate contract pause/unpause calls", async () => {
+        await pauseManager.pauseContract(mockA.target, Category.ADMIN);
+        await expect(pauseManager.pauseContract(mockA.target, Category.ADMIN))
+            .to.be.revertedWithCustomError(pauseManager, "ContractAlreadyPaused")
+            .withArgs(mockA.target, Category.ADMIN);
+
+        await pauseManager.unpauseContract(mockA.target, Category.ADMIN);
+        await expect(pauseManager.unpauseContract(mockA.target, Category.ADMIN))
+            .to.be.revertedWithCustomError(pauseManager, "ContractAlreadyUnpaused")
+            .withArgs(mockA.target, Category.ADMIN);
+    });
+
     it("Reverts on zero address PauseManager initialization", async () => {
         const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
         const rawManager = await PauseManagerFactory.deploy();

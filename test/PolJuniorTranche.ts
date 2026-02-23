@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     MZUSD,
     IERC20,
@@ -51,7 +51,7 @@ describe("PolJuniorTranche", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let pol: PolJuniorTranche;
 
@@ -109,13 +109,13 @@ describe("PolJuniorTranche", () => {
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         // Deploy POL tranche
@@ -161,9 +161,8 @@ describe("PolJuniorTranche", () => {
         // admin: vault distribute + tranche management + epoch config
         const setVaultSel = mzusd.interface.getFunction("setVault").selector;
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
-        const setYieldDistributionSel =
-            vault.interface.getFunction("setYieldDistribution").selector;
+        const addTrancheSel = vault.interface.getFunction("registerTranche").selector;
+        const setYieldDistributionSel = vault.interface.getFunction("setTrancheConfig").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         const setLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
@@ -234,8 +233,12 @@ describe("PolJuniorTranche", () => {
     describe("Yield forwarding", () => {
         it("Forwards yield to payout (no streaming) and withdraw is instant", async () => {
             // Register only POL tranche to make allocation deterministic (100% to POL)
-            await vault.addTranche(polAddr);
-            await vault.setYieldDistribution(0, [10_000], [true]);
+            await vault.registerTranche(polAddr);
+            await vault.setTrancheConfig(
+                [{tranche: polAddr, riskPremiumBps: 10_000, enabled: true}],
+                [false],
+                0
+            );
 
             const adminPrincipal = await mintMZUSDFor(deployer, to6(101n));
             await depositMZInto(deployer, adminPrincipal);
@@ -288,8 +291,12 @@ describe("PolJuniorTranche", () => {
 
     describe("Multi-user flows", () => {
         it("Many users deposit, admin withdraws across owners", async () => {
-            await vault.addTranche(polAddr);
-            await vault.setYieldDistribution(0, [10_000], [true]);
+            await vault.registerTranche(polAddr);
+            await vault.setTrancheConfig(
+                [{tranche: polAddr, riskPremiumBps: 10_000, enabled: true}],
+                [false],
+                0
+            );
 
             const participants = [alice, ...users.slice(0, 8)];
             const depositedByUser = new Map<string, bigint>();
@@ -331,7 +338,7 @@ describe("PolJuniorTranche", () => {
             await time.increase(DAY);
             await (await vault.connect(navOracleSigner).distributeYield(to6(7n))).wait();
 
-            // Vault enforces one distribution per epoch window.
+            // IssuanceVault enforces one distribution per epoch window.
             await time.increase(DAY);
             await (await vault.connect(navOracleSigner).distributeYield(to6(13n))).wait();
             const payoutAfter = await mzusd.balanceOf(bob.address);
@@ -343,8 +350,12 @@ describe("PolJuniorTranche", () => {
         });
 
         it("Repeated deposit/withdraw roundtrips", async () => {
-            await vault.addTranche(polAddr);
-            await vault.setYieldDistribution(0, [10_000], [true]);
+            await vault.registerTranche(polAddr);
+            await vault.setTrancheConfig(
+                [{tranche: polAddr, riskPremiumBps: 10_000, enabled: true}],
+                [false],
+                0
+            );
 
             await mintMZUSDFor(alice, to6(200n));
             const startBal = await mzusd.balanceOf(alice.address);

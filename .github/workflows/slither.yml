@@ -45,7 +45,7 @@ jobs:
               run: |
                   set -euo pipefail
                   # Keep CI logs clean: write full details to slither.json, print a curated summary in the next step.
-                  slither . --ignore-compile --exclude-dependencies --disable-color --json slither.json > /dev/null
+                  slither . --ignore-compile --compile-force-framework hardhat --exclude-dependencies --disable-color --json slither.json > /dev/null
 
             - name: Fail on High (and print summary)
               shell: bash

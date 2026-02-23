@@ -9,7 +9,14 @@ import {
 } from "@nomicfoundation/hardhat-network-helpers";
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
-import {MZUSD, Vault, ReservoirUSDC, IERC20, Tranche, PauseManager} from "../typechain-types";
+import {
+    MZUSD,
+    IssuanceVault,
+    ReservoirUSDC,
+    IERC20,
+    Tranche,
+    PauseManager,
+} from "../typechain-types";
 import {grantPausePermissions} from "./helpers/pause";
 
 const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -35,7 +42,7 @@ describe("Tranche finalization solvency", () => {
     let carol: any;
     let accessManager: any;
     let pauseManager: PauseManager;
-    let vault: Vault;
+    let vault: IssuanceVault;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let usdcTotalSupply: bigint;
@@ -91,13 +98,13 @@ describe("Tranche finalization solvency", () => {
             }
         )) as unknown as MZUSD;
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(TrancheFactory, [1, 0, "Senior Tranche", "sMZUSD"], {
@@ -128,7 +135,7 @@ describe("Tranche finalization solvency", () => {
 
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const distributeYieldSelector = vault.interface.getFunction("distributeYield").selector;
-        const addTrancheSelector = vault.interface.getFunction("addTranche").selector;
+        const addTrancheSelector = vault.interface.getFunction("registerTranche").selector;
         const setLossManagerSelector = vault.interface.getFunction("setLossManager").selector;
         const setNavOracleSelector = vault.interface.getFunction("setNavOracle").selector;
 
@@ -148,8 +155,12 @@ describe("Tranche finalization solvency", () => {
         await vault.setLossManager(lossManagerRef.target);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche(tranche);
-        await vault.setYieldDistribution(7000, [3000], [true]);
+        await vault.registerTranche(tranche);
+        await vault.setTrancheConfig(
+            [{tranche: tranche, riskPremiumBps: 3000, enabled: true}],
+            [false],
+            7000
+        );
 
         snapshot = await takeSnapshot();
     });

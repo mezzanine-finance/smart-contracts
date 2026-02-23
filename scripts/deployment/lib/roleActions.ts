@@ -33,9 +33,9 @@ export async function grantRoles() {
         throw new Error("AccessManager deployment not found for this network");
     }
 
-    const vaultDeployment = getLatestDeployment(deployments, network.name, "Vault");
+    const vaultDeployment = getLatestDeployment(deployments, network.name, "IssuanceVault");
     if (!vaultDeployment) {
-        throw new Error("Vault deployment not found for this network");
+        throw new Error("IssuanceVault deployment not found for this network");
     }
     const trancheDeployments = config.tranches.map((tranche) => {
         const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
@@ -45,13 +45,6 @@ export async function grantRoles() {
         return deployment.address;
     });
     const burnerTargets = [...trancheDeployments];
-    if (config.polJunior?.enabled) {
-        const polDeployment = getLatestDeployment(deployments, network.name, "PolJuniorTranche");
-        if (!polDeployment) {
-            throw new Error("PolJuniorTranche deployment not found for this network");
-        }
-        burnerTargets.push(polDeployment.address);
-    }
 
     const accessManager = await ethers.getContractAt(
         "AccessManager",
@@ -166,9 +159,9 @@ export async function renounceRoles() {
         throw new Error("AccessManager deployment not found for this network");
     }
 
-    const vaultDeployment = getLatestDeployment(deployments, network.name, "Vault");
+    const vaultDeployment = getLatestDeployment(deployments, network.name, "IssuanceVault");
     if (!vaultDeployment) {
-        throw new Error("Vault deployment not found for this network");
+        throw new Error("IssuanceVault deployment not found for this network");
     }
     const trancheDeployments = config.tranches.map((tranche) => {
         const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
@@ -178,13 +171,6 @@ export async function renounceRoles() {
         return deployment.address;
     });
     const burnerMembers = [...trancheDeployments];
-    if (config.polJunior?.enabled) {
-        const polDeployment = getLatestDeployment(deployments, network.name, "PolJuniorTranche");
-        if (!polDeployment) {
-            throw new Error("PolJuniorTranche deployment not found for this network");
-        }
-        burnerMembers.push(polDeployment.address);
-    }
 
     const accessManager = await ethers.getContractAt(
         "AccessManager",

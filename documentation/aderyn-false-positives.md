@@ -12,7 +12,7 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
 
 - `reentrancy-state-change` (H-1)
   - Files: `contracts/LossManager.sol`, `contracts/ReservoirUSDC.sol`,
-    `contracts/Tranche.sol`, `contracts/Vault.sol`,
+    `contracts/Tranche.sol`, `contracts/IssuanceVault.sol`,
     `contracts/automation/NavOracleAutomation.sol`,
     `contracts/automation/UmbrellaEpochFinalizer.sol`.
   - Reason: detector is conservative and flags functions that both touch state
@@ -22,7 +22,7 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
 
 - `unsafe-erc20-operation` / `unchecked-return` (L-1, L-10)
   - Files: `contracts/MZUSD.sol`, `contracts/ReservoirUSDC.sol`,
-    `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
+    `contracts/IssuanceVault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
   - Reason: we interact with well-known tokens (USDC) or our own ERC20s. These
     calls revert on failure; return values are not relied upon. We intentionally
     use direct ERC20 calls for known tokens; SafeERC20 can be introduced if
@@ -40,12 +40,12 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
 
 - `modifier-invoked-only-once` (L-4)
   - Files: `contracts/LossManager.sol`, `contracts/MZUSD.sol`,
-    `contracts/Vault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
+    `contracts/IssuanceVault.sol`, `contracts/Tranche.sol`, `contracts/PolJuniorTranche.sol`.
   - Reason: modifiers kept for clarity and future extensibility.
 
 - `loop-contains-revert` (L-5)
-  - Files: `contracts/LossManager.sol`.
-  - Reason: these loops validate configuration and should fail fast on invalid
+  - Files: `contracts/IssuanceVault.sol`.
+  - Reason: these loops validate tranche config (`setTrancheConfig`) and should fail fast on invalid
     input.
 
 - `redundant-statement` (L-6)
@@ -55,12 +55,13 @@ Note: Aderyn only supports per-line ignores (`aderyn-fp-next-line` /
     Chainlink Automation compatibility where calldata is intentionally ignored.
 
 - `uninitialized-local-variable` (L-7)
-  - Files: `contracts/LossManager.sol`, `contracts/Vault.sol`.
+  - Files: `contracts/IssuanceVault.sol`.
   - Reason: loop counters default to zero by Solidity rules.
 
 - `costly-operations-inside-loop` (L-8)
-  - Files: `contracts/LossManager.sol`.
-  - Reason: loops are bounded and called in admin flows; gas is acceptable.
+  - Files: `contracts/IssuanceVault.sol`.
+  - Reason: loops are bounded by configured tranche count and called in admin config flows;
+    gas is acceptable.
 
 - `state-change-without-event` (L-9)
   - File: `contracts/automation/UmbrellaEpochFinalizer.sol`.

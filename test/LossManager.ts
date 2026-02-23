@@ -10,7 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
-    Vault,
+    IssuanceVault,
     ReservoirUSDC,
     MZUSD,
     IERC20,
@@ -52,7 +52,7 @@ describe("LossManager", () => {
 
     let mzusd: MZUSD;
     let reservoir: ReservoirUSDC;
-    let vault: Vault;
+    let vault: IssuanceVault;
 
     let junior: Tranche;
     let mezzanine: Tranche;
@@ -121,13 +121,13 @@ describe("LossManager", () => {
         )) as unknown as MZUSD;
         mzusdAddr = await mzusd.getAddress();
 
-        const VaultFactory = await ethers.getContractFactory("Vault", deployer);
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
             constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as Vault;
+        })) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -176,8 +176,6 @@ describe("LossManager", () => {
         lossManager = (await upgrades.deployProxy(
             LossManagerFactory,
             [
-                [juniorAddr, mezzanineAddr, seniorAddr],
-                [false, false, false],
                 0, // maxLossPerTxUSDC (0 = no limit)
             ],
             {
@@ -217,9 +215,8 @@ describe("LossManager", () => {
         // admin: vault distribute + tranche management + epoch config (for integration test)
         const distributeSel = vault.interface.getFunction("distributeYield").selector;
         const advanceEpochSel = vault.interface.getFunction("advanceEpoch").selector;
-        const addTrancheSel = vault.interface.getFunction("addTranche").selector;
-        const setYieldDistributionSel =
-            vault.interface.getFunction("setYieldDistribution").selector;
+        const registerTrancheSel = vault.interface.getFunction("registerTranche").selector;
+        const setTrancheConfigSel = vault.interface.getFunction("setTrancheConfig").selector;
         const setEpochConfigSel = vault.interface.getFunction("setEpochConfig").selector;
         const setVaultLossManagerSel = vault.interface.getFunction("setLossManager").selector;
         const setVaultNavOracleSel = vault.interface.getFunction("setNavOracle").selector;
@@ -228,8 +225,8 @@ describe("LossManager", () => {
             vaultAddr,
             [
                 distributeSel,
-                addTrancheSel,
-                setYieldDistributionSel,
+                registerTrancheSel,
+                setTrancheConfigSel,
                 setEpochConfigSel,
                 setVaultLossManagerSel,
                 setVaultNavOracleSel,
@@ -261,26 +258,33 @@ describe("LossManager", () => {
 
         // LossManager admin functions
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
-        const setOrderSel = lossManager.interface.getFunction("setTrancheOrderAndPairs").selector;
         const setMaxSel = lossManager.interface.getFunction("setMaxLossPerTxUSDC").selector;
         await accessManager.setTargetFunctionRole(
             lossManagerAddr,
-            [applyLossSel, setOrderSel, setMaxSel],
+            [applyLossSel, setMaxSel],
             ADMIN_ROLE
         );
 
-        // loss manager role: Vault.advanceEpoch
+        // loss manager role: IssuanceVault.advanceEpoch
         await accessManager.grantRole(LOSS_MANAGER_ROLE, lossManagerAddr, 0);
 
         // wire and register
         await vault.setLossManager(lossManagerAddr);
         await vault.setNavOracle(navOracleRef.target);
 
-        await vault.addTranche(juniorAddr);
-        await vault.addTranche(mezzanineAddr);
-        await vault.addTranche(seniorAddr);
-        // Configure yield distribution: junior=20%, mezzanine=30%, senior=50% risk premium
-        await vault.setYieldDistribution(0, [2000, 3000, 5000], [true, true, true]);
+        await vault.registerTranche(juniorAddr);
+        await vault.registerTranche(mezzanineAddr);
+        await vault.registerTranche(seniorAddr);
+        // Configure tranche order, pairs, and yield distribution
+        await vault.setTrancheConfig(
+            [
+                {tranche: juniorAddr, riskPremiumBps: 2000, enabled: true},
+                {tranche: mezzanineAddr, riskPremiumBps: 3000, enabled: true},
+                {tranche: seniorAddr, riskPremiumBps: 5000, enabled: true},
+            ],
+            [false, false, false],
+            0
+        );
 
         snapshot = await takeSnapshot();
     });
@@ -337,6 +341,44 @@ describe("LossManager", () => {
         return a < b ? a : b;
     }
 
+    /// Helper: set tranche order+pairs via vault.setTrancheConfig with equal yield distribution.
+    /// Second tranche in each pair must have riskPremiumBps = 0; the pair's share goes to the first.
+    async function setOrderAndPairs(order: string[], isPairedWithNext: boolean[]) {
+        // Need to register any tranches not yet in vault
+        for (const addr of order) {
+            if (!(await vault.isTranche(addr))) {
+                await vault.registerTranche(addr);
+            }
+        }
+        // Count slots that can carry risk premium (exclude second of each pair)
+        const len = order.length;
+        const secondOfPair = new Set<number>();
+        for (let i = 0; i < len; i++) {
+            if (isPairedWithNext[i] && i + 1 < len && isPairedWithNext[i + 1]) {
+                secondOfPair.add(i + 1);
+            }
+        }
+        const slotCount = len - secondOfPair.size;
+        const perSlot = Math.floor(10_000 / slotCount);
+        const riskPremiums = new Array(len).fill(0);
+        let assigned = 0;
+        let lastSlotIdx = 0;
+        for (let i = 0; i < len; i++) {
+            if (secondOfPair.has(i)) continue;
+            riskPremiums[i] = perSlot;
+            assigned += perSlot;
+            lastSlotIdx = i;
+        }
+        // Assign remainder to last non-paired-second tranche
+        riskPremiums[lastSlotIdx] += 10_000 - assigned;
+        const trancheInfos = order.map((addr, i) => ({
+            tranche: addr,
+            riskPremiumBps: riskPremiums[i],
+            enabled: true,
+        }));
+        await vault.setTrancheConfig(trancheInfos, isPairedWithNext, 0);
+    }
+
     describe("Pause guards", () => {
         it("Pauses protocol operations via PauseManager", async () => {
             await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
@@ -348,14 +390,17 @@ describe("LossManager", () => {
         it("Pauses admin operations via PauseManager", async () => {
             await pauseManager.pauseGlobal(PauseCategory.ADMIN);
             await expect(
-                lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, mezzanineAddr, seniorAddr],
-                        [false, false, false]
-                    )
+                vault.connect(deployer).setTrancheConfig(
+                    [
+                        {tranche: juniorAddr, riskPremiumBps: 2000, enabled: true},
+                        {tranche: mezzanineAddr, riskPremiumBps: 3000, enabled: true},
+                        {tranche: seniorAddr, riskPremiumBps: 5000, enabled: true},
+                    ],
+                    [false, false, false],
+                    0
+                )
             )
-                .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
+                .to.be.revertedWithCustomError(vault, "CategoryPaused")
                 .withArgs(PauseCategory.ADMIN);
             await expect(lossManager.connect(deployer).setMaxLossPerTxUSDC(1n))
                 .to.be.revertedWithCustomError(lossManager, "CategoryPaused")
@@ -364,14 +409,14 @@ describe("LossManager", () => {
     });
 
     describe("Initialization and views", () => {
-        it("Exposes tranche order and pair flags", async () => {
-            const len = await lossManager.trancheOrderLength();
+        it("Exposes tranche order and pair flags via Vault", async () => {
+            const len = await vault.tranchesLength();
             expect(len).to.equal(3n);
 
-            const order = await lossManager.getTrancheOrder();
+            const order = await vault.getTrancheOrder();
             expect(order).to.deep.equal([juniorAddr, mezzanineAddr, seniorAddr]);
 
-            const [order2, pairFlags] = await lossManager.getTrancheOrderAndPairs();
+            const [order2, pairFlags] = await vault.getTrancheOrderAndPairs();
             expect(order2).to.deep.equal([juniorAddr, mezzanineAddr, seniorAddr]);
             expect(pairFlags).to.deep.equal([false, false, false]);
         });
@@ -379,7 +424,7 @@ describe("LossManager", () => {
         it("Reverts on zero vault address during initialization", async () => {
             const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
             await expect(
-                upgrades.deployProxy(LossManagerFactory, [[juniorAddr], [false], 0], {
+                upgrades.deployProxy(LossManagerFactory, [0], {
                     kind: "uups",
                     initializer: "initialize",
                     unsafeAllow: ["constructor", "state-variable-immutable"],
@@ -441,10 +486,7 @@ describe("LossManager", () => {
             for (let i = 0; i < 24; i++) {
                 const order: string[] = perms[i % perms.length];
 
-                const tx1 = await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(order, new Array(order.length).fill(false));
-                await tx1.wait();
+                await setOrderAndPairs(order, new Array(order.length).fill(false));
 
                 await time.increase(DAY);
                 const {parsed, cuts} = await applyLossAndCapture(order, to6(1n));
@@ -479,14 +521,7 @@ describe("LossManager", () => {
             await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(9n)));
 
             // Order: [junior, mezz, senior]
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, mezzanineAddr, seniorAddr],
-                        [false, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs([juniorAddr, mezzanineAddr, seniorAddr], [false, false, false]);
 
             const j0 = await mzusd.balanceOf(juniorAddr);
             const m0 = await mzusd.balanceOf(mezzanineAddr);
@@ -501,14 +536,7 @@ describe("LossManager", () => {
             expect(await mzusd.balanceOf(seniorAddr)).to.equal(s0);
 
             // Change order: [senior, mezz, junior]
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [seniorAddr, mezzanineAddr, juniorAddr],
-                        [false, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs([seniorAddr, mezzanineAddr, juniorAddr], [false, false, false]);
 
             const j1 = await mzusd.balanceOf(juniorAddr);
             const m1 = await mzusd.balanceOf(mezzanineAddr);
@@ -586,7 +614,8 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, depositMZ);
 
             const epochId = await vault.currentEpochId();
-            await (await junior.connect(alice).requestWithdrawal(depositMZ)).wait();
+            const pendingShares = await junior.balanceOf(alice.address);
+            await (await junior.connect(alice).requestWithdrawal(pendingShares)).wait();
 
             await time.increase(DAY);
             const epochBefore = await vault.currentEpochId();
@@ -599,7 +628,7 @@ describe("LossManager", () => {
 
             await (await junior.connect(deployer).finalizeEpoch(epochId)).wait();
             const [, , totalShares, totalAssets] = await junior.getEpochInfo(epochId);
-            expect(totalShares).to.equal(depositMZ);
+            expect(totalShares).to.equal(pendingShares);
             expect(totalAssets).to.equal(expectedRemaining);
 
             const before = await mzusd.balanceOf(alice.address);
@@ -620,12 +649,13 @@ describe("LossManager", () => {
         });
 
         it("Does not burn finalized umbrella reserves", async () => {
-            await lossManager.setTrancheOrderAndPairs([juniorAddr], [false]);
+            await setOrderAndPairs([juniorAddr], [false]);
 
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -643,12 +673,13 @@ describe("LossManager", () => {
         });
 
         it("Accumulates uncovered when loss exceeds non-reserved assets", async () => {
-            await lossManager.setTrancheOrderAndPairs([juniorAddr], [false]);
+            await setOrderAndPairs([juniorAddr], [false]);
 
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -667,12 +698,13 @@ describe("LossManager", () => {
         });
 
         it("Accumulates uncovered across epochs", async () => {
-            await lossManager.setTrancheOrderAndPairs([juniorAddr], [false]);
+            await setOrderAndPairs([juniorAddr], [false]);
 
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(60n));
+            const sharesToWithdraw = await junior.previewWithdraw(to18(60n));
+            await junior.connect(alice).requestWithdrawal(sharesToWithdraw);
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -690,14 +722,7 @@ describe("LossManager", () => {
         });
 
         it("Burns all available across all tranches, then accumulates more debt when TVL is zero", async () => {
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, mezzanineAddr, seniorAddr],
-                        [false, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs([juniorAddr, mezzanineAddr, seniorAddr], [false, false, false]);
 
             // Deposit 20 into each tranche, then reserve 10 via umbrella withdrawal.
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(20n)));
@@ -705,9 +730,11 @@ describe("LossManager", () => {
             await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(20n)));
 
             const epochAtRequest = await vault.currentEpochId();
-            await junior.connect(alice).requestWithdrawal(to18(10n));
-            await mezzanine.connect(bob).requestWithdrawal(to18(10n));
-            await senior.connect(carol).requestWithdrawal(to18(10n));
+            await junior.connect(alice).requestWithdrawal(await junior.previewWithdraw(to18(10n)));
+            await mezzanine
+                .connect(bob)
+                .requestWithdrawal(await mezzanine.previewWithdraw(to18(10n)));
+            await senior.connect(carol).requestWithdrawal(await senior.previewWithdraw(to18(10n)));
 
             await time.increase(DAY);
             await vault.connect(navOracleSigner).distributeYield(0);
@@ -748,14 +775,10 @@ describe("LossManager", () => {
         });
 
         it("Production order pair drains all tranches and next loss accumulates pure debt", async () => {
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [polAddr, juniorAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [polAddr, juniorAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             // Keep non-tranche supply so sanity check (loss <= totalSupply) still allows second loss.
             await mintMZUSDFor(carol, to6(100n));
@@ -811,75 +834,94 @@ describe("LossManager", () => {
         });
     });
     describe("Order configuration validation", () => {
-        it("Reverts in setTrancheOrderAndPairs + applyLoss zero", async () => {
-            await expect(
-                lossManager.connect(deployer).setTrancheOrderAndPairs([], [])
-            ).to.be.revertedWithCustomError(lossManager, "ZeroLength");
+        it("Reverts in setTrancheConfig with empty order + applyLoss zero", async () => {
+            await expect(vault.setTrancheConfig([], [], 0)).to.be.revertedWithCustomError(
+                vault,
+                "NoTranchesAdded"
+            );
 
             await expect(
-                lossManager.connect(deployer).setTrancheOrderAndPairs([juniorAddr], [])
-            ).to.be.revertedWithCustomError(lossManager, "LengthMismatch");
-
-            await expect(
-                lossManager.connect(deployer).setTrancheOrderAndPairs([ethers.ZeroAddress], [false])
-            ).to.be.revertedWithCustomError(lossManager, "ZeroAddress");
+                vault.setTrancheConfig(
+                    [{tranche: juniorAddr, riskPremiumBps: 10000, enabled: true}],
+                    [],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "LengthMismatch");
 
             await expect(
                 lossManager.connect(navOracleSigner).applyLoss(0)
             ).to.be.revertedWithCustomError(lossManager, "ZeroAmount");
         });
 
+        it("Reverts on unregistered tranche in order", async () => {
+            const randomAddr = ethers.Wallet.createRandom().address;
+            await expect(
+                vault.setTrancheConfig(
+                    [{tranche: randomAddr, riskPremiumBps: 10000, enabled: true}],
+                    [false],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "TrancheNotRegistered");
+        });
+
         it("Reverts on duplicate tranche in order", async () => {
             await expect(
-                lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs([juniorAddr, juniorAddr], [false, false])
-            ).to.be.revertedWithCustomError(lossManager, "DuplicateTranche");
+                vault.setTrancheConfig(
+                    [
+                        {tranche: juniorAddr, riskPremiumBps: 5000, enabled: true},
+                        {tranche: juniorAddr, riskPremiumBps: 5000, enabled: true},
+                    ],
+                    [false, false],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "DuplicateTranche");
         });
 
         it("Reverts when pair flags are malformed", async () => {
+            await vault.registerTranche(polAddr);
             await expect(
-                lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, false, true, false]
-                    )
-            ).to.be.revertedWithCustomError(lossManager, "PairNotContiguous");
+                vault.setTrancheConfig(
+                    [
+                        {tranche: juniorAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: polAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: mezzanineAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: seniorAddr, riskPremiumBps: 2500, enabled: true},
+                    ],
+                    [true, false, true, false],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "PairNotContiguous");
         });
 
         it("Reverts when pair flag has no adjacent pair at the end", async () => {
+            await vault.registerTranche(polAddr);
             await expect(
-                lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr],
-                        [false, false, true]
-                    )
-            ).to.be.revertedWithCustomError(lossManager, "PairNotContiguous");
+                vault.setTrancheConfig(
+                    [
+                        {tranche: juniorAddr, riskPremiumBps: 3333, enabled: true},
+                        {tranche: polAddr, riskPremiumBps: 3333, enabled: true},
+                        {tranche: mezzanineAddr, riskPremiumBps: 3334, enabled: true},
+                    ],
+                    [false, false, true],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "PairNotContiguous");
         });
 
         it("Clears previous pairs on reconfiguration", async () => {
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await vault.registerTranche(polAddr);
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [false, false, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [false, false, false, false]
+            );
 
-            expect(await lossManager.tranchePairedTo(juniorAddr)).to.equal(ethers.ZeroAddress);
-            expect(await lossManager.tranchePairedTo(polAddr)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(juniorAddr)).to.equal(ethers.ZeroAddress);
+            expect(await vault.tranchePairedTo(polAddr)).to.equal(ethers.ZeroAddress);
         });
     });
 
@@ -900,11 +942,7 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(7n)));
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(11n)));
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs([juniorAddr, polAddr], [true, true])
-            ).wait();
+            await setOrderAndPairs([juniorAddr, polAddr], [true, true]);
 
             const requestedLossesUSDC = [1n, 2n, 1n, 2n, 3n, 1n, 4n, 1n, 1n, 2n];
             for (const requested of requestedLossesUSDC) {
@@ -943,14 +981,10 @@ describe("LossManager", () => {
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
 
             // order: [junior, pol, mezz, senior]
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             const j0 = await mzusd.balanceOf(juniorAddr);
             const p0 = await mzusd.balanceOf(polAddr);
@@ -970,14 +1004,10 @@ describe("LossManager", () => {
             const pDeposit = await mintMZUSDFor(deployer, to6(300n));
             await depositMZIntoPol(pDeposit);
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             const jTvl = await junior.totalAssets();
             const pTvl = await pol.totalAssets();
@@ -997,14 +1027,10 @@ describe("LossManager", () => {
         it("Pair-mode burns only from the tranche with TVL", async () => {
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(50n)));
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             const j0 = await mzusd.balanceOf(juniorAddr);
             const p0 = await mzusd.balanceOf(polAddr);
@@ -1021,14 +1047,10 @@ describe("LossManager", () => {
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(5n)));
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(20n)));
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             const j0 = await mzusd.balanceOf(juniorAddr);
             const p0 = await mzusd.balanceOf(polAddr);
@@ -1048,14 +1070,10 @@ describe("LossManager", () => {
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(30_000n)));
 
             // Put pair first
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
-                        [true, true, false, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
 
             const mStart = await mzusd.balanceOf(mezzanineAddr);
             const sStart = await mzusd.balanceOf(seniorAddr);
@@ -1097,14 +1115,10 @@ describe("LossManager", () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
 
-            await (
-                await lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
-                        [false, true, true, false]
-                    )
-            ).wait();
+            await setOrderAndPairs(
+                [mezzanineAddr, juniorAddr, polAddr, seniorAddr],
+                [false, true, true, false]
+            );
 
             for (let k = 1; k <= 20; k++) {
                 const lossUSDC = 5n + BigInt(k); // 6..25
@@ -1138,20 +1152,25 @@ describe("LossManager", () => {
     });
 
     describe("Order configuration validation (edge)", () => {
-        it("Pair flags set but NOT contiguous -> reverts in setTrancheOrderAndPairs", async () => {
+        it("Pair flags set but NOT contiguous -> reverts in setTrancheConfig", async () => {
             await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
             await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
             await depositMZIntoTranche(alice, mezzanine, await mintMZUSDFor(alice, to6(100n)));
 
             // Not contiguous: junior, mezz, pol, senior
+            await vault.registerTranche(polAddr);
             await expect(
-                lossManager
-                    .connect(deployer)
-                    .setTrancheOrderAndPairs(
-                        [juniorAddr, mezzanineAddr, polAddr, seniorAddr],
-                        [true, false, true, false]
-                    )
-            ).to.be.revertedWithCustomError(lossManager, "PairNotContiguous");
+                vault.setTrancheConfig(
+                    [
+                        {tranche: juniorAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: mezzanineAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: polAddr, riskPremiumBps: 2500, enabled: true},
+                        {tranche: seniorAddr, riskPremiumBps: 2500, enabled: true},
+                    ],
+                    [true, false, true, false],
+                    0
+                )
+            ).to.be.revertedWithCustomError(vault, "PairNotContiguous");
         });
     });
 });
