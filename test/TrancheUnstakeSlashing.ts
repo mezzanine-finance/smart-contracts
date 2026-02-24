@@ -47,8 +47,7 @@ function computeSlash(
     }
 
     const yieldPerShare = finalizationPrice - snapshotPrice;
-    const slashPerShare = (yieldPerShare * reductionBps) / BPS;
-    return (slashPerShare * userShares) / shareUnit;
+    return (yieldPerShare * reductionBps * userShares) / BPS / shareUnit;
 }
 
 describe("Tranche unstake slashing", () => {
@@ -57,6 +56,7 @@ describe("Tranche unstake slashing", () => {
     let deployer: any;
     let alice: any;
     let bob: any;
+    let carol: any;
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -73,7 +73,7 @@ describe("Tranche unstake slashing", () => {
     let navOracleSigner: any;
 
     before(async () => {
-        [deployer, alice, bob] = await ethers.getSigners();
+        [deployer, alice, bob, carol] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -333,6 +333,252 @@ describe("Tranche unstake slashing", () => {
         expect(ppsAfterClaim).to.be.gt(ppsBeforeClaim);
         expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
         expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
+    });
+
+    it("claim works when last pending user makes ERC4626 share supply zero after finalize", async () => {
+        const slashBps = 4_000n;
+        await tranche.connect(deployer).setUnstakeYieldReductionBps(slashBps);
+
+        // Single-user tranche setup: Alice is the only LP and later the only pending withdrawer.
+        await mintAndDepositIntoTranche(alice, to6(300n));
+
+        // Start a new epoch with positive streamed yield so slash math has non-zero input.
+        await advanceEpoch(to6(90n));
+        const targetEpoch = await vault.currentEpochId();
+        const scale = await shareUnit();
+
+        const aliceShares = await tranche.balanceOf(alice.address);
+        expect(aliceShares).to.be.gt(0n);
+
+        // Move all Alice shares under umbrella; wallet share balance becomes zero.
+        await tranche.connect(alice).requestWithdrawal(aliceShares);
+        const snapshotPrice = await tranche.userSnapshotPrice(alice.address, targetEpoch);
+        expect(await tranche.balanceOf(alice.address)).to.equal(0n);
+
+        // Advance so epoch becomes finalizable; all remaining ERC4626 supply is still umbrella-held.
+        await advanceEpoch(0n);
+        expect(await tranche.totalSupply()).to.equal(aliceShares);
+
+        // Finalization burns umbrella shares; this is the edge case where totalSupply goes to zero.
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+        expect(await tranche.totalSupply()).to.equal(0n);
+
+        const [totalShares, totalAssets, finalizationPrice] =
+            await tranche.finalizedEpochs(targetEpoch);
+        expect(totalShares).to.equal(aliceShares);
+
+        const fullUserAssets = (aliceShares * totalAssets) / totalShares;
+        let expectedSlash = computeSlash(
+            finalizationPrice,
+            snapshotPrice,
+            slashBps,
+            aliceShares,
+            scale
+        );
+        if (expectedSlash > fullUserAssets) {
+            expectedSlash = fullUserAssets;
+        }
+        const expectedClaim = fullUserAssets - expectedSlash;
+
+        // Claim must still succeed and settle reserved assets correctly despite zero ERC4626 supply.
+        const aliceBefore = await mzusd.balanceOf(alice.address);
+        await tranche.connect(alice).claim(targetEpoch);
+        const aliceAfter = await mzusd.balanceOf(alice.address);
+
+        expect(aliceAfter - aliceBefore).to.equal(expectedClaim);
+        expect(await tranche.reservedAssets()).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
+        expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
+    });
+
+    it("single-user epoch with finalized totalAssets=0 claims zero and clears pending state", async () => {
+        // Alice is the only LP and requests full withdrawal into umbrella.
+        await mintAndDepositIntoTranche(alice, to6(300n));
+        const targetEpoch = await vault.currentEpochId();
+        const aliceShares = await tranche.balanceOf(alice.address);
+        await tranche.connect(alice).requestWithdrawal(aliceShares);
+
+        // Simulate complete insolvency of tranche assets before finalization.
+        const trancheBalanceBeforeBurn = await mzusd.balanceOf(tranche.target);
+        await tranche.connect(lossManagerSigner).burnMZUSD(trancheBalanceBeforeBurn);
+        expect(await mzusd.balanceOf(tranche.target)).to.equal(0n);
+        expect(await tranche.totalAssets()).to.equal(0n);
+
+        // Finalize with non-zero shares but zero assets credited.
+        await advanceEpoch(0n);
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+        const [totalShares, totalAssets, finalizationPrice] =
+            await tranche.finalizedEpochs(targetEpoch);
+        expect(totalShares).to.equal(aliceShares);
+        expect(totalAssets).to.equal(0n);
+        expect(finalizationPrice).to.equal(0n);
+
+        // Claim succeeds, pays zero, and clears user pending records.
+        const aliceBefore = await mzusd.balanceOf(alice.address);
+        await tranche.connect(alice).claim(targetEpoch);
+        const aliceAfter = await mzusd.balanceOf(alice.address);
+
+        expect(aliceAfter - aliceBefore).to.equal(0n);
+        expect(await tranche.reservedAssets()).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
+        expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
+    });
+
+    it("multi-user epoch with finalized totalAssets=0 lets all users claim zero", async () => {
+        // Two users request full withdrawals in the same epoch.
+        await mintAndDepositIntoTranche(alice, to6(300n));
+        await mintAndDepositIntoTranche(bob, to6(700n));
+        const targetEpoch = await vault.currentEpochId();
+        const aliceShares = await tranche.balanceOf(alice.address);
+        const bobShares = await tranche.balanceOf(bob.address);
+        await tranche.connect(alice).requestWithdrawal(aliceShares);
+        await tranche.connect(bob).requestWithdrawal(bobShares);
+
+        // Burn all tranche assets before finalization so finalized totalAssets becomes zero.
+        const trancheBalanceBeforeBurn = await mzusd.balanceOf(tranche.target);
+        await tranche.connect(lossManagerSigner).burnMZUSD(trancheBalanceBeforeBurn);
+        expect(await mzusd.balanceOf(tranche.target)).to.equal(0n);
+        expect(await tranche.totalAssets()).to.equal(0n);
+
+        await advanceEpoch(0n);
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+        const [totalShares, totalAssets, finalizationPrice] =
+            await tranche.finalizedEpochs(targetEpoch);
+
+        expect(totalShares).to.equal(aliceShares + bobShares);
+        expect(totalAssets).to.equal(0n);
+        expect(finalizationPrice).to.equal(0n);
+
+        // Both claims are successful and pay zero.
+        const aliceBefore = await mzusd.balanceOf(alice.address);
+        const bobBefore = await mzusd.balanceOf(bob.address);
+        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(bob).claim(targetEpoch);
+        const aliceAfter = await mzusd.balanceOf(alice.address);
+        const bobAfter = await mzusd.balanceOf(bob.address);
+
+        expect(aliceAfter - aliceBefore).to.equal(0n);
+        expect(bobAfter - bobBefore).to.equal(0n);
+        expect(await tranche.reservedAssets()).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
+        expect(await tranche.userSharesByEpoch(bob.address, targetEpoch)).to.equal(0n);
+    });
+
+    it("max slash bps keeps claim bounded and non-negative", async () => {
+        // Use near-maximum slashing to stress the formula under the harshest allowed config.
+        const slashBps = 9_999n;
+        await tranche.connect(deployer).setUnstakeYieldReductionBps(slashBps);
+
+        // Keep Bob in tranche so Alice does NOT own 100% of finalized epoch assets.
+        // This makes Alice's payout a real pro-rata slice (more realistic than a single-user case).
+        await mintAndDepositIntoTranche(alice, to6(123n));
+        await mintAndDepositIntoTranche(bob, to6(877n));
+
+        // Start a positive-yield epoch. After Alice snapshots, finalization should happen at a higher price,
+        // so slashing branch is definitely active (finalizationPrice > snapshotPrice).
+        await advanceEpoch(to6(321n));
+        const targetEpoch = await vault.currentEpochId();
+        const scale = await shareUnit();
+
+        // Alice requests full withdrawal and captures snapshot price used later in slash math.
+        const aliceShares = await tranche.balanceOf(alice.address);
+        await tranche.connect(alice).requestWithdrawal(aliceShares);
+        const snapshotPrice = await tranche.userSnapshotPrice(alice.address, targetEpoch);
+
+        // Move to next epoch and finalize Alice's pending shares into finalizedEpochs snapshot data.
+        await advanceEpoch(0n);
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+
+        const [totalShares, totalAssets, finalizationPrice] =
+            await tranche.finalizedEpochs(targetEpoch);
+        // Alice's max claim before slashing: her pro-rata part of finalized assets pool.
+        const fullUserAssets = (aliceShares * totalAssets) / totalShares;
+        // Pure math slash preview used to compare against the on-chain claim result.
+        const rawSlash = computeSlash(
+            finalizationPrice,
+            snapshotPrice,
+            slashBps,
+            aliceShares,
+            scale
+        );
+
+        // Core safety invariant: slash cannot exceed user's own finalized entitlement.
+        // If this holds, claim payout fullUserAssets - rawSlash is never negative.
+        expect(rawSlash).to.be.lte(fullUserAssets);
+        const expectedClaim = fullUserAssets - rawSlash;
+
+        // Execute claim and assert the transfer equals the expected bounded payout.
+        const aliceBefore = await mzusd.balanceOf(alice.address);
+        await tranche.connect(alice).claim(targetEpoch);
+        const aliceAfter = await mzusd.balanceOf(alice.address);
+
+        expect(aliceAfter - aliceBefore).to.equal(expectedClaim);
+        expect(expectedClaim).to.be.gte(0n);
+    });
+
+    it("rounding dust: total claimed never exceeds finalized assets", async () => {
+        // Turn off slashing to isolate only floor-division effects in pro-rata claim math.
+        // We want this test to cover rounding behavior, not slash behavior.
+        await tranche.connect(deployer).setUnstakeYieldReductionBps(0n);
+
+        // Build a 3-user pool with awkward sizes to avoid "too clean" divisibility.
+        await mintAndDepositIntoTranche(alice, to6(111n));
+        await mintAndDepositIntoTranche(bob, to6(53n));
+        await mintAndDepositIntoTranche(carol, to6(37n));
+
+        // Start a yield epoch so finalized assets are not a trivial integer multiple in share space.
+        await advanceEpoch(to6(19n));
+        const targetEpoch = await vault.currentEpochId();
+
+        const aShares = await tranche.balanceOf(alice.address);
+        const bShares = await tranche.balanceOf(bob.address);
+        const cShares = await tranche.balanceOf(carol.address);
+
+        // Request non-round partial share amounts to amplify floor-division remainders ("dust").
+        const aReq = aShares / 3n + 1n;
+        const bReq = bShares / 2n + 1n;
+        const cReq = cShares / 5n + 1n;
+
+        // Move selected shares under umbrella for the same epoch.
+        await tranche.connect(alice).requestWithdrawal(aReq);
+        await tranche.connect(bob).requestWithdrawal(bReq);
+        await tranche.connect(carol).requestWithdrawal(cReq);
+
+        // Finalize that epoch and snapshot totalShares/totalAssets used by claim formula.
+        await advanceEpoch(0n);
+        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
+
+        const [totalShares, totalAssets] = await tranche.finalizedEpochs(targetEpoch);
+        expect(totalShares).to.equal(aReq + bReq + cReq);
+
+        // Expected claim per user follows the exact on-chain floor formula:
+        // floor(userShares * totalAssets / totalShares).
+        const expectedA = (aReq * totalAssets) / totalShares;
+        const expectedB = (bReq * totalAssets) / totalShares;
+        const expectedC = (cReq * totalAssets) / totalShares;
+        const expectedTotalClaimed = expectedA + expectedB + expectedC;
+
+        const aBefore = await mzusd.balanceOf(alice.address);
+        const bBefore = await mzusd.balanceOf(bob.address);
+        const cBefore = await mzusd.balanceOf(carol.address);
+
+        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(bob).claim(targetEpoch);
+        await tranche.connect(carol).claim(targetEpoch);
+
+        const aAfter = await mzusd.balanceOf(alice.address);
+        const bAfter = await mzusd.balanceOf(bob.address);
+        const cAfter = await mzusd.balanceOf(carol.address);
+
+        const actualTotalClaimed = aAfter - aBefore + (bAfter - bBefore) + (cAfter - cBefore);
+        // All users must receive exactly the floor-based expectations.
+        expect(actualTotalClaimed).to.equal(expectedTotalClaimed);
+        // Safety bound: distributed claims can never exceed finalized assets.
+        expect(actualTotalClaimed).to.be.lte(totalAssets);
+
+        // Any remainder is integer-division dust. It stays in reservedAssets
+        const expectedDust = totalAssets - expectedTotalClaimed;
+        expect(await tranche.reservedAssets()).to.equal(expectedDust);
     });
 
     it("does not slash when finalization price is below snapshot price", async () => {

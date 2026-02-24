@@ -265,8 +265,7 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
         }
 
         uint256 yieldPerShare = finalizationPrice - snapshotPrice;
-        uint256 slashPerShare = (yieldPerShare * slashBps) / BPS;
-        slashAmount = (slashPerShare * userShares) / shareUnit;
+        slashAmount = (yieldPerShare * slashBps * userShares) / BPS / shareUnit;
     }
 
     function _advanceEpochAndDistributeYield(uint256 reportedYieldUSDC) internal {
