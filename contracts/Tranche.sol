@@ -286,8 +286,9 @@ contract Tranche is
             finalizedData.finalizationPrice > snapshotPrice
         ) {
             uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
-            uint256 slashPerShare = (yieldPerShare * unstakeYieldReductionBps) / BASIS_POINTS;
-            uint256 slashAmount = (slashPerShare * userShares) / (10 ** decimals());
+            uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
+                BASIS_POINTS /
+                (10 ** decimals());
             if (slashAmount > userAssets) {
                 slashAmount = userAssets;
             }
@@ -485,8 +486,9 @@ contract Tranche is
                 e.finalizationPrice > snapshotPrice
             ) {
                 uint256 yieldPerShare = e.finalizationPrice - snapshotPrice;
-                uint256 slashPerShare = (yieldPerShare * unstakeYieldReductionBps) / BASIS_POINTS;
-                uint256 slashAmount = (slashPerShare * pendingShares) / (10 ** decimals());
+                uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * pendingShares) /
+                    BASIS_POINTS /
+                    (10 ** decimals());
                 if (slashAmount > claimableAssets) {
                     slashAmount = claimableAssets;
                 }
