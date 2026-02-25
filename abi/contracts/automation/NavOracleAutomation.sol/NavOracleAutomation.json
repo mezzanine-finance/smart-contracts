@@ -192,19 +192,6 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": true,
-                "internalType": "address",
-                "name": "newOracle",
-                "type": "address"
-            }
-        ],
-        "name": "NavOracleUpdated",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
                 "indexed": false,
                 "internalType": "bool",
                 "name": "isYield",
@@ -275,11 +262,17 @@
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "newOracle",
+                "name": "navOracle",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "totalSupplyOracle",
                 "type": "address"
             }
         ],
-        "name": "TotalSupplyOracleUpdated",
+        "name": "OraclesUpdated",
         "type": "event"
     },
     {
@@ -538,24 +531,16 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "newOracle",
+                "name": "newNavOracle",
                 "type": "address"
-            }
-        ],
-        "name": "setNavOracle",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
+            },
             {
                 "internalType": "address",
-                "name": "newOracle",
+                "name": "newTotalSupplyOracle",
                 "type": "address"
             }
         ],
-        "name": "setTotalSupplyOracle",
+        "name": "setOracles",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

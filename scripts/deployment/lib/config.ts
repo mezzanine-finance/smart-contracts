@@ -310,6 +310,11 @@ function validateConfig(config: DeployConfig, filePath: string) {
     if (config.navOracle.totalSupplyFeed) {
         requireAddress(config.navOracle.totalSupplyFeed, "navOracle.totalSupplyFeed");
     }
+    if (!!config.navOracle.navFeed !== !!config.navOracle.totalSupplyFeed) {
+        throw new Error(
+            "navOracle.navFeed and navOracle.totalSupplyFeed must be configured together"
+        );
+    }
     if (config.navOracle.maxAnswerStalenessSec !== undefined) {
         assert(
             Number.isInteger(config.navOracle.maxAnswerStalenessSec) &&
