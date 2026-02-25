@@ -72,6 +72,11 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "oracle",
+                "type": "address"
+            },
+            {
                 "internalType": "uint256",
                 "name": "updatedAt",
                 "type": "uint256"
@@ -108,6 +113,11 @@
     },
     {
         "inputs": [
+            {
+                "internalType": "address",
+                "name": "oracle",
+                "type": "address"
+            },
             {
                 "internalType": "uint256",
                 "name": "updatedAt",
