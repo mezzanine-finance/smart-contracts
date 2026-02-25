@@ -55,6 +55,33 @@
     },
     {
         "inputs": [],
+        "name": "InvalidAnswerStaleness",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "int256",
+                "name": "answer",
+                "type": "int256"
+            }
+        ],
+        "name": "InvalidOracleAnswer",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "updatedAt",
+                "type": "uint256"
+            }
+        ],
+        "name": "InvalidOracleTimestamp",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "InvalidVetoPeriod",
         "type": "error"
     },
@@ -77,6 +104,27 @@
     {
         "inputs": [],
         "name": "PendingNavExists",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "updatedAt",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "currentTimestamp",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxAnswerStaleness",
+                "type": "uint256"
+            }
+        ],
+        "name": "StaleOracleAnswer",
         "type": "error"
     },
     {
@@ -107,6 +155,19 @@
         "inputs": [
             {
                 "indexed": false,
+                "internalType": "uint256",
+                "name": "newMaxAnswerStaleness",
+                "type": "uint256"
+            }
+        ],
+        "name": "MaxAnswerStalenessUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
                 "internalType": "bool",
                 "name": "isYield",
                 "type": "bool"
@@ -125,6 +186,19 @@
             }
         ],
         "name": "NavApplied",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newOracle",
+                "type": "address"
+            }
+        ],
+        "name": "NavOracleUpdated",
         "type": "event"
     },
     {
@@ -199,6 +273,19 @@
         "anonymous": false,
         "inputs": [
             {
+                "indexed": true,
+                "internalType": "address",
+                "name": "newOracle",
+                "type": "address"
+            }
+        ],
+        "name": "TotalSupplyOracleUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "newPeriod",
@@ -207,6 +294,19 @@
         ],
         "name": "VetoPeriodUpdated",
         "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "DEFAULT_MAX_ANSWER_STALENESS",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [],
@@ -312,10 +412,36 @@
     },
     {
         "inputs": [],
+        "name": "maxAnswerStaleness",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "mzusd",
         "outputs": [
             {
                 "internalType": "contract IERC20",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "contract AggregatorV3Interface",
                 "name": "",
                 "type": "address"
             }
@@ -398,6 +524,45 @@
     {
         "inputs": [
             {
+                "internalType": "uint32",
+                "name": "newMaxAnswerStaleness",
+                "type": "uint32"
+            }
+        ],
+        "name": "setMaxAnswerStaleness",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "newOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setNavOracle",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "newOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setTotalSupplyOracle",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "newPeriod",
                 "type": "uint256"
@@ -409,16 +574,23 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "navUSDC",
-                "type": "uint256"
-            }
-        ],
+        "inputs": [],
         "name": "submitNav",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "totalSupplyOracle",
+        "outputs": [
+            {
+                "internalType": "contract AggregatorV3Interface",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILossManager} from "../interfaces/ILossManager.sol";
@@ -17,13 +18,17 @@ import {IVault} from "../interfaces/IVault.sol";
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
+    uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 1 hours;
 
     IERC20 public immutable mzusd;
     address public immutable vault;
     address public immutable lossManager;
+    AggregatorV3Interface public navOracle;
+    AggregatorV3Interface public totalSupplyOracle;
 
     // Packed storage:
-    // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte) + vetoPeriod (4 bytes)
+    // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte)
+    //         + vetoPeriod (4 bytes) + maxAnswerStaleness (4 bytes)
     // uint128 comfortably covers practical USDC (6d) deltas with wide headroom.
     uint128 public pendingDeltaUSDC;
     // uint64 timestamp and uint32 durations match protocol style (IssuanceVault epoch config) and are ample.
@@ -31,6 +36,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     // Direction is stored separately to avoid signed-int casts/abs math during upkeep execution.
     bool public pendingIsYield;
     uint32 public vetoPeriod;
+    uint32 public maxAnswerStaleness;
 
     event NavSubmitted(
         uint256 navUSDC,
@@ -43,11 +49,22 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     event NavRejected(bool isYield, uint256 deltaUSDC, uint256 readyAt);
     event NavApplied(bool isYield, uint256 deltaUSDC, uint256 readyAt);
     event VetoPeriodUpdated(uint256 newPeriod);
+    event NavOracleUpdated(address indexed newOracle);
+    event TotalSupplyOracleUpdated(address indexed newOracle);
+    event MaxAnswerStalenessUpdated(uint256 newMaxAnswerStaleness);
 
     error PendingNavExists();
     error NoPendingNav();
     error NotReady(uint256 readyAt);
     error InvalidVetoPeriod();
+    error InvalidAnswerStaleness();
+    error InvalidOracleAnswer(int256 answer);
+    error InvalidOracleTimestamp(uint256 updatedAt);
+    error StaleOracleAnswer(
+        uint256 updatedAt,
+        uint256 currentTimestamp,
+        uint256 maxAnswerStaleness
+    );
     error ValueTooLarge();
     error ZeroAddress();
 
@@ -63,6 +80,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         vault = vault_;
         lossManager = lossManager_;
         _setVetoPeriod(vetoPeriod_);
+        _setMaxAnswerStaleness(DEFAULT_MAX_ANSWER_STALENESS);
     }
 
     function _resolveAuthority(address lossManager_) private view returns (address accessManager) {
@@ -71,14 +89,16 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (accessManager == address(0)) revert ZeroAddress();
     }
 
-    /// @notice Submit a NAV snapshot (USDC 6 decimals) and record total supply.
+    /// @notice Submit NAV and total supply snapshots from oracle feeds.
     /// @dev Reverts if a pending NAV exists. If vetoPeriod is 0, applies immediately.
-    /// @param navUSDC NAV snapshot in USDC (6 decimals).
-    function submitNav(uint256 navUSDC) external restricted {
+    function submitNav() external restricted {
         if (hasPendingNav()) revert PendingNavExists();
 
-        // aderyn-fp-next-line(reentrancy-state-change)
-        uint256 totalSupplyMZ = mzusd.totalSupply();
+        if (address(navOracle) == address(0)) revert ZeroAddress();
+        if (address(totalSupplyOracle) == address(0)) revert ZeroAddress();
+
+        uint256 navUSDC = _readFreshAnswer(navOracle);
+        uint256 totalSupplyMZ = _readFreshAnswer(totalSupplyOracle);
         if (block.timestamp > type(uint64).max) {
             revert ValueTooLarge();
         }
@@ -114,6 +134,29 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     function setVetoPeriod(uint256 newPeriod) external restricted {
         _setVetoPeriod(newPeriod);
         emit VetoPeriodUpdated(newPeriod);
+    }
+
+    /// @notice Update NAV oracle data feed address.
+    /// @param newOracle Address of AggregatorV3-compatible oracle.
+    function setNavOracle(address newOracle) external restricted {
+        if (newOracle == address(0)) revert ZeroAddress();
+        navOracle = AggregatorV3Interface(newOracle);
+        emit NavOracleUpdated(newOracle);
+    }
+
+    /// @notice Update total supply oracle data feed address.
+    /// @param newOracle Address of AggregatorV3-compatible oracle.
+    function setTotalSupplyOracle(address newOracle) external restricted {
+        if (newOracle == address(0)) revert ZeroAddress();
+        totalSupplyOracle = AggregatorV3Interface(newOracle);
+        emit TotalSupplyOracleUpdated(newOracle);
+    }
+
+    /// @notice Set maximum accepted oracle answer age.
+    /// @param newMaxAnswerStaleness Maximum staleness in seconds.
+    function setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) external restricted {
+        _setMaxAnswerStaleness(newMaxAnswerStaleness);
+        emit MaxAnswerStalenessUpdated(newMaxAnswerStaleness);
     }
 
     /// @notice Chainlink Automation check: pending NAV exists and veto period elapsed.
@@ -186,5 +229,22 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     function _setVetoPeriod(uint256 newPeriod) internal {
         if (newPeriod > MAX_VETO_PERIOD) revert InvalidVetoPeriod();
         vetoPeriod = uint32(newPeriod);
+    }
+
+    function _setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) internal {
+        if (newMaxAnswerStaleness == 0) revert InvalidAnswerStaleness();
+        maxAnswerStaleness = newMaxAnswerStaleness;
+    }
+
+    function _readFreshAnswer(
+        AggregatorV3Interface oracle_
+    ) internal view returns (uint256 answerValue) {
+        (, int256 answer, , uint256 updatedAt, ) = oracle_.latestRoundData();
+        if (answer < 0) revert InvalidOracleAnswer(answer);
+        if (updatedAt == 0 || updatedAt > block.timestamp) revert InvalidOracleTimestamp(updatedAt);
+        if (block.timestamp - updatedAt > uint256(maxAnswerStaleness)) {
+            revert StaleOracleAnswer(updatedAt, block.timestamp, maxAnswerStaleness);
+        }
+        answerValue = uint256(answer);
     }
 }

@@ -39,7 +39,7 @@ async function main() {
     console.log("MockNavSubmitterAutomation deployed at:", address);
     console.log("Deployment tx:", txHash);
     console.log(
-        "Next: grant ORACLE_ROLE on NavOracleAutomation.submitNav(uint256) to this address in AccessManager"
+        "Next: grant ORACLE_ROLE on NavOracleAutomation.submitNav() to this address in AccessManager"
     );
 }
 

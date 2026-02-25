@@ -813,6 +813,33 @@ async function main() {
         await (await navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)).wait();
         log.success("NavOracleAutomation.setVetoPeriod");
     }
+    if (config.navOracle.navFeed) {
+        const currentNavFeed = await navOracle.contract.navOracle();
+        if (currentNavFeed.toLowerCase() !== config.navOracle.navFeed.toLowerCase()) {
+            await (await navOracleAdmin.setNavOracle(config.navOracle.navFeed)).wait();
+            log.success("NavOracleAutomation.setNavOracle");
+        }
+    }
+    if (config.navOracle.totalSupplyFeed) {
+        const currentTotalSupplyFeed = await navOracle.contract.totalSupplyOracle();
+        if (
+            currentTotalSupplyFeed.toLowerCase() !== config.navOracle.totalSupplyFeed.toLowerCase()
+        ) {
+            await (
+                await navOracleAdmin.setTotalSupplyOracle(config.navOracle.totalSupplyFeed)
+            ).wait();
+            log.success("NavOracleAutomation.setTotalSupplyOracle");
+        }
+    }
+    if (config.navOracle.maxAnswerStalenessSec !== undefined) {
+        const currentStaleness = await navOracle.contract.maxAnswerStaleness();
+        if (currentStaleness !== BigInt(config.navOracle.maxAnswerStalenessSec)) {
+            await (
+                await navOracleAdmin.setMaxAnswerStaleness(config.navOracle.maxAnswerStalenessSec)
+            ).wait();
+            log.success("NavOracleAutomation.setMaxAnswerStaleness");
+        }
+    }
 
     // === Configure AccessManager roles ===
     log.step("Configuring AccessManager roles");
@@ -965,6 +992,9 @@ async function main() {
         [
             navOracle.contract.interface.getFunction("rejectPendingNav").selector,
             navOracle.contract.interface.getFunction("setVetoPeriod").selector,
+            navOracle.contract.interface.getFunction("setNavOracle").selector,
+            navOracle.contract.interface.getFunction("setTotalSupplyOracle").selector,
+            navOracle.contract.interface.getFunction("setMaxAnswerStaleness").selector,
         ],
         adminRole
     );

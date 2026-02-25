@@ -98,6 +98,9 @@ export interface LossManagerConfig {
 export interface NavOracleConfig {
     vetoPeriodSec: number;
     oracles: string[];
+    navFeed?: string;
+    totalSupplyFeed?: string;
+    maxAnswerStalenessSec?: number;
 }
 
 export interface UmbrellaFinalizerConfig {
@@ -300,6 +303,20 @@ function validateConfig(config: DeployConfig, filePath: string) {
 
     for (const addr of config.navOracle.oracles) {
         requireAddress(addr, "navOracle.oracles");
+    }
+    if (config.navOracle.navFeed) {
+        requireAddress(config.navOracle.navFeed, "navOracle.navFeed");
+    }
+    if (config.navOracle.totalSupplyFeed) {
+        requireAddress(config.navOracle.totalSupplyFeed, "navOracle.totalSupplyFeed");
+    }
+    if (config.navOracle.maxAnswerStalenessSec !== undefined) {
+        assert(
+            Number.isInteger(config.navOracle.maxAnswerStalenessSec) &&
+                config.navOracle.maxAnswerStalenessSec > 0 &&
+                config.navOracle.maxAnswerStalenessSec <= 0xffff_ffff,
+            "navOracle.maxAnswerStalenessSec must be in range [1, 4294967295]"
+        );
     }
 
     if (roles.oracles && roles.oracles.length > 0) {

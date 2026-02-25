@@ -13,6 +13,7 @@ import {
     IERC20,
     LossManager,
     MZUSD,
+    MockPackedNavOracle,
     NavOracleAutomation,
     ReservoirUSDC,
     Tranche,
@@ -58,6 +59,8 @@ describe("NavOracleAutomation", () => {
     let tranche: Tranche;
     let lossManager: LossManager;
     let navAutomation: NavOracleAutomation;
+    let navFeedOracle: MockPackedNavOracle;
+    let totalSupplyFeedOracle: MockPackedNavOracle;
     let whale: any;
 
     before(async () => {
@@ -151,6 +154,21 @@ describe("NavOracleAutomation", () => {
         )) as unknown as NavOracleAutomation;
         await navAutomation.waitForDeployment();
 
+        const PackedOracleFactory = await ethers.getContractFactory(
+            "MockPackedNavOracle",
+            deployer
+        );
+        navFeedOracle = (await PackedOracleFactory.deploy(
+            18,
+            "Mock NAV oracle"
+        )) as unknown as MockPackedNavOracle;
+        await navFeedOracle.waitForDeployment();
+        totalSupplyFeedOracle = (await PackedOracleFactory.deploy(
+            18,
+            "Mock totalSupply oracle"
+        )) as unknown as MockPackedNavOracle;
+        await totalSupplyFeedOracle.waitForDeployment();
+
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const burnSelector = mzusd.interface.getFunction("burn").selector;
@@ -199,6 +217,11 @@ describe("NavOracleAutomation", () => {
         const submitSelector = navAutomation.interface.getFunction("submitNav").selector;
         const rejectSelector = navAutomation.interface.getFunction("rejectPendingNav").selector;
         const setVetoSelector = navAutomation.interface.getFunction("setVetoPeriod").selector;
+        const setOracleSelector = navAutomation.interface.getFunction("setNavOracle").selector;
+        const setTotalSupplyOracleSelector =
+            navAutomation.interface.getFunction("setTotalSupplyOracle").selector;
+        const setStalenessSelector =
+            navAutomation.interface.getFunction("setMaxAnswerStaleness").selector;
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
             [submitSelector],
@@ -206,11 +229,19 @@ describe("NavOracleAutomation", () => {
         );
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
-            [rejectSelector, setVetoSelector],
+            [
+                rejectSelector,
+                setVetoSelector,
+                setOracleSelector,
+                setTotalSupplyOracleSelector,
+                setStalenessSelector,
+            ],
             ADMIN_ROLE
         );
         await accessManager.grantRole(ORACLE_ROLE, oracle.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target, 0);
+        await navAutomation.connect(deployer).setNavOracle(navFeedOracle.target);
+        await navAutomation.connect(deployer).setTotalSupplyOracle(totalSupplyFeedOracle.target);
 
         // Wire protocol and register tranche in IssuanceVault
         await vault.setLossManager(lossManager.target);
@@ -244,6 +275,16 @@ describe("NavOracleAutomation", () => {
         return mintedMZ;
     }
 
+    async function pushOracleAnswers(
+        navUSDC: bigint,
+        totalSupplyMZ: bigint,
+        updatedAt?: bigint
+    ): Promise<void> {
+        const ts = updatedAt ?? BigInt(await time.latest());
+        await navFeedOracle.setLatestRoundData(navUSDC, ts);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, ts);
+    }
+
     it("submits NAV snapshot and blocks double submit", async () => {
         await mintAndDepositIntoTranche(oracle, to6(100n));
 
@@ -251,8 +292,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(10n);
         const deltaUSDC = navUSDC - totalSupplyUSDC;
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        const tx = await navAutomation.connect(oracle).submitNav(navUSDC);
+        const tx = await navAutomation.connect(oracle).submitNav();
         const receipt = await tx.wait();
         const block = await ethers.provider.getBlock(receipt!.blockNumber);
         const submittedAt = BigInt(block!.timestamp);
@@ -266,9 +308,10 @@ describe("NavOracleAutomation", () => {
         expect(await navAutomation.pendingDeltaUSDC()).to.equal(deltaUSDC);
         expect(await navAutomation.pendingIsYield()).to.equal(true);
 
-        await expect(
-            navAutomation.connect(oracle).submitNav(navUSDC)
-        ).to.be.revertedWithCustomError(navAutomation, "PendingNavExists");
+        await expect(navAutomation.connect(oracle).submitNav()).to.be.revertedWithCustomError(
+            navAutomation,
+            "PendingNavExists"
+        );
     });
 
     it("performUpkeep reverts when protocol is paused", async () => {
@@ -277,8 +320,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(1n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
 
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
@@ -294,8 +338,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(1n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         const readyAt = await navAutomation.pendingReadyAt();
 
         await expect(navAutomation.performUpkeep("0x"))
@@ -317,7 +362,8 @@ describe("NavOracleAutomation", () => {
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const isYield = navUSDC >= totalSupplyUSDC;
         const deltaUSDC = isYield ? navUSDC - totalSupplyUSDC : totalSupplyUSDC - navUSDC;
-        const tx = await navAutomation.connect(oracle).submitNav(navUSDC);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+        const tx = await navAutomation.connect(oracle).submitNav();
         await expect(tx).to.emit(navAutomation, "NavSubmitted");
         const readyAt = await navAutomation.pendingReadyAt();
 
@@ -336,11 +382,13 @@ describe("NavOracleAutomation", () => {
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
 
         const firstNav = totalSupplyUSDC + to6(1n);
-        await navAutomation.connect(oracle).submitNav(firstNav);
+        await pushOracleAnswers(firstNav, totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
         await navAutomation.connect(deployer).rejectPendingNav();
 
         const secondNav = totalSupplyUSDC + to6(2n);
-        await expect(navAutomation.connect(oracle).submitNav(secondNav)).to.emit(
+        await pushOracleAnswers(secondNav, totalSupplyMZ);
+        await expect(navAutomation.connect(oracle).submitNav()).to.emit(
             navAutomation,
             "NavSubmitted"
         );
@@ -356,8 +404,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(5n);
         const deltaUSDC = navUSDC - totalSupplyUSDC;
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         const readyAt = await navAutomation.pendingReadyAt();
 
         await time.increase(DAY);
@@ -382,8 +431,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyUSDC = totalSupplyBefore / SCALE;
         const navUSDC = totalSupplyUSDC - to6(20n);
         const deltaUSDC = totalSupplyUSDC - navUSDC;
+        await pushOracleAnswers(navUSDC, totalSupplyBefore);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         const readyAt = await navAutomation.pendingReadyAt();
         await time.increase(DAY);
 
@@ -401,8 +451,9 @@ describe("NavOracleAutomation", () => {
 
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        await pushOracleAnswers(totalSupplyUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(totalSupplyUSDC);
+        await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
 
         const epochBefore = await vault.currentEpochId();
@@ -421,9 +472,10 @@ describe("NavOracleAutomation", () => {
         const navUSDC = totalSupplyUSDC + to6(3n);
 
         await time.increase(DAY);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
         const epochBefore = await vault.currentEpochId();
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         const epochAfter = await vault.currentEpochId();
 
         expect(epochAfter).to.equal(epochBefore + 1n);
@@ -437,8 +489,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(2n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        const submitTx = await navAutomation.connect(oracle).submitNav(navUSDC);
+        const submitTx = await navAutomation.connect(oracle).submitNav();
         const receipt = await submitTx.wait();
         const block = await ethers.provider.getBlock(receipt!.blockNumber);
         const submittedAt = BigInt(block!.timestamp);
@@ -458,16 +511,19 @@ describe("NavOracleAutomation", () => {
         expect(neededAfter).to.equal(true);
     });
 
-    it("reverts submitNav when computed delta exceeds uint128 storage bound", async () => {
-        // Build NAV so computed delta is exactly uint128.max + 1.
+    it("reverts submitNav when oracle answer is stale", async () => {
         await mintAndDepositIntoTranche(oracle, to6(1n));
+
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
-        const tooLargeNav = (1n << 128n) + totalSupplyUSDC;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        const staleUpdatedAt = BigInt(await time.latest()) - BigInt(DAY);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ, staleUpdatedAt);
 
-        await expect(
-            navAutomation.connect(oracle).submitNav(tooLargeNav)
-        ).to.be.revertedWithCustomError(navAutomation, "ValueTooLarge");
+        await expect(navAutomation.connect(oracle).submitNav()).to.be.revertedWithCustomError(
+            navAutomation,
+            "StaleOracleAnswer"
+        );
     });
 
     it("ignores checkData and performData payloads", async () => {
@@ -476,8 +532,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(4n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
 
         const [upkeepNeeded] = await navAutomation.checkUpkeep("0x1234");
@@ -507,8 +564,9 @@ describe("NavOracleAutomation", () => {
         const totalSupplyMZ = await mzusd.totalSupply();
         const totalSupplyUSDC = totalSupplyMZ / SCALE;
         const navUSDC = totalSupplyUSDC + to6(5n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
 
-        await navAutomation.connect(oracle).submitNav(navUSDC);
+        await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
         await navAutomation.performUpkeep("0x");
 
@@ -526,6 +584,11 @@ describe("NavOracleAutomation", () => {
         const submitSelector = navAutomation2.interface.getFunction("submitNav").selector;
         const rejectSelector = navAutomation2.interface.getFunction("rejectPendingNav").selector;
         const setVetoSelector = navAutomation2.interface.getFunction("setVetoPeriod").selector;
+        const setOracleSelector = navAutomation2.interface.getFunction("setNavOracle").selector;
+        const setTotalSupplyOracleSelector =
+            navAutomation2.interface.getFunction("setTotalSupplyOracle").selector;
+        const setStalenessSelector =
+            navAutomation2.interface.getFunction("setMaxAnswerStaleness").selector;
         await accessManager.setTargetFunctionRole(
             navAutomation2.target,
             [submitSelector],
@@ -533,10 +596,18 @@ describe("NavOracleAutomation", () => {
         );
         await accessManager.setTargetFunctionRole(
             navAutomation2.target,
-            [rejectSelector, setVetoSelector],
+            [
+                rejectSelector,
+                setVetoSelector,
+                setOracleSelector,
+                setTotalSupplyOracleSelector,
+                setStalenessSelector,
+            ],
             ADMIN_ROLE
         );
         await accessManager.grantRole(ADMIN_ROLE, navAutomation2.target, 0);
+        await navAutomation2.connect(deployer).setNavOracle(navFeedOracle.target);
+        await navAutomation2.connect(deployer).setTotalSupplyOracle(totalSupplyFeedOracle.target);
 
         await vault.setNavOracle(navAutomation2.target);
 
@@ -544,12 +615,13 @@ describe("NavOracleAutomation", () => {
         await accessManager.revokeRole(ADMIN_ROLE, navAutomation.target);
         await accessManager.grantRole(ORACLE_ROLE, bob.address, 0);
 
-        await expect(navAutomation.connect(oracle).submitNav(navUSDC)).to.be.reverted;
+        await expect(navAutomation.connect(oracle).submitNav()).to.be.reverted;
 
         const totalSupplyMZ2 = await mzusd.totalSupply();
         const totalSupplyUSDC2 = totalSupplyMZ2 / SCALE;
         const navUSDC2 = totalSupplyUSDC2 + to6(1n);
-        await navAutomation2.connect(bob).submitNav(navUSDC2);
+        await pushOracleAnswers(navUSDC2, totalSupplyMZ2);
+        await navAutomation2.connect(bob).submitNav();
         await time.increase(DAY);
         await navAutomation2.performUpkeep("0x");
 
