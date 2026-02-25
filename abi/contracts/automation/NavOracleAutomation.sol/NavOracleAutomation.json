@@ -55,6 +55,33 @@
     },
     {
         "inputs": [],
+        "name": "InvalidAnswerStaleness",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "int256",
+                "name": "answer",
+                "type": "int256"
+            }
+        ],
+        "name": "InvalidOracleAnswer",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "updatedAt",
+                "type": "uint256"
+            }
+        ],
+        "name": "InvalidOracleTimestamp",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "InvalidVetoPeriod",
         "type": "error"
     },
@@ -80,6 +107,27 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "updatedAt",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "currentTimestamp",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxAnswerStaleness",
+                "type": "uint256"
+            }
+        ],
+        "name": "StaleOracleAnswer",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "ValueTooLarge",
         "type": "error"
@@ -100,6 +148,19 @@
             }
         ],
         "name": "AuthorityUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newMaxAnswerStaleness",
+                "type": "uint256"
+            }
+        ],
+        "name": "MaxAnswerStalenessUpdated",
         "type": "event"
     },
     {
@@ -199,6 +260,25 @@
         "anonymous": false,
         "inputs": [
             {
+                "indexed": true,
+                "internalType": "address",
+                "name": "navOracle",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "totalSupplyOracle",
+                "type": "address"
+            }
+        ],
+        "name": "OraclesUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "newPeriod",
@@ -207,6 +287,19 @@
         ],
         "name": "VetoPeriodUpdated",
         "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "DEFAULT_MAX_ANSWER_STALENESS",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "inputs": [],
@@ -312,10 +405,36 @@
     },
     {
         "inputs": [],
+        "name": "maxAnswerStaleness",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "mzusd",
         "outputs": [
             {
                 "internalType": "contract IERC20",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "navOracle",
+        "outputs": [
+            {
+                "internalType": "contract AggregatorV3Interface",
                 "name": "",
                 "type": "address"
             }
@@ -398,6 +517,37 @@
     {
         "inputs": [
             {
+                "internalType": "uint32",
+                "name": "newMaxAnswerStaleness",
+                "type": "uint32"
+            }
+        ],
+        "name": "setMaxAnswerStaleness",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "newNavOracle",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "newTotalSupplyOracle",
+                "type": "address"
+            }
+        ],
+        "name": "setOracles",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "newPeriod",
                 "type": "uint256"
@@ -409,16 +559,23 @@
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "navUSDC",
-                "type": "uint256"
-            }
-        ],
+        "inputs": [],
         "name": "submitNav",
         "outputs": [],
         "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "totalSupplyOracle",
+        "outputs": [
+            {
+                "internalType": "contract AggregatorV3Interface",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

@@ -153,8 +153,11 @@ contract MZUSD is
         _burn(msg.sender, burnAmount);
 
         if (address(vault) == address(0)) revert VaultNotSet();
-        uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps) / BPS;
-        uint256 usdcOutNet = usdcOutGross - feeUSDC;
+        uint256 usdcOutNet = usdcOutGross;
+        if (withdrawalFeeBps != 0) {
+            uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps) / BPS;
+            usdcOutNet -= feeUSDC;
+        }
         if (usdcOutNet != 0) {
             vault.withdraw(msg.sender, usdcOutNet);
         }

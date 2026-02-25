@@ -1,4 +1,4 @@
-# Tranche Front-End Integration (Deposit / Withdraw / Cancel)
+# Tranche Front-End Integration (Deposit / Withdraw)
 
 This guide covers current on-chain flows for user tranches.
 Metrics (APR/APY/TVL) are typically sourced from subgraph/indexer, with on-chain fallback notes below.
@@ -9,8 +9,8 @@ Metrics (APR/APY/TVL) are typically sourced from subgraph/indexer, with on-chain
 - Tranche share token uses `_decimalsOffset() = 3`, so `Tranche.decimals()` is `21`.
 - `PolJuniorTranche` is admin-only (no ERC4626 shares), do not expose it as a public user vault.
 - Withdrawal UX depends on `directWithdrawEnabled()`:
-  - `true`: `requestWithdrawal(shares)` redeems immediately (equivalent end result to `redeem` to self).
-  - `false`: `requestWithdrawal(shares)` enters umbrella flow (wait + finalize + claim).
+    - `true`: `requestWithdrawal(shares)` redeems immediately (equivalent end result to `redeem` to self).
+    - `false`: `requestWithdrawal(shares)` enters umbrella flow (wait + finalize + claim).
 
 When `directWithdrawEnabled() == false`, direct `withdraw()`/`redeem()` paths revert by design.
 
@@ -44,12 +44,13 @@ POL page (if any):
 - `getDepositLimitInfo()` (enabled, limit, limitByTvl, capEffective)
 - `maxDeposit(user)` is ERC4626-default and may stay `MAX_UINT`; use `getDepositLimitInfo()` for protocol deposit limits
 - `unstakeDelayEpochs()`
+- `unstakeYieldReductionBps()` (bps, `< 10_000`)
 - `pauseManager()`
 - User-specific:
-  - `balanceOf(user)`
-  - `getUserEpochInfo(user, epochId)` -> `(pendingShares, claimableAssets)`
+    - `balanceOf(user)`
+    - `getUserEpochInfo(user, epochId)` -> `(pendingShares, claimableAssets)`
 - Optional epoch-level:
-  - `getEpochInfo(epochId)` -> `(umbrellaShares, isFinalized, totalShares, totalAssets)`
+    - `getEpochInfo(epochId)` -> `(umbrellaShares, isFinalized, totalShares, totalAssets)`
 
 ### From Vault
 
@@ -93,7 +94,7 @@ When `depositLimitEnabled == false`, effective limit is `MAX_UINT`.
 - when limits are disabled: `MAX_UINT`.
 - when limits are enabled: exactly the configured value (`maxDepositCap`) including `0` or `MAX_UINT`.
 - note: with limits enabled, `maxDepositCap == 0` means effective cap is zero.
-When enabled:
+  When enabled:
 
 - `tvl = totalAssets()`
 - `supply = asset.totalSupply()` (MZUSD total supply)
@@ -126,7 +127,7 @@ Note on `PauseCategory.TRANSFERS`:
 - In `Tranche`, transfer pause is enforced in ERC20 `_update`.
 - `_update` is used by mint/burn/transfer internals, so when `TRANSFERS` is paused,
   these are also blocked: `deposit`, `mint`, `withdraw`, `redeem`,
-  `requestWithdrawal`, `cancelUnstake`, `finalizeEpoch`.
+  `requestWithdrawal`, `finalizeEpoch`.
 
 ### Step 1: request
 
@@ -158,39 +159,21 @@ Until then, show request as pending.
 
 ### Step 3: claim (umbrella only)
 
-Tx: `Tranche.claim(epochId)`.
+Tx: `Tranche.claim(user, epochId)`. Anyone can call on behalf of `user`; funds always go to `user`.
 
 Rounding behavior:
 
 - Claims are pro-rata with floor division for each user.
 - Rounding dust may remain in `reservedAssets` after all users claim for that epoch.
+- In umbrella mode, claim can include optional yield slashing:
+    - `snapshot = userSnapshotPrice[user][epochId]` (captured at request time);
+    - if `finalizationPrice <= snapshot` -> slashing is zero;
+    - if `finalizationPrice > snapshot` -> slash applies on positive pending yield using `unstakeYieldReductionBps`.
 
 Errors:
 
 - `NothingToClaim()`
 - `NotFinalized()`
-- `DirectWithdrawModeEnabled()`
-- `CategoryPaused(PauseCategory.WITHDRAWALS)`
-
-## Cancel unstake flow (umbrella only)
-
-User can cancel before vault epoch passes target.
-
-Pre-checks:
-
-- `getUserEpochInfo(user, epochId).pendingShares > 0`
-- `getEpochInfo(epochId).isFinalized == false`
-- `Vault.currentEpochId() <= epochId`
-
-Tx: `Tranche.cancelUnstake(epochId, shares)`.
-
-Errors:
-
-- `NoPendingUnstake()`
-- `ZeroPassedShares()`
-- `InvalidShares()`
-- `InvalidAmount()` (if share accounting mismatch)
-- `TooLateToCancel()`
 - `DirectWithdrawModeEnabled()`
 - `CategoryPaused(PauseCategory.WITHDRAWALS)`
 
@@ -234,17 +217,14 @@ Notes:
 6. Load pause flags (including `TRANSFERS`) and disable actions accordingly.
 7. Wire deposit flow with approval.
 8. Wire request withdrawal by shares.
-9. Wire umbrella claim/cancel actions when mode is umbrella.
+9. Wire umbrella claim actions when mode is umbrella.
 
 ## Error reference
 
 - `DepositLimitExceeded(attempted, limit)` -> input exceeds remaining deposit capacity.
-- `ZeroPassedShares()` -> zero-share request/cancel input.
+- `ZeroPassedShares()` -> zero-share request input.
 - `InvalidBalance()` -> insufficient share balance for request.
-- `NoPendingUnstake()` -> user has no pending request for that epoch.
-- `InvalidShares()` -> cancel amount exceeds pending shares.
 - `InvalidAmount()` -> invalid amount in current flow (including guard checks).
-- `TooLateToCancel()` -> vault epoch already passed requested epoch.
 - `NotFinalized()` -> claim attempted before epoch finalization.
 - `NothingToClaim()` -> no claimable shares/assets for given epoch.
 - `DirectWithdrawModeEnabled()` -> umbrella-only action called while direct mode is enabled.

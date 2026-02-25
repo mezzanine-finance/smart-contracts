@@ -14,6 +14,7 @@ import {
     LossManager,
     MockNavSubmitterAutomation,
     MZUSD,
+    MockPackedNavOracle,
     NavOracleAutomation,
     ReservoirUSDC,
     Tranche,
@@ -55,6 +56,8 @@ describe("NavSubmitterAutomation", () => {
     let tranche: Tranche;
     let lossManager: LossManager;
     let navAutomation: NavOracleAutomation;
+    let navFeedOracle: MockPackedNavOracle;
+    let totalSupplyFeedOracle: MockPackedNavOracle;
     let submitter: MockNavSubmitterAutomation;
     let whale: any;
 
@@ -136,6 +139,21 @@ describe("NavSubmitterAutomation", () => {
         )) as unknown as NavOracleAutomation;
         await navAutomation.waitForDeployment();
 
+        const PackedOracleFactory = await ethers.getContractFactory(
+            "MockPackedNavOracle",
+            deployer
+        );
+        navFeedOracle = (await PackedOracleFactory.deploy(
+            18,
+            "Mock NAV oracle"
+        )) as unknown as MockPackedNavOracle;
+        await navFeedOracle.waitForDeployment();
+        totalSupplyFeedOracle = (await PackedOracleFactory.deploy(
+            18,
+            "Mock totalSupply oracle"
+        )) as unknown as MockPackedNavOracle;
+        await totalSupplyFeedOracle.waitForDeployment();
+
         const SubmitterFactory = await ethers.getContractFactory(
             "MockNavSubmitterAutomation",
             deployer
@@ -188,6 +206,9 @@ describe("NavSubmitterAutomation", () => {
         const submitSelector = navAutomation.interface.getFunction("submitNav").selector;
         const rejectSelector = navAutomation.interface.getFunction("rejectPendingNav").selector;
         const setVetoSelector = navAutomation.interface.getFunction("setVetoPeriod").selector;
+        const setOraclesSelector = navAutomation.interface.getFunction("setOracles").selector;
+        const setStalenessSelector =
+            navAutomation.interface.getFunction("setMaxAnswerStaleness").selector;
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
             [submitSelector],
@@ -195,11 +216,14 @@ describe("NavSubmitterAutomation", () => {
         );
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
-            [rejectSelector, setVetoSelector],
+            [rejectSelector, setVetoSelector, setOraclesSelector, setStalenessSelector],
             ADMIN_ROLE
         );
         await accessManager.grantRole(ORACLE_ROLE, submitter.target as string, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target as string, 0);
+        await navAutomation
+            .connect(deployer)
+            .setOracles(navFeedOracle.target, totalSupplyFeedOracle.target);
 
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
@@ -228,6 +252,16 @@ describe("NavSubmitterAutomation", () => {
         await (await tranche.connect(user).deposit(mintedMZ, user.address)).wait();
     }
 
+    async function pushOracleAnswers(
+        navUSDC: bigint,
+        totalSupplyMZ: bigint,
+        updatedAt?: bigint
+    ): Promise<void> {
+        const ts = updatedAt ?? BigInt(await time.latest());
+        await navFeedOracle.setLatestRoundData(navUSDC, ts);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, ts);
+    }
+
     it("submits nav via Chainlink-style upkeep", async () => {
         await mintAndDepositIntoTranche(deployer, to6(100n));
         await time.increase(DAY);
@@ -237,6 +271,8 @@ describe("NavSubmitterAutomation", () => {
         const premiumBps = await submitter.PREMIUM_BPS();
         const bps = await submitter.BPS();
         const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
+        const expectedNav = totalSupplyUSDC + expectedDelta;
+        await pushOracleAnswers(expectedNav, totalSupplyMZ);
 
         const [needed] = await submitter.checkUpkeep("0x");
         expect(needed).to.equal(true);
@@ -244,12 +280,7 @@ describe("NavSubmitterAutomation", () => {
         const epochBefore = await vault.currentEpochId();
         await expect(submitter.performUpkeep("0x"))
             .to.emit(submitter, "NavSubmittedByAutomation")
-            .withArgs(
-                totalSupplyUSDC,
-                totalSupplyUSDC + expectedDelta,
-                expectedDelta,
-                navAutomation.target
-            );
+            .withArgs(totalSupplyUSDC, expectedNav, expectedDelta, navAutomation.target);
 
         const epochAfter = await vault.currentEpochId();
         expect(epochAfter).to.equal(epochBefore + 1n);
@@ -290,6 +321,13 @@ describe("NavSubmitterAutomation", () => {
         await navAutomation.connect(deployer).setVetoPeriod(DAY);
         await mintAndDepositIntoTranche(deployer, to6(100n));
         await time.increase(DAY);
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
+        const premiumBps = await submitter.PREMIUM_BPS();
+        const bps = await submitter.BPS();
+        const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
+        await pushOracleAnswers(totalSupplyUSDC + expectedDelta, totalSupplyMZ);
 
         await submitter.performUpkeep("0x");
         expect(await navAutomation.hasPendingNav()).to.equal(true);

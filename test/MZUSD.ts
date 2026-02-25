@@ -460,6 +460,31 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
         });
 
+        it("When withdrawal fee is zero, withdrawal returns full gross USDC and keeps no fee in vault", async () => {
+            const initialFeeBps = 777; // 7.77%
+            const depositAmountUSDC = to6(100n);
+
+            await expect(mzusd.setWithdrawalFeeBps(initialFeeBps))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(initialFeeBps);
+
+            // Explicitly set fee back to zero to exercise the no-fee path.
+            await expect(mzusd.setWithdrawalFeeBps(0))
+                .to.emit(mzusd, "WithdrawalFeeUpdated")
+                .withArgs(0);
+
+            await fundAndDepositForAlice(depositAmountUSDC);
+            const aliceMZ = await mzusd.balanceOf(alice.address);
+
+            await expect(mzusd.connect(alice).requestWithdrawal(aliceMZ))
+                .to.emit(mzusd, "Withdrawal")
+                .withArgs(alice.address, depositAmountUSDC);
+
+            expect(await usdc.balanceOf(alice.address)).to.equal(depositAmountUSDC);
+            expect(await usdc.balanceOf(vault.target)).to.equal(0n);
+            expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
+        });
+
         it("Counts gross withdrawal against cap even when fee is enabled", async () => {
             const feeBps = 5000; // 50%
             const capUSDC = to6(100n);

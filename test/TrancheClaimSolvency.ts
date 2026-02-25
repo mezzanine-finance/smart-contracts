@@ -237,7 +237,7 @@ describe("Tranche claim solvency", () => {
 
         // Alice claims successfully
         const aliceBalBefore = await mzusd.balanceOf(alice);
-        await tranche.connect(alice).claim(epochAtRequest);
+        await tranche.connect(alice).claim(alice.address, epochAtRequest);
         const aliceBalAfter = await mzusd.balanceOf(alice);
 
         expect(aliceBalAfter - aliceBalBefore).to.be.gte(reserved);
@@ -283,9 +283,9 @@ describe("Tranche claim solvency", () => {
         const bobBefore = await mzusd.balanceOf(bob);
         const carolBefore = await mzusd.balanceOf(carol);
 
-        await tranche.connect(alice).claim(epochAtRequest);
-        await tranche.connect(bob).claim(epochAtRequest);
-        await tranche.connect(carol).claim(epochAtRequest);
+        await tranche.connect(alice).claim(alice.address, epochAtRequest);
+        await tranche.connect(bob).claim(bob.address, epochAtRequest);
+        await tranche.connect(carol).claim(carol.address, epochAtRequest);
 
         expect(await mzusd.balanceOf(alice)).to.equal(aliceBefore + expectedAlice);
         expect(await mzusd.balanceOf(bob)).to.equal(bobBefore + expectedBob);
@@ -333,7 +333,7 @@ describe("Tranche claim solvency", () => {
 
         // Alice claims successfully
         const aliceBefore = await mzusd.balanceOf(alice);
-        await tranche.connect(alice).claim(epochAtRequest);
+        await tranche.connect(alice).claim(alice.address, epochAtRequest);
         const aliceClaimed = (await mzusd.balanceOf(alice)) - aliceBefore;
 
         expect(aliceClaimed).to.equal(totalAssetsFinal);

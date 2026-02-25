@@ -79,6 +79,7 @@ export interface TrancheConfig {
     enabled: boolean;
     directWithdrawEnabled: boolean;
     unstakeDelayEpochs?: number;
+    unstakeYieldReductionBps?: number;
     depositLimits?: {
         enabled: boolean;
         capMZUSD?: string;
@@ -96,6 +97,9 @@ export interface LossManagerConfig {
 export interface NavOracleConfig {
     vetoPeriodSec: number;
     oracles: string[];
+    navFeed?: string;
+    totalSupplyFeed?: string;
+    maxAnswerStalenessSec?: number;
 }
 
 export interface UmbrellaFinalizerConfig {
@@ -233,6 +237,13 @@ function validateConfig(config: DeployConfig, filePath: string) {
         const trancheId = tranche.trancheId ?? tranche.id;
         assert(trancheId !== undefined, `Tranche trancheId is required: ${tranche.key}`);
         assert(trancheId > 0, `Tranche trancheId must be > 0: ${tranche.key}`);
+        if (tranche.unstakeYieldReductionBps !== undefined) {
+            parseBps(tranche.unstakeYieldReductionBps);
+            assert(
+                tranche.unstakeYieldReductionBps < 10_000,
+                `Tranche ${tranche.key}: unstakeYieldReductionBps must be < 10_000`
+            );
+        }
         if (tranche.depositLimits) {
             if (
                 tranche.depositLimits.capMZUSD !== undefined &&
@@ -284,6 +295,25 @@ function validateConfig(config: DeployConfig, filePath: string) {
 
     for (const addr of config.navOracle.oracles) {
         requireAddress(addr, "navOracle.oracles");
+    }
+    if (config.navOracle.navFeed) {
+        requireAddress(config.navOracle.navFeed, "navOracle.navFeed");
+    }
+    if (config.navOracle.totalSupplyFeed) {
+        requireAddress(config.navOracle.totalSupplyFeed, "navOracle.totalSupplyFeed");
+    }
+    if (!!config.navOracle.navFeed !== !!config.navOracle.totalSupplyFeed) {
+        throw new Error(
+            "navOracle.navFeed and navOracle.totalSupplyFeed must be configured together"
+        );
+    }
+    if (config.navOracle.maxAnswerStalenessSec !== undefined) {
+        assert(
+            Number.isInteger(config.navOracle.maxAnswerStalenessSec) &&
+                config.navOracle.maxAnswerStalenessSec > 0 &&
+                config.navOracle.maxAnswerStalenessSec <= 0xffff_ffff,
+            "navOracle.maxAnswerStalenessSec must be in range [1, 4294967295]"
+        );
     }
 
     if (roles.oracles && roles.oracles.length > 0) {

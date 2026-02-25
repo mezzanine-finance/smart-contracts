@@ -632,7 +632,7 @@ describe("LossManager", () => {
             expect(totalAssets).to.equal(expectedRemaining);
 
             const before = await mzusd.balanceOf(alice.address);
-            await (await junior.connect(alice).claim(epochId)).wait();
+            await (await junior.connect(alice).claim(alice.address, epochId)).wait();
             const after = await mzusd.balanceOf(alice.address);
             expect(after - before).to.equal(expectedRemaining);
         });
@@ -666,7 +666,7 @@ describe("LossManager", () => {
             await lossManager.connect(navOracleSigner).applyLoss(to6(40n));
 
             const balBefore = await mzusd.balanceOf(alice.address);
-            await junior.connect(alice).claim(epochAtRequest);
+            await junior.connect(alice).claim(alice.address, epochAtRequest);
             const balAfter = await mzusd.balanceOf(alice.address);
 
             expect(balAfter - balBefore).to.equal(to18(60n));
@@ -692,7 +692,7 @@ describe("LossManager", () => {
             expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(1n));
 
             const balBefore = await mzusd.balanceOf(alice.address);
-            await junior.connect(alice).claim(epochAtRequest);
+            await junior.connect(alice).claim(alice.address, epochAtRequest);
             const balAfter = await mzusd.balanceOf(alice.address);
             expect(balAfter - balBefore).to.equal(to18(60n));
         });

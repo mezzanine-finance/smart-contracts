@@ -10,9 +10,10 @@ Each submission also records the MZUSD total supply so NAV and supply are synchr
 
 - ORACLE_ROLE (suggested id `6`):
     - Grant to the oracle caller.
-    - Map `NavOracleAutomation.submitNav(uint256)` to ORACLE_ROLE.
+    - Map `NavOracleAutomation.submitNav()` to ORACLE_ROLE.
 - ADMIN_ROLE:
-    - Map `NavOracleAutomation.rejectPendingNav()` and `setVetoPeriod(uint256)` to ADMIN_ROLE.
+    - Map `NavOracleAutomation.rejectPendingNav()`, `setVetoPeriod(uint256)`,
+      `setOracles(address,address)`, and `setMaxAnswerStaleness(uint32)` to ADMIN_ROLE.
 
 ## Required wiring (direct checks)
 

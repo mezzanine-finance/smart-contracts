@@ -314,16 +314,6 @@
     },
     {
         "inputs": [],
-        "name": "InvalidShares",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NoPendingUnstake",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "NotFinalized",
         "type": "error"
     },
@@ -382,11 +372,6 @@
             }
         ],
         "name": "SafeERC20FailedOperation",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "TooLateToCancel",
         "type": "error"
     },
     {
@@ -625,31 +610,6 @@
         "anonymous": false,
         "inputs": [
             {
-                "indexed": true,
-                "internalType": "address",
-                "name": "user",
-                "type": "address"
-            },
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "epochId",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "shares",
-                "type": "uint256"
-            }
-        ],
-        "name": "UnstakeCancelled",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "newDelayEpochs",
@@ -688,6 +648,19 @@
             }
         ],
         "name": "UnstakeRequested",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newBps",
+                "type": "uint256"
+            }
+        ],
+        "name": "UnstakeYieldReductionBpsUpdated",
         "type": "event"
     },
     {
@@ -938,23 +911,10 @@
     {
         "inputs": [
             {
-                "internalType": "uint256",
-                "name": "epochId",
-                "type": "uint256"
+                "internalType": "address",
+                "name": "user",
+                "type": "address"
             },
-            {
-                "internalType": "uint256",
-                "name": "shares",
-                "type": "uint256"
-            }
-        ],
-        "name": "cancelUnstake",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
             {
                 "internalType": "uint256",
                 "name": "epochId",
@@ -1098,6 +1058,11 @@
             {
                 "internalType": "uint256",
                 "name": "totalAssets",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "finalizationPrice",
                 "type": "uint256"
             }
         ],
@@ -1616,6 +1581,19 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "bps",
+                "type": "uint256"
+            }
+        ],
+        "name": "setUnstakeYieldReductionBps",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "symbol",
         "outputs": [
@@ -1766,6 +1744,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "unstakeYieldReductionBps",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -1797,6 +1788,30 @@
             }
         ],
         "name": "userSharesByEpoch",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "userSnapshotPrice",
         "outputs": [
             {
                 "internalType": "uint256",

@@ -558,6 +558,15 @@ async function main() {
                 log.success(`Tranche.setUnstakeDelayEpochs ${tranche.key}`);
             }
         }
+        if (tranche.unstakeYieldReductionBps !== undefined) {
+            const current = await trancheContract.contract.unstakeYieldReductionBps();
+            if (current !== BigInt(tranche.unstakeYieldReductionBps)) {
+                await (
+                    await trancheAdmin.setUnstakeYieldReductionBps(tranche.unstakeYieldReductionBps)
+                ).wait();
+                log.success(`Tranche.setUnstakeYieldReductionBps ${tranche.key}`);
+            }
+        }
 
         if (tranche.depositLimits) {
             const enabled = await trancheContract.contract.depositLimitEnabled();
@@ -795,6 +804,36 @@ async function main() {
         await (await navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)).wait();
         log.success("NavOracleAutomation.setVetoPeriod");
     }
+    const hasNavFeed = config.navOracle.navFeed !== undefined;
+    const hasSupplyFeed = config.navOracle.totalSupplyFeed !== undefined;
+    if (hasNavFeed != hasSupplyFeed) {
+        throw new Error("navOracle.navFeed and navOracle.totalSupplyFeed must be set together");
+    }
+    if (hasNavFeed) {
+        const currentNavFeed = await navOracle.contract.navOracle();
+        const currentTotalSupplyFeed = await navOracle.contract.totalSupplyOracle();
+        if (
+            currentNavFeed.toLowerCase() !== config.navOracle.navFeed!.toLowerCase() ||
+            currentTotalSupplyFeed.toLowerCase() !== config.navOracle.totalSupplyFeed!.toLowerCase()
+        ) {
+            await (
+                await navOracleAdmin.setOracles(
+                    config.navOracle.navFeed,
+                    config.navOracle.totalSupplyFeed
+                )
+            ).wait();
+            log.success("NavOracleAutomation.setOracles");
+        }
+    }
+    if (config.navOracle.maxAnswerStalenessSec !== undefined) {
+        const currentStaleness = await navOracle.contract.maxAnswerStaleness();
+        if (currentStaleness !== BigInt(config.navOracle.maxAnswerStalenessSec)) {
+            await (
+                await navOracleAdmin.setMaxAnswerStaleness(config.navOracle.maxAnswerStalenessSec)
+            ).wait();
+            log.success("NavOracleAutomation.setMaxAnswerStaleness");
+        }
+    }
 
     // === Configure AccessManager roles ===
     log.step("Configuring AccessManager roles");
@@ -920,6 +959,7 @@ async function main() {
             tranche.address,
             [
                 tranche.contract.interface.getFunction("setUnstakeDelayEpochs").selector,
+                tranche.contract.interface.getFunction("setUnstakeYieldReductionBps").selector,
                 tranche.contract.interface.getFunction("setDepositLimits").selector,
                 tranche.contract.interface.getFunction("setDepositLimitEnabled").selector,
             ],
@@ -945,6 +985,8 @@ async function main() {
         [
             navOracle.contract.interface.getFunction("rejectPendingNav").selector,
             navOracle.contract.interface.getFunction("setVetoPeriod").selector,
+            navOracle.contract.interface.getFunction("setOracles").selector,
+            navOracle.contract.interface.getFunction("setMaxAnswerStaleness").selector,
         ],
         adminRole
     );

@@ -6,7 +6,7 @@ This guide describes deployment and post-deploy wiring for the current contracts
 
 - IssuanceVault supports up to `MAX_TRANCHES = 50`.
 - Typical topology:
-  - 3 user tranches (`Tranche`): Senior, Mezzanine, Junior.
+    - 3 user tranches (`Tranche`): Senior, Mezzanine, Junior.
 
 User tranches are all instances of the same `Tranche` contract with different config.
 
@@ -42,8 +42,8 @@ Notes:
 
 - Fees are initialized in `IssuanceVault.initialize`.
 - Optional:
-  - `setBuffer(idleBufferUSDC, hysteresisBps)` (updates config and triggers `_rebalance`)
-  - `setEpochConfig(epochDurationSec)` (queued for next epoch)
+    - `setBuffer(idleBufferUSDC, hysteresisBps)` (updates config and triggers `_rebalance`)
+    - `setEpochConfig(epochDurationSec)` (queued for next epoch)
 - Register tranches with `registerTranche(trancheAddress)`.
 - Configure order/pairs + distribution with
   `setTrancheConfig((tranche,riskPremiumBps,enabled)[], isPairedWithNext[], baseRewardBps)`.
@@ -55,11 +55,12 @@ Notes:
 ### Tranche configuration
 
 - `setUnstakeDelayEpochs` for umbrella tranches.
+- `setUnstakeYieldReductionBps` (optional): slash bps on positive pending-withdrawal yield at claim.
 - `setDepositLimits(capMZUSD, tvlBps)` where needed.
 - `setDepositLimitEnabled(enabled)` to toggle limits without changing `capMZUSD`/`tvlBps`.
 - Deployment-time immutable:
-  - Senior usually `directWithdrawEnabled = true`
-  - umbrella tranches (Mezzanine/Junior) usually `directWithdrawEnabled = false`
+    - Senior usually `directWithdrawEnabled = true`
+    - umbrella tranches (Mezzanine/Junior) usually `directWithdrawEnabled = false`
 
 ### LossManager configuration
 
@@ -101,36 +102,37 @@ For NAV oracle rotation:
 Recommended role mapping follows `scripts/deployment/deploy.ts`:
 
 - IssuanceVault:
-  - `rebalance` -> `KEEPER_ROLE`
-  - admin setters (`setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
-    `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`) -> `ADMIN_ROLE`
+    - `rebalance` -> `KEEPER_ROLE`
+    - admin setters (`setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
+      `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`) -> `ADMIN_ROLE`
 - MZUSD:
-  - `burn` -> `BURNER_ROLE`
-  - admin setters (`setVault`, redemption config, `setWithdrawalFeeBps`) -> `ADMIN_ROLE`
+    - `burn` -> `BURNER_ROLE`
+    - admin setters (`setVault`, redemption config, `setWithdrawalFeeBps`) -> `ADMIN_ROLE`
 - Reservoir:
-  - `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
-  - `setVault` -> `ADMIN_ROLE`
+    - `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
+    - `setVault` -> `ADMIN_ROLE`
 - Tranche:
-  - admin setters (`setUnstakeDelayEpochs`, `setDepositLimits`, `setDepositLimitEnabled`) -> `ADMIN_ROLE`
+    - admin setters (`setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`,
+      `setDepositLimits`, `setDepositLimitEnabled`) -> `ADMIN_ROLE`
 - LossManager:
-  - `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
+    - `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
 - NavOracleAutomation:
-  - `submitNav` -> `ORACLE_ROLE`
-  - `rejectPendingNav`, `setVetoPeriod` -> `ADMIN_ROLE`
+    - `submitNav` -> `ORACLE_ROLE`
+    - `rejectPendingNav`, `setVetoPeriod`, `setOracles`, `setMaxAnswerStaleness` -> `ADMIN_ROLE`
 
 Also grant `UPGRADER_ROLE` for `upgradeToAndCall` on UUPS contracts and pause roles on PauseManager.
 
 ## Scripts
 
 - Orchestrator: `scripts/deployment/deploy.ts`
-  - Reads network config, deploys contracts, wires references, configures roles, applies params/seeding.
-  - Skips verification automatically on local networks.
+    - Reads network config, deploys contracts, wires references, configures roles, applies params/seeding.
+    - Skips verification automatically on local networks.
 - Role grants: `scripts/deployment/grantRoles.ts`
-  - Grants configured role memberships (optionally `--include-dev`).
+    - Grants configured role memberships (optionally `--include-dev`).
 - Role cleanup: `scripts/deployment/renounceRoles.ts`
-  - Renounces deployer roles only if safe replacement members already exist.
+    - Renounces deployer roles only if safe replacement members already exist.
 - Handoff flow: `scripts/deployment/handoffRoles.ts`
-  - Runs grant + renounce in sequence.
+    - Runs grant + renounce in sequence.
 
 ## Config files
 
@@ -146,19 +148,19 @@ Important fields:
 
 - `dev.deployer`
 - `roleIds`:
-  - `PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`,
-    `RESERVOIR_WITHDRAW_ROLE`, `KEEPER_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`
+    - `PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`,
+      `RESERVOIR_WITHDRAW_ROLE`, `KEEPER_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`
 - `roles`:
-  - `admin`, `pauser`, `unpauser`, `upgrader`
-  - optional `reservoirWithdrawers`, `keepers`, `roleDelays`
+    - `admin`, `pauser`, `unpauser`, `upgrader`
+    - optional `reservoirWithdrawers`, `keepers`, `roleDelays`
 - `usdc`:
-  - real token address or mock config
+    - real token address or mock config
 - `mzusd.redemptionCapUSDC`:
-  - required and must be non-zero (no on-chain upper-bound check vs USDC supply)
+    - required and must be non-zero (no on-chain upper-bound check vs USDC supply)
 - `vault`:
-  - fee bps, receivers, optional buffer/epoch config
+    - fee bps, receivers, optional buffer/epoch config
 - `tranches[]`:
-  - `key`, `trancheId`, `riskPremiumBps`, `enabled`, `directWithdrawEnabled`, optional limits
+    - `key`, `trancheId`, `riskPremiumBps`, `enabled`, `directWithdrawEnabled`, optional limits
 - `lossManager.order`, `lossManager.isPairedWithNext`, optional `maxLossPerTxUSDC`
 - `navOracle.vetoPeriodSec`, `navOracle.oracles`
 - optional seeding and post-deploy options
@@ -196,10 +198,13 @@ Tranches:
 - `tranches[].trancheId`: required (`id` alias still accepted for backward compatibility).
 - `tranches[].directWithdrawEnabled`: immutable deployment mode flag.
 - `tranches[].riskPremiumBps` + `enabled`: used in IssuanceVault distribution config.
+- `tranches[].unstakeYieldReductionBps` (optional):
+    - applies via `setUnstakeYieldReductionBps`;
+    - must be `< 10_000` bps.
 - `tranches[].depositLimits` (optional):
-  - `capMZUSD` preferred;
-  - `capUSDC` accepted as deprecated alias (converted to MZUSD by script);
-  - `tvlBps` optional.
+    - `capMZUSD` preferred;
+    - `capUSDC` accepted as deprecated alias (converted to MZUSD by script);
+    - `tvlBps` optional.
 
 Loss manager:
 

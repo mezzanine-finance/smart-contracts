@@ -33,6 +33,7 @@ contract Tranche is
     struct FinalizedEpoch {
         uint256 totalShares;
         uint256 totalAssets;
+        uint256 finalizationPrice;
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
@@ -72,18 +73,21 @@ contract Tranche is
     // umbrella withdrawals
     mapping(uint256 => uint256) public umbrellaSharesByEpoch;
     mapping(address => mapping(uint256 => uint256)) public userSharesByEpoch;
+    mapping(address => mapping(uint256 => uint256)) public userSnapshotPrice;
 
+    /// @notice Share of positive pending-withdrawal yield to slash at claim (in bps).
+    uint256 public unstakeYieldReductionBps;
     event UnstakeRequested(
         address indexed user,
         uint256 shares,
         uint256 requestEpoch,
         uint256 targetEpoch
     );
-    event UnstakeCancelled(address indexed user, uint256 indexed epochId, uint256 shares);
     event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
     event WithdrawalClaimed(address indexed user, uint256 indexed epochId, uint256 assets);
+    event UnstakeYieldReductionBpsUpdated(uint256 newBps);
 
     /// @notice Emitted when new yield is registered for linear streaming.
     /// @dev yieldAmount must correspond to MZUSD amount already transferred to this tranche.
@@ -97,13 +101,10 @@ contract Tranche is
     error NothingToClaim();
     error ZeroAddress();
     error YieldStreamIsActive();
-    error NoPendingUnstake();
     error ZeroPassedShares();
-    error InvalidShares();
     error InvalidBalance();
     error ZeroYieldPassed();
     error ZeroEpochDuration();
-    error TooLateToCancel();
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
     error UnstakeDelayZero();
@@ -188,66 +189,70 @@ contract Tranche is
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         uint256 targetEpoch = currentVaultEpoch + unstakeDelayEpochs;
 
+        uint256 existingShares = userSharesByEpoch[msg.sender][targetEpoch];
+        uint256 currentPrice = convertToAssets(10 ** decimals());
+        // For repeat requests in the same target epoch keep weighted-average snapshot.
+        // If snapshot is not initialized (possible after upgrade for old pending requests), initialize to current.
+        if (existingShares == 0 || userSnapshotPrice[msg.sender][targetEpoch] == 0) {
+            userSnapshotPrice[msg.sender][targetEpoch] = currentPrice;
+        } else {
+            uint256 oldSnapshot = userSnapshotPrice[msg.sender][targetEpoch];
+            uint256 totalUserShares = existingShares + shares;
+            userSnapshotPrice[msg.sender][targetEpoch] =
+                ((oldSnapshot * existingShares) + (currentPrice * shares)) / totalUserShares;
+        }
+
         umbrellaSharesByEpoch[targetEpoch] += shares;
-        userSharesByEpoch[msg.sender][targetEpoch] += shares;
+        userSharesByEpoch[msg.sender][targetEpoch] = existingShares + shares;
 
         _transfer(msg.sender, address(this), shares);
 
         emit UnstakeRequested(msg.sender, shares, currentVaultEpoch, targetEpoch);
     }
 
-    /// @notice Cancel a previously requested unstake for a given epoch.
-    /// @dev User can only cancel shares that are still pending under the umbrella and
-    ///      for epochs that have not yet been finalized.
-    /// @param epochId The epoch for which the user wants to cancel their unstake.
-    /// @param shares The amount of shares to cancel (returned back to the user).
-    function cancelUnstake(
-        uint256 epochId,
-        uint256 shares
-    ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
-        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
-        if (userShares == 0) revert NoPendingUnstake();
-        if (shares == 0) revert ZeroPassedShares();
-        if (shares > userShares) revert InvalidShares();
-
-        // aderyn-fp-next-line(reentrancy-state-change)
-        uint256 currentEpochOnVault = IVault(vault).currentEpochId();
-        if (currentEpochOnVault > epochId) revert TooLateToCancel();
-
-        uint256 umbrellaShares = umbrellaSharesByEpoch[epochId];
-        if (shares > umbrellaShares) revert InvalidAmount();
-
-        // Update user and global umbrella accounting
-        userSharesByEpoch[msg.sender][epochId] = userShares - shares;
-        umbrellaSharesByEpoch[epochId] = umbrellaShares - shares;
-
-        // Return shares back to the user from the tranche contract
-        _transfer(address(this), msg.sender, shares);
-
-        emit UnstakeCancelled(msg.sender, epochId, shares);
-    }
-
     /// @notice Claim assets for finalized epoch after admin has finalized it.
+    /// @param user The address whose claim to process. Funds are sent to this address.
     /// @param epochId The epoch for which to claim assets.
-    /// @dev Claims use floor pro-rata math:
+    /// @dev Anyone can call on behalf of `user`; funds always go to `user`.
+    ///      Claims use floor pro-rata math:
     ///      userAssets = floor(userShares * totalAssets / totalShares).
     ///      Rounding dust can remain in `reservedAssets` after all claims for an epoch.
     function claim(
+        address user,
         uint256 epochId
     ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
-        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
+        uint256 userShares = userSharesByEpoch[user][epochId];
         if (userShares == 0) revert NothingToClaim();
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
         if (finalizedData.totalShares == 0) revert NotFinalized();
-        uint256 userAssets = (userShares * finalizedData.totalAssets) / finalizedData.totalShares;
+        uint256 fullUserAssets = (userShares * finalizedData.totalAssets) /
+            finalizedData.totalShares;
+        uint256 userAssets = fullUserAssets;
 
-        userSharesByEpoch[msg.sender][epochId] = 0;
-        reservedAssets -= userAssets;
+        uint256 snapshotPrice = userSnapshotPrice[user][epochId];
+        if (
+            snapshotPrice != 0 &&
+            unstakeYieldReductionBps > 0 &&
+            finalizedData.finalizationPrice > snapshotPrice
+        ) {
+            uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
+            uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
+                BASIS_POINTS /
+                (10 ** decimals());
+            if (slashAmount > userAssets) {
+                slashAmount = userAssets;
+            }
+            userAssets -= slashAmount;
+        }
 
-        IERC20(asset()).transfer(msg.sender, userAssets);
+        userSharesByEpoch[user][epochId] = 0;
+        userSnapshotPrice[user][epochId] = 0;
+        reservedAssets -= fullUserAssets;
 
-        emit WithdrawalClaimed(msg.sender, epochId, userAssets);
+        IERC20(asset()).transfer(user, userAssets);
+
+        emit WithdrawalClaimed(user, epochId, userAssets);
     }
 
     // EPOCH FINALIZATION
@@ -268,10 +273,12 @@ contract Tranche is
 
         // use virtual NAV at the moment of finalization
         uint256 assetsToCredit = convertToAssets(sharesToFinalize);
+        uint256 finalizationPrice = convertToAssets(10 ** decimals());
 
         finalizedEpochs[epochId] = FinalizedEpoch({
             totalShares: sharesToFinalize,
-            totalAssets: assetsToCredit
+            totalAssets: assetsToCredit,
+            finalizationPrice: finalizationPrice
         });
 
         reservedAssets += assetsToCredit;
@@ -324,6 +331,15 @@ contract Tranche is
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (!directWithdrawEnabled && epochsDelay == 0) revert UnstakeDelayZero();
         _setUnstakeDelayEpochs(epochsDelay);
+    }
+
+    /// @notice Set slashing on positive pending-withdrawal yield, in bps.
+    function setUnstakeYieldReductionBps(
+        uint256 bps
+    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (bps >= BASIS_POINTS) revert InvalidAmount();
+        unstakeYieldReductionBps = bps;
+        emit UnstakeYieldReductionBpsUpdated(bps);
     }
 
     /// @notice Update deposit limits.
@@ -393,7 +409,7 @@ contract Tranche is
     /// @param user User address.
     /// @param epochId Epoch to query.
     /// @return pendingShares Shares pending under umbrella for that epoch.
-    /// @return claimableAssets Assets user can claim (0 if not finalized), computed with floor division.
+    /// @return claimableAssets Assets user can claim (0 if not finalized), including yield slashing if applicable.
     function getUserEpochInfo(
         address user,
         uint256 epochId
@@ -402,7 +418,24 @@ contract Tranche is
         FinalizedEpoch memory e = finalizedEpochs[epochId];
 
         if (e.totalShares > 0 && pendingShares > 0) {
-            claimableAssets = (pendingShares * e.totalAssets) / e.totalShares;
+            uint256 fullUserAssets = (pendingShares * e.totalAssets) / e.totalShares;
+            claimableAssets = fullUserAssets;
+
+            uint256 snapshotPrice = userSnapshotPrice[user][epochId];
+            if (
+                snapshotPrice != 0 &&
+                unstakeYieldReductionBps > 0 &&
+                e.finalizationPrice > snapshotPrice
+            ) {
+                uint256 yieldPerShare = e.finalizationPrice - snapshotPrice;
+                uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * pendingShares) /
+                    BASIS_POINTS /
+                    (10 ** decimals());
+                if (slashAmount > claimableAssets) {
+                    slashAmount = claimableAssets;
+                }
+                claimableAssets -= slashAmount;
+            }
         }
     }
 

@@ -196,9 +196,9 @@ contract TrancheStreamingFuzzTest is BaseProtocolFuzzTest {
         uint256 userBBefore = mzusd.balanceOf(userB);
 
         vm.prank(userA);
-        tranche.claim(targetEpoch);
+        tranche.claim(userA, targetEpoch);
         vm.prank(userB);
-        tranche.claim(targetEpoch);
+        tranche.claim(userB, targetEpoch);
 
         assertEq(mzusd.balanceOf(userA) - userABefore, expectedClaimA);
         assertEq(mzusd.balanceOf(userB) - userBBefore, expectedClaimB);
