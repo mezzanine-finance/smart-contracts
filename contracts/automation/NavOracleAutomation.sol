@@ -49,8 +49,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     event NavRejected(bool isYield, uint256 deltaUSDC, uint256 readyAt);
     event NavApplied(bool isYield, uint256 deltaUSDC, uint256 readyAt);
     event VetoPeriodUpdated(uint256 newPeriod);
-    event NavOracleUpdated(address indexed newOracle);
-    event TotalSupplyOracleUpdated(address indexed newOracle);
+    event OraclesUpdated(address indexed navOracle, address indexed totalSupplyOracle);
     event MaxAnswerStalenessUpdated(uint256 newMaxAnswerStaleness);
 
     error PendingNavExists();
@@ -94,11 +93,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     function submitNav() external restricted {
         if (hasPendingNav()) revert PendingNavExists();
 
-        if (address(navOracle) == address(0)) revert ZeroAddress();
-        if (address(totalSupplyOracle) == address(0)) revert ZeroAddress();
-
-        uint256 navUSDC = _readFreshAnswer(navOracle);
-        uint256 totalSupplyMZ = _readFreshAnswer(totalSupplyOracle);
+        (uint256 navUSDC, uint256 totalSupplyMZ) = _readFreshAnswer(navOracle, totalSupplyOracle);
         if (block.timestamp > type(uint64).max) {
             revert ValueTooLarge();
         }
@@ -136,20 +131,15 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         emit VetoPeriodUpdated(newPeriod);
     }
 
-    /// @notice Update NAV oracle data feed address.
-    /// @param newOracle Address of AggregatorV3-compatible oracle.
-    function setNavOracle(address newOracle) external restricted {
-        if (newOracle == address(0)) revert ZeroAddress();
-        navOracle = AggregatorV3Interface(newOracle);
-        emit NavOracleUpdated(newOracle);
-    }
-
-    /// @notice Update total supply oracle data feed address.
-    /// @param newOracle Address of AggregatorV3-compatible oracle.
-    function setTotalSupplyOracle(address newOracle) external restricted {
-        if (newOracle == address(0)) revert ZeroAddress();
-        totalSupplyOracle = AggregatorV3Interface(newOracle);
-        emit TotalSupplyOracleUpdated(newOracle);
+    /// @notice Update NAV and total supply oracle data feed addresses.
+    /// @param newNavOracle Address of AggregatorV3-compatible NAV oracle.
+    /// @param newTotalSupplyOracle Address of AggregatorV3-compatible total supply oracle.
+    function setOracles(address newNavOracle, address newTotalSupplyOracle) external restricted {
+        if (newNavOracle == address(0)) revert ZeroAddress();
+        if (newTotalSupplyOracle == address(0)) revert ZeroAddress();
+        navOracle = AggregatorV3Interface(newNavOracle);
+        totalSupplyOracle = AggregatorV3Interface(newTotalSupplyOracle);
+        emit OraclesUpdated(newNavOracle, newTotalSupplyOracle);
     }
 
     /// @notice Set maximum accepted oracle answer age.
@@ -237,14 +227,30 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     }
 
     function _readFreshAnswer(
-        AggregatorV3Interface oracle_
-    ) internal view returns (uint256 answerValue) {
-        (, int256 answer, , uint256 updatedAt, ) = oracle_.latestRoundData();
-        if (answer < 0) revert InvalidOracleAnswer(answer);
-        if (updatedAt == 0 || updatedAt > block.timestamp) revert InvalidOracleTimestamp(updatedAt);
-        if (block.timestamp - updatedAt > uint256(maxAnswerStaleness)) {
-            revert StaleOracleAnswer(updatedAt, block.timestamp, maxAnswerStaleness);
+        AggregatorV3Interface navOracle_,
+        AggregatorV3Interface totalSupplyOracle_
+    ) internal view returns (uint256 navUSDC, uint256 totalSupplyMZ) {
+        if (address(navOracle_) == address(0)) revert ZeroAddress();
+        if (address(totalSupplyOracle_) == address(0)) revert ZeroAddress();
+
+        (, int256 navAnswer, , uint256 navUpdatedAt, ) = navOracle_.latestRoundData();
+        if (navAnswer < 0) revert InvalidOracleAnswer(navAnswer);
+        if (navUpdatedAt == 0 || navUpdatedAt > block.timestamp) {
+            revert InvalidOracleTimestamp(navUpdatedAt);
         }
-        answerValue = uint256(answer);
+        if (block.timestamp - navUpdatedAt > uint256(maxAnswerStaleness)) {
+            revert StaleOracleAnswer(navUpdatedAt, block.timestamp, maxAnswerStaleness);
+        }
+        navUSDC = uint256(navAnswer);
+
+        (, int256 supplyAnswer, , uint256 supplyUpdatedAt, ) = totalSupplyOracle_.latestRoundData();
+        if (supplyAnswer < 0) revert InvalidOracleAnswer(supplyAnswer);
+        if (supplyUpdatedAt == 0 || supplyUpdatedAt > block.timestamp) {
+            revert InvalidOracleTimestamp(supplyUpdatedAt);
+        }
+        if (block.timestamp - supplyUpdatedAt > uint256(maxAnswerStaleness)) {
+            revert StaleOracleAnswer(supplyUpdatedAt, block.timestamp, maxAnswerStaleness);
+        }
+        totalSupplyMZ = uint256(supplyAnswer);
     }
 }

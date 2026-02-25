@@ -206,9 +206,7 @@ describe("NavSubmitterAutomation", () => {
         const submitSelector = navAutomation.interface.getFunction("submitNav").selector;
         const rejectSelector = navAutomation.interface.getFunction("rejectPendingNav").selector;
         const setVetoSelector = navAutomation.interface.getFunction("setVetoPeriod").selector;
-        const setOracleSelector = navAutomation.interface.getFunction("setNavOracle").selector;
-        const setTotalSupplyOracleSelector =
-            navAutomation.interface.getFunction("setTotalSupplyOracle").selector;
+        const setOraclesSelector = navAutomation.interface.getFunction("setOracles").selector;
         const setStalenessSelector =
             navAutomation.interface.getFunction("setMaxAnswerStaleness").selector;
         await accessManager.setTargetFunctionRole(
@@ -218,19 +216,14 @@ describe("NavSubmitterAutomation", () => {
         );
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
-            [
-                rejectSelector,
-                setVetoSelector,
-                setOracleSelector,
-                setTotalSupplyOracleSelector,
-                setStalenessSelector,
-            ],
+            [rejectSelector, setVetoSelector, setOraclesSelector, setStalenessSelector],
             ADMIN_ROLE
         );
         await accessManager.grantRole(ORACLE_ROLE, submitter.target as string, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target as string, 0);
-        await navAutomation.connect(deployer).setNavOracle(navFeedOracle.target);
-        await navAutomation.connect(deployer).setTotalSupplyOracle(totalSupplyFeedOracle.target);
+        await navAutomation
+            .connect(deployer)
+            .setOracles(navFeedOracle.target, totalSupplyFeedOracle.target);
 
         await vault.setLossManager(lossManager.target);
         await vault.setNavOracle(navAutomation.target);
