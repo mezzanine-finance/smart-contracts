@@ -322,7 +322,7 @@ describe("Tranche unstake slashing", () => {
         const ppsBeforeClaim = await tranche.convertToAssets(scale);
         const aliceBefore = await mzusd.balanceOf(alice.address);
 
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
 
         const aliceAfter = await mzusd.balanceOf(alice.address);
         const reservedAfter = await tranche.reservedAssets();
@@ -382,7 +382,7 @@ describe("Tranche unstake slashing", () => {
 
         // Claim must still succeed and settle reserved assets correctly despite zero ERC4626 supply.
         const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
 
         expect(aliceAfter - aliceBefore).to.equal(expectedClaim);
@@ -415,7 +415,7 @@ describe("Tranche unstake slashing", () => {
 
         // Claim succeeds, pays zero, and clears user pending records.
         const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
 
         expect(aliceAfter - aliceBefore).to.equal(0n);
@@ -452,8 +452,8 @@ describe("Tranche unstake slashing", () => {
         // Both claims are successful and pay zero.
         const aliceBefore = await mzusd.balanceOf(alice.address);
         const bobBefore = await mzusd.balanceOf(bob.address);
-        await tranche.connect(alice).claim(targetEpoch);
-        await tranche.connect(bob).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
+        await tranche.connect(bob).claim(bob.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
         const bobAfter = await mzusd.balanceOf(bob.address);
 
@@ -509,7 +509,7 @@ describe("Tranche unstake slashing", () => {
 
         // Execute claim and assert the transfer equals the expected bounded payout.
         const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
 
         expect(aliceAfter - aliceBefore).to.equal(expectedClaim);
@@ -562,9 +562,9 @@ describe("Tranche unstake slashing", () => {
         const bBefore = await mzusd.balanceOf(bob.address);
         const cBefore = await mzusd.balanceOf(carol.address);
 
-        await tranche.connect(alice).claim(targetEpoch);
-        await tranche.connect(bob).claim(targetEpoch);
-        await tranche.connect(carol).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
+        await tranche.connect(bob).claim(bob.address, targetEpoch);
+        await tranche.connect(carol).claim(carol.address, targetEpoch);
 
         const aAfter = await mzusd.balanceOf(alice.address);
         const bAfter = await mzusd.balanceOf(bob.address);
@@ -611,7 +611,7 @@ describe("Tranche unstake slashing", () => {
         const fullUserAssets = (aliceShares * totalAssets) / totalShares;
         const aliceBefore = await mzusd.balanceOf(alice.address);
 
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
 
         const aliceAfter = await mzusd.balanceOf(alice.address);
         expect(aliceAfter - aliceBefore).to.equal(fullUserAssets);
@@ -691,8 +691,8 @@ describe("Tranche unstake slashing", () => {
         const aliceBefore = await mzusd.balanceOf(alice.address);
         const bobBefore = await mzusd.balanceOf(bob.address);
 
-        await tranche.connect(alice).claim(targetEpoch);
-        await tranche.connect(bob).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
+        await tranche.connect(bob).claim(bob.address, targetEpoch);
 
         const aliceAfter = await mzusd.balanceOf(alice.address);
         const bobAfter = await mzusd.balanceOf(bob.address);
@@ -764,7 +764,7 @@ describe("Tranche unstake slashing", () => {
         expect(slashWithRefreshed).to.be.lt(slashWithInitial);
 
         const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
 
         expect(aliceAfter - aliceBefore).to.equal(fullUserAssets - slashWithRefreshed);
@@ -857,7 +857,7 @@ describe("Tranche unstake slashing", () => {
         expect(claimablePreview).to.equal(expectedClaimable);
 
         const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(targetEpoch);
+        await tranche.connect(alice).claim(alice.address, targetEpoch);
         const aliceAfter = await mzusd.balanceOf(alice.address);
 
         expect(aliceAfter - aliceBefore).to.equal(claimablePreview);

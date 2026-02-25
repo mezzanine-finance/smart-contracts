@@ -385,7 +385,7 @@ describe("Tranche", () => {
             await (await tranche.connect(deployer).finalizeEpoch(epochId)).wait();
 
             const before = await mzusd.balanceOf(alice.address);
-            await (await tranche.connect(alice).claim(epochId)).wait();
+            await (await tranche.connect(alice).claim(alice.address, epochId)).wait();
             const after = await mzusd.balanceOf(alice.address);
             expect(after - before).to.equal(1n);
         });
@@ -428,7 +428,7 @@ describe("Tranche", () => {
             await expect(tranche.cancelUnstake(1n, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.WITHDRAWALS);
-            await expect(tranche.claim(1n))
+            await expect(tranche.claim(deployer.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.WITHDRAWALS);
             await pauseManager.unpauseGlobal(PauseCategory.WITHDRAWALS);
@@ -1035,7 +1035,7 @@ describe("Tranche", () => {
             // Since Alice is the only pending user for this epoch, claimable = finalized totalAssets
             expect(claimableBefore).to.equal(totalAssetsFinal);
 
-            const txClaim = await tranche.connect(alice).claim(targetEpoch);
+            const txClaim = await tranche.connect(alice).claim(alice.address, targetEpoch);
             await txClaim.wait();
 
             const aliceMZAfterClaim = await mzusd.balanceOf(alice.address);
@@ -1053,6 +1053,36 @@ describe("Tranche", () => {
 
             expect(pendingSharesAfter).to.equal(0n);
             expect(claimableAfter).to.equal(0n);
+        });
+        it("Allows a third party to claim on behalf of a user", async () => {
+            const DAY = 24 * 60 * 60;
+            const depositUSDC = to6(100n);
+            const {shares} = await mintAndDepositIntoTranche(alice, depositUSDC, alice.address);
+
+            const epochAtRequest = await vault.currentEpochId();
+            await (await tranche.connect(alice).requestWithdrawal(shares)).wait();
+            const targetEpoch = epochAtRequest;
+
+            await time.increase(DAY);
+            await (await vault.connect(navOracleSigner).distributeYield(0n)).wait();
+            await (await tranche.connect(deployer).finalizeEpoch(targetEpoch)).wait();
+
+            const [, claimable] = await tranche.getUserEpochInfo(alice.address, targetEpoch);
+            expect(claimable).to.be.gt(0n);
+
+            const aliceBefore = await mzusd.balanceOf(alice.address);
+            const bobBefore = await mzusd.balanceOf(bob.address);
+
+            // Bob claims on behalf of Alice
+            await tranche.connect(bob).claim(alice.address, targetEpoch);
+
+            const aliceAfter = await mzusd.balanceOf(alice.address);
+            const bobAfter = await mzusd.balanceOf(bob.address);
+
+            // Alice receives the funds
+            expect(aliceAfter - aliceBefore).to.equal(claimable);
+            // Bob receives nothing
+            expect(bobAfter).to.equal(bobBefore);
         });
         it("Does not allow transferring shares held under umbrella", async () => {
             const {shares} = await mintAndDepositIntoTranche(alice, to6(10n), alice.address);
@@ -1189,9 +1219,9 @@ describe("Tranche", () => {
 
             const trancheBalBeforeClaims = await mzusd.balanceOf(tranche.target);
 
-            await tranche.connect(alice).claim(targetEpoch);
-            await tranche.connect(bob).claim(targetEpoch);
-            await tranche.connect(carol).claim(targetEpoch);
+            await tranche.connect(alice).claim(alice.address, targetEpoch);
+            await tranche.connect(bob).claim(bob.address, targetEpoch);
+            await tranche.connect(carol).claim(carol.address, targetEpoch);
 
             const aBalAfter = await mzusd.balanceOf(alice.address);
             const bBalAfter = await mzusd.balanceOf(bob.address);
@@ -1356,8 +1386,8 @@ describe("Tranche", () => {
             const bMZBefore = await mzusd.balanceOf(bob.address);
             const trancheBalBeforeClaims = await mzusd.balanceOf(tranche.target);
 
-            await (await tranche.connect(alice).claim(targetEpoch)).wait();
-            await (await tranche.connect(bob).claim(targetEpoch)).wait();
+            await (await tranche.connect(alice).claim(alice.address, targetEpoch)).wait();
+            await (await tranche.connect(bob).claim(bob.address, targetEpoch)).wait();
 
             expect(await mzusd.balanceOf(alice.address)).to.equal(aMZBefore + expectedA);
             expect(await mzusd.balanceOf(bob.address)).to.equal(bMZBefore + expectedB);
@@ -1543,8 +1573,8 @@ describe("Tranche", () => {
             const aBalBefore = await mzusd.balanceOf(alice.address);
             const bBalBefore = await mzusd.balanceOf(bob.address);
 
-            await (await tranche.connect(alice).claim(2n)).wait();
-            await (await tranche.connect(bob).claim(2n)).wait();
+            await (await tranche.connect(alice).claim(alice.address, 2n)).wait();
+            await (await tranche.connect(bob).claim(bob.address, 2n)).wait();
 
             const aPaid = (await mzusd.balanceOf(alice.address)) - aBalBefore;
             const bPaid = (await mzusd.balanceOf(bob.address)) - bBalBefore;
@@ -1729,7 +1759,7 @@ describe("Tranche", () => {
             expect(totalShares1).to.equal(aShares);
 
             const aBalBefore = await mzusd.balanceOf(alice.address);
-            await (await tranche.connect(alice).claim(1n)).wait();
+            await (await tranche.connect(alice).claim(alice.address, 1n)).wait();
             expect(await mzusd.balanceOf(alice.address)).to.equal(aBalBefore + totalAssets1);
 
             // Move to epoch 3 (starts a yield stream for epoch 3)
@@ -1799,7 +1829,7 @@ describe("Tranche", () => {
 
             // Bob claims epoch 3 and receives exactly the finalized assets for that epoch
             const bBalBefore = await mzusd.balanceOf(bob.address);
-            await (await tranche.connect(bob).claim(3n)).wait();
+            await (await tranche.connect(bob).claim(bob.address, 3n)).wait();
             expect(await mzusd.balanceOf(bob.address)).to.equal(bBalBefore + totalAssets3);
         });
     });
@@ -1824,10 +1854,9 @@ describe("Tranche", () => {
             const targetEpoch = epochAtRequest; // delay = 0 in this suite setup
 
             // Epoch is NOT finalized yet -> should revert NotFinalized (not NothingToClaim)
-            await expect(tranche.connect(alice).claim(targetEpoch)).to.be.revertedWithCustomError(
-                tranche,
-                "NotFinalized"
-            );
+            await expect(
+                tranche.connect(alice).claim(alice.address, targetEpoch)
+            ).to.be.revertedWithCustomError(tranche, "NotFinalized");
         });
         it("Should revert EpochNotPassed when current vault epoch has not advanced", async () => {
             const depositUSDC = to6(50n);

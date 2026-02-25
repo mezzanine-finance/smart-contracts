@@ -263,14 +263,17 @@ contract Tranche is
     }
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
+    /// @param user The address whose claim to process. Funds are sent to this address.
     /// @param epochId The epoch for which to claim assets.
-    /// @dev Claims use floor pro-rata math:
+    /// @dev Anyone can call on behalf of `user`; funds always go to `user`.
+    ///      Claims use floor pro-rata math:
     ///      userAssets = floor(userShares * totalAssets / totalShares).
     ///      Rounding dust can remain in `reservedAssets` after all claims for an epoch.
     function claim(
+        address user,
         uint256 epochId
     ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
-        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
+        uint256 userShares = userSharesByEpoch[user][epochId];
         if (userShares == 0) revert NothingToClaim();
 
         FinalizedEpoch memory finalizedData = finalizedEpochs[epochId];
@@ -279,7 +282,7 @@ contract Tranche is
             finalizedData.totalShares;
         uint256 userAssets = fullUserAssets;
 
-        uint256 snapshotPrice = userSnapshotPrice[msg.sender][epochId];
+        uint256 snapshotPrice = userSnapshotPrice[user][epochId];
         if (
             snapshotPrice != 0 &&
             unstakeYieldReductionBps > 0 &&
@@ -295,13 +298,13 @@ contract Tranche is
             userAssets -= slashAmount;
         }
 
-        userSharesByEpoch[msg.sender][epochId] = 0;
-        userSnapshotPrice[msg.sender][epochId] = 0;
+        userSharesByEpoch[user][epochId] = 0;
+        userSnapshotPrice[user][epochId] = 0;
         reservedAssets -= fullUserAssets;
 
-        IERC20(asset()).transfer(msg.sender, userAssets);
+        IERC20(asset()).transfer(user, userAssets);
 
-        emit WithdrawalClaimed(msg.sender, epochId, userAssets);
+        emit WithdrawalClaimed(user, epochId, userAssets);
     }
 
     // EPOCH FINALIZATION

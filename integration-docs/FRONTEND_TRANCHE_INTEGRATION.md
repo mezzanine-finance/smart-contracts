@@ -160,7 +160,7 @@ Until then, show request as pending.
 
 ### Step 3: claim (umbrella only)
 
-Tx: `Tranche.claim(epochId)`.
+Tx: `Tranche.claim(user, epochId)`. Anyone can call on behalf of `user`; funds always go to `user`.
 
 Rounding behavior:
 

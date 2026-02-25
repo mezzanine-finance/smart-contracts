@@ -101,7 +101,7 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
         uint256 userBefore = mzusd.balanceOf(userA);
 
         vm.prank(userA);
-        tranche.claim(targetEpoch);
+        tranche.claim(userA, targetEpoch);
 
         uint256 userReceived = mzusd.balanceOf(userA) - userBefore;
         assertEq(userReceived, expectedAssetsOut);
@@ -221,7 +221,7 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
 
         uint256 userBefore = mzusd.balanceOf(userA);
         vm.prank(userA);
-        tranche.claim(targetEpoch);
+        tranche.claim(userA, targetEpoch);
 
         uint256 userReceived = mzusd.balanceOf(userA) - userBefore;
         assertEq(userReceived, claimablePreview);
