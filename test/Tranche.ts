@@ -425,9 +425,6 @@ describe("Tranche", () => {
             await expect(tranche.requestWithdrawal(1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.WITHDRAWALS);
-            await expect(tranche.cancelUnstake(1n, 1n))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.WITHDRAWALS);
             await expect(tranche.claim(deployer.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.WITHDRAWALS);
@@ -1249,166 +1246,6 @@ describe("Tranche", () => {
             expect(bPendingAfter).to.equal(0n);
             expect(cPendingAfter).to.equal(0n);
         });
-        it("Repeated cancel unstake + re-request keeps umbrella accounting consistent", async () => {
-            const DAY = 24 * 60 * 60;
-
-            // Awkward numbers to force non-round share math
-            const aUSDC = to6(111n);
-            const bUSDC = to6(53n);
-
-            // 1) Alice deposits at epoch 1
-            const {mintedMZ: aMinted, shares: aShares0} = await mintAndDepositIntoTranche(
-                alice,
-                aUSDC,
-                alice.address
-            );
-            expect(aShares0).to.equal(aMinted * (await shareScaleFor(tranche)));
-            expect(await vault.currentEpochId()).to.equal(1n);
-
-            // 2) Advance to epoch 2 and start streaming yield (odd amount)
-            await time.increase(DAY);
-            await (await vault.connect(navOracleSigner).distributeYield(to6(9n))).wait();
-            expect(await vault.currentEpochId()).to.equal(2n);
-
-            // Move into the stream by a weird amount so Bob's shares are non-round
-            const duration = await vault.epochDuration();
-            await time.increase(duration / 7n + 11n);
-
-            // 3) Bob deposits mid-stream => shares < assets
-            const {mintedMZ: bMinted, shares: bShares0} = await mintAndDepositIntoTranche(
-                bob,
-                bUSDC,
-                bob.address
-            );
-            expect(bShares0).to.be.lt(bMinted * (await shareScaleFor(tranche)));
-
-            // 4) Both request withdrawal for ALL shares in current epoch (targetEpoch = 2)
-            const targetEpoch = await vault.currentEpochId();
-            expect(targetEpoch).to.equal(2n);
-
-            const aReq0 = await tranche.balanceOf(alice.address);
-            const bReq0 = await tranche.balanceOf(bob.address);
-
-            await (await tranche.connect(alice).requestWithdrawal(aReq0)).wait();
-            await (await tranche.connect(bob).requestWithdrawal(bReq0)).wait();
-
-            // Helper for checking invariants at any point
-            const assertUmbrellaState = async (expectedA: bigint, expectedB: bigint) => {
-                const umbrella = await tranche.umbrellaSharesByEpoch(targetEpoch);
-                const aPending = await tranche.userSharesByEpoch(alice.address, targetEpoch);
-                const bPending = await tranche.userSharesByEpoch(bob.address, targetEpoch);
-
-                expect(aPending).to.equal(expectedA);
-                expect(bPending).to.equal(expectedB);
-                expect(umbrella).to.equal(expectedA + expectedB);
-
-                // tranche contract should hold exactly umbrella shares as receipt tokens
-                const held = await tranche.balanceOf(tranche.target);
-                expect(held).to.equal(umbrella);
-            };
-
-            // After requests: all shares moved under umbrella
-            expect(await tranche.balanceOf(alice.address)).to.equal(0n);
-            expect(await tranche.balanceOf(bob.address)).to.equal(0n);
-            await assertUmbrellaState(aReq0, bReq0);
-
-            // 5) Alice cancels twice (partial -> partial). Ensure math composes.
-            const aCancel1 = aReq0 / 4n + 3n;
-            const aCancel2 = aReq0 / 7n + 1n;
-
-            await (await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel1)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1, bReq0);
-            expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1);
-
-            await (await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel2)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq0);
-            expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1 + aCancel2);
-
-            // sanity: cannot cancel more than pending (should revert InvalidShares)
-            const aPendingNow = await tranche.userSharesByEpoch(alice.address, targetEpoch);
-            await expect(
-                tranche.connect(alice).cancelUnstake(targetEpoch, aPendingNow + 1n)
-            ).to.be.revertedWithCustomError(tranche, "InvalidShares");
-
-            // 6) Bob: full cancel -> re-request -> cancel again -> re-request again
-            // Full cancel returns all shares back
-            await (await tranche.connect(bob).cancelUnstake(targetEpoch, bReq0)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, 0n);
-            expect(await tranche.balanceOf(bob.address)).to.equal(bReq0);
-
-            // Re-request a weird subset
-            const bReq1 = bReq0 / 2n + 5n;
-            await (await tranche.connect(bob).requestWithdrawal(bReq1)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1);
-            expect(await tranche.balanceOf(bob.address)).to.equal(bReq0 - bReq1);
-
-            // Cancel part of the re-request
-            const bCancel1 = bReq1 / 3n + 2n;
-            await (await tranche.connect(bob).cancelUnstake(targetEpoch, bCancel1)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1 - bCancel1);
-            expect(await tranche.balanceOf(bob.address)).to.equal(bReq0 - bReq1 + bCancel1);
-
-            // Re-request again using some of Bob's remaining wallet shares
-            const bReq2 = (bReq0 - bReq1 + bCancel1) / 2n + 1n;
-            await (await tranche.connect(bob).requestWithdrawal(bReq2)).wait();
-            await assertUmbrellaState(aReq0 - aCancel1 - aCancel2, bReq1 - bCancel1 + bReq2);
-
-            // 7) Advance vault epoch so finalizeEpoch(targetEpoch) becomes allowed
-            await time.increase(DAY);
-            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
-            expect(await vault.currentEpochId()).to.equal(3n);
-
-            // Capture pending shares at finalization moment
-            const aPendingFinal = await tranche.userSharesByEpoch(alice.address, targetEpoch);
-            const bPendingFinal = await tranche.userSharesByEpoch(bob.address, targetEpoch);
-            const totalPendingFinal = aPendingFinal + bPendingFinal;
-            expect(totalPendingFinal).to.be.gt(0n);
-
-            const supplyBeforeFinal = await tranche.totalSupply();
-
-            await (await tranche.connect(deployer).finalizeEpoch(targetEpoch)).wait();
-
-            const [umbrellaAfter, isFinalized, totalSharesFinal, totalAssetsFinal] =
-                await tranche.getEpochInfo(targetEpoch);
-            expect(isFinalized).to.equal(true);
-            expect(umbrellaAfter).to.equal(0n);
-            expect(totalSharesFinal).to.equal(totalPendingFinal);
-
-            // Shares under umbrella are burned on finalize
-            const supplyAfterFinal = await tranche.totalSupply();
-            expect(supplyAfterFinal).to.equal(supplyBeforeFinal - totalPendingFinal);
-
-            // 8) Claims: pro-rata floor math for each user (cancelled shares are NOT part of claim)
-            const expectedA = (aPendingFinal * totalAssetsFinal) / totalSharesFinal;
-            const expectedB = (bPendingFinal * totalAssetsFinal) / totalSharesFinal;
-
-            const aMZBefore = await mzusd.balanceOf(alice.address);
-            const bMZBefore = await mzusd.balanceOf(bob.address);
-            const trancheBalBeforeClaims = await mzusd.balanceOf(tranche.target);
-
-            await (await tranche.connect(alice).claim(alice.address, targetEpoch)).wait();
-            await (await tranche.connect(bob).claim(bob.address, targetEpoch)).wait();
-
-            expect(await mzusd.balanceOf(alice.address)).to.equal(aMZBefore + expectedA);
-            expect(await mzusd.balanceOf(bob.address)).to.equal(bMZBefore + expectedB);
-
-            const sumClaims = expectedA + expectedB;
-            expect(sumClaims).to.be.lte(totalAssetsFinal);
-            expect(totalAssetsFinal - sumClaims).to.be.lt(2n);
-
-            const trancheBalAfterClaims = await mzusd.balanceOf(tranche.target);
-            expect(trancheBalAfterClaims).to.equal(trancheBalBeforeClaims - sumClaims);
-
-            // After claim, pending shares are cleared
-            expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
-            expect(await tranche.userSharesByEpoch(bob.address, targetEpoch)).to.equal(0n);
-
-            // Cancelled shares remain on users' balances and were NOT burned/claimed
-            const aliceWalletShares = await tranche.balanceOf(alice.address);
-            const bobWalletShares = await tranche.balanceOf(bob.address);
-            expect(aliceWalletShares).to.equal(aCancel1 + aCancel2);
-            expect(bobWalletShares).to.be.gt(0n);
-        });
         it("Finalizes newer epoch before older one without losing pending shares", async () => {
             const DAY = 24 * 60 * 60;
 
@@ -1439,151 +1276,6 @@ describe("Tranche", () => {
             await (await tranche.connect(deployer).finalizeEpoch(epoch1)).wait();
             const [, finalized1] = await tranche.getEpochInfo(epoch1);
             expect(finalized1).to.equal(true);
-        });
-        it("Cancel unstake time and epoch stress", async () => {
-            const DAY = 24 * 60 * 60;
-
-            // Enable a real delay so requests land in a future epoch
-            const txDelay = await tranche.connect(deployer).setUnstakeDelayEpochs(1n);
-            await expect(txDelay).to.emit(tranche, "UnstakeDelayUpdated").withArgs(1n);
-
-            // Epoch 1 deposits
-            const aUSDC = to6(137n);
-            const bUSDC = to6(59n);
-
-            await mintAndDepositIntoTranche(alice, aUSDC, alice.address);
-            await mintAndDepositIntoTranche(bob, bUSDC, bob.address);
-
-            expect(await vault.currentEpochId()).to.equal(1n);
-
-            // Request in epoch 1 -> target epoch 2 (because delay=1)
-            const epochAtReq = await vault.currentEpochId(); // 1
-            const targetEpoch = epochAtReq + 1n; // 2
-
-            const aReq0 = await tranche.balanceOf(alice.address);
-            const bReq0 = await tranche.balanceOf(bob.address);
-
-            const txReqA = await tranche.connect(alice).requestWithdrawal(aReq0);
-            const txReqB = await tranche.connect(bob).requestWithdrawal(bReq0);
-
-            await expect(txReqA)
-                .to.emit(tranche, "UnstakeRequested")
-                .withArgs(alice.address, aReq0, epochAtReq, targetEpoch);
-            await expect(txReqB)
-                .to.emit(tranche, "UnstakeRequested")
-                .withArgs(bob.address, bReq0, epochAtReq, targetEpoch);
-
-            // Umbrella state for epoch 2
-            expect(await tranche.balanceOf(alice.address)).to.equal(0n);
-            expect(await tranche.balanceOf(bob.address)).to.equal(0n);
-            expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(aReq0);
-            expect(await tranche.userSharesByEpoch(bob.address, targetEpoch)).to.equal(bReq0);
-            expect(await tranche.umbrellaSharesByEpoch(targetEpoch)).to.equal(aReq0 + bReq0);
-            expect(await tranche.balanceOf(tranche.target)).to.equal(aReq0 + bReq0);
-
-            // Move to epoch 2 and start yield streaming
-            await time.increase(DAY);
-            await (await vault.connect(navOracleSigner).distributeYield(to6(11n))).wait();
-            expect(await vault.currentEpochId()).to.equal(2n);
-
-            // Cancel within target epoch is allowed (currentEpoch = epochId)
-            const aCancel1 = aReq0 / 3n + 1n;
-            const txCancelA1 = await tranche.connect(alice).cancelUnstake(targetEpoch, aCancel1);
-
-            await expect(txCancelA1)
-                .to.emit(tranche, "UnstakeCancelled")
-                .withArgs(alice.address, targetEpoch, aCancel1);
-
-            // Accounting after cancel
-            expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(
-                aReq0 - aCancel1
-            );
-            expect(await tranche.umbrellaSharesByEpoch(targetEpoch)).to.equal(
-                aReq0 - aCancel1 + bReq0
-            );
-            expect(await tranche.balanceOf(alice.address)).to.equal(aCancel1);
-            expect(await tranche.balanceOf(tranche.target)).to.equal(aReq0 - aCancel1 + bReq0);
-
-            // Re-request some of Alice's returned wallet shares in epoch 2 -> lands in epoch 3
-            const aReReq = aCancel1 / 2n + 1n;
-            const txReReq = await tranche.connect(alice).requestWithdrawal(aReReq);
-            await expect(txReReq)
-                .to.emit(tranche, "UnstakeRequested")
-                .withArgs(alice.address, aReReq, 2n, 3n);
-
-            // Contract now holds umbrella shares for BOTH epoch 2 (remaining) and epoch 3 (new request)
-            const umbrella2 = await tranche.umbrellaSharesByEpoch(2n);
-            const umbrella3 = await tranche.umbrellaSharesByEpoch(3n);
-            expect(umbrella2).to.equal(aReq0 - aCancel1 + bReq0);
-            expect(umbrella3).to.equal(aReReq);
-            expect(await tranche.balanceOf(tranche.target)).to.equal(umbrella2 + umbrella3);
-
-            // Advance to epoch 3 (but do NOT finalize epoch 2 yet)
-            await time.increase(DAY);
-            await (await vault.connect(navOracleSigner).distributeYield(to6(3n))).wait();
-            expect(await vault.currentEpochId()).to.equal(3n);
-
-            await expect(
-                tranche.connect(alice).cancelUnstake(2n, 1n)
-            ).to.be.revertedWithCustomError(tranche, "TooLateToCancel");
-
-            // But cancel for epoch 3 is still allowed (currentEpoch = epochId)
-            const txCancelEpoch3 = await tranche.connect(alice).cancelUnstake(3n, 1n);
-            await expect(txCancelEpoch3)
-                .to.emit(tranche, "UnstakeCancelled")
-                .withArgs(alice.address, 3n, 1n);
-
-            // Epoch 3 umbrella reduced by 1
-            expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
-
-            // Advance to epoch 4 so finalizeEpoch(2) is allowed
-            await time.increase(DAY);
-            await (await vault.connect(navOracleSigner).distributeYield(to6(1n))).wait();
-            expect(await vault.currentEpochId()).to.equal(4n);
-
-            // Finalize epoch 2 (should burn ONLY epoch 2 pending shares)
-            const aPendingE2 = await tranche.userSharesByEpoch(alice.address, 2n);
-            const bPendingE2 = await tranche.userSharesByEpoch(bob.address, 2n);
-            const totalPendingE2 = aPendingE2 + bPendingE2;
-
-            const supplyBeforeFinal = await tranche.totalSupply();
-            await (await tranche.connect(deployer).finalizeEpoch(2n)).wait();
-
-            const [umbrellaAfterFinal, isFinalized, totalSharesFinal, totalAssetsFinal] =
-                await tranche.getEpochInfo(2n);
-            expect(isFinalized).to.equal(true);
-            expect(umbrellaAfterFinal).to.equal(0n);
-            expect(totalSharesFinal).to.equal(totalPendingE2);
-
-            const supplyAfterFinal = await tranche.totalSupply();
-            expect(supplyAfterFinal).to.equal(supplyBeforeFinal - totalPendingE2);
-
-            // Epoch 3 umbrella should be unaffected by finalizing epoch 2
-            expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(aReReq - 1n);
-
-            // After finalization, cancel for epoch 2 is blocked with TooLateToCancel
-            await expect(
-                tranche.connect(alice).cancelUnstake(2n, 1n)
-            ).to.be.revertedWithCustomError(tranche, "TooLateToCancel");
-
-            // Claims for epoch 2, pro-rata floor math
-            const expectedA = (aPendingE2 * totalAssetsFinal) / totalSharesFinal;
-            const expectedB = (bPendingE2 * totalAssetsFinal) / totalSharesFinal;
-
-            const aBalBefore = await mzusd.balanceOf(alice.address);
-            const bBalBefore = await mzusd.balanceOf(bob.address);
-
-            await (await tranche.connect(alice).claim(alice.address, 2n)).wait();
-            await (await tranche.connect(bob).claim(bob.address, 2n)).wait();
-
-            const aPaid = (await mzusd.balanceOf(alice.address)) - aBalBefore;
-            const bPaid = (await mzusd.balanceOf(bob.address)) - bBalBefore;
-            expect(aPaid).to.equal(expectedA);
-            expect(bPaid).to.equal(expectedB);
-
-            // Clean-up - userSharesByEpoch for epoch 2 cleared
-            expect(await tranche.userSharesByEpoch(alice.address, 2n)).to.equal(0n);
-            expect(await tranche.userSharesByEpoch(bob.address, 2n)).to.equal(0n);
         });
     });
     describe("Limits and delays", () => {
@@ -1736,21 +1428,9 @@ describe("Tranche", () => {
             await (await vault.connect(navOracleSigner).distributeYield(to6(5n))).wait();
             expect(await vault.currentEpochId()).to.equal(2n);
 
-            // TooLateToCancel should block cancelling for epoch 1 now
-            await expect(
-                tranche.connect(alice).cancelUnstake(1n, 1n)
-            ).to.be.revertedWithCustomError(tranche, "TooLateToCancel");
-
-            // But Bob can still cancel for epoch 3 because current (2) < epochId (3)
-            const bCancel = bShares / 3n + 1n;
-            const txCancelB = await tranche.connect(bob).cancelUnstake(3n, bCancel);
-            await expect(txCancelB)
-                .to.emit(tranche, "UnstakeCancelled")
-                .withArgs(bob.address, 3n, bCancel);
-
-            const bPendingAfterCancel = bShares - bCancel;
-            expect(await tranche.userSharesByEpoch(bob.address, 3n)).to.equal(bPendingAfterCancel);
-            expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(bPendingAfterCancel);
+            // Bob's pending request for epoch 3 remains untouched until finalization.
+            expect(await tranche.userSharesByEpoch(bob.address, 3n)).to.equal(bShares);
+            expect(await tranche.umbrellaSharesByEpoch(3n)).to.equal(bShares);
 
             // Finalize epoch 1 now allowed (current = 2 > 1) and Alice claims
             await (await tranche.connect(deployer).finalizeEpoch(1n)).wait();
@@ -1791,7 +1471,7 @@ describe("Tranche", () => {
             const supplyBeforeFinal = await tranche.totalSupply();
 
             const bPendingFinal = await tranche.userSharesByEpoch(bob.address, 3n);
-            expect(bPendingFinal).to.equal(bPendingAfterCancel);
+            expect(bPendingFinal).to.equal(bShares);
 
             // Finalize epoch 3
             const txFinal3 = await tranche.connect(deployer).finalizeEpoch(3n);

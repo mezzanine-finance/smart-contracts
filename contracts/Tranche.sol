@@ -77,22 +77,17 @@ contract Tranche is
 
     /// @notice Share of positive pending-withdrawal yield to slash at claim (in bps).
     uint256 public unstakeYieldReductionBps;
-    /// @notice Fee charged on cancelUnstake (in bps of canceled shares), burned from umbrella shares.
-    uint256 public cancelUnstakeFeeBps;
-
     event UnstakeRequested(
         address indexed user,
         uint256 shares,
         uint256 requestEpoch,
         uint256 targetEpoch
     );
-    event UnstakeCancelled(address indexed user, uint256 indexed epochId, uint256 shares);
     event EpochFinalized(uint256 indexed epochId, uint256 sharesBurned, uint256 assetsFinal);
     event UnstakeDelayUpdated(uint256 newDelayEpochs);
     event DepositLimitUpdated(bool enabled, uint256 cap, uint256 tvlBps);
     event WithdrawalClaimed(address indexed user, uint256 indexed epochId, uint256 assets);
     event UnstakeYieldReductionBpsUpdated(uint256 newBps);
-    event CancelUnstakeFeeBpsUpdated(uint256 newBps);
 
     /// @notice Emitted when new yield is registered for linear streaming.
     /// @dev yieldAmount must correspond to MZUSD amount already transferred to this tranche.
@@ -106,13 +101,10 @@ contract Tranche is
     error NothingToClaim();
     error ZeroAddress();
     error YieldStreamIsActive();
-    error NoPendingUnstake();
     error ZeroPassedShares();
-    error InvalidShares();
     error InvalidBalance();
     error ZeroYieldPassed();
     error ZeroEpochDuration();
-    error TooLateToCancel();
     error DirectWithdrawModeEnabled();
     error DirectWithdrawModeDisabled();
     error UnstakeDelayZero();
@@ -216,50 +208,6 @@ contract Tranche is
         _transfer(msg.sender, address(this), shares);
 
         emit UnstakeRequested(msg.sender, shares, currentVaultEpoch, targetEpoch);
-    }
-
-    /// @notice Cancel a previously requested unstake for a given epoch.
-    /// @dev User can only cancel shares that are still pending under the umbrella and
-    ///      for epochs that have not yet been finalized.
-    /// @param epochId The epoch for which the user wants to cancel their unstake.
-    /// @param shares The amount of shares to cancel.
-    /// @dev A configurable fee can be burned from canceled shares.
-    function cancelUnstake(
-        uint256 epochId,
-        uint256 shares
-    ) external whenDirectDisabled whenNotPaused(PauseCategory.WITHDRAWALS) {
-        uint256 userShares = userSharesByEpoch[msg.sender][epochId];
-        if (userShares == 0) revert NoPendingUnstake();
-        if (shares == 0) revert ZeroPassedShares();
-        if (shares > userShares) revert InvalidShares();
-
-        // aderyn-fp-next-line(reentrancy-state-change)
-        uint256 currentEpochOnVault = IVault(vault).currentEpochId();
-        if (currentEpochOnVault > epochId) revert TooLateToCancel();
-
-        uint256 umbrellaShares = umbrellaSharesByEpoch[epochId];
-        if (shares > umbrellaShares) revert InvalidAmount();
-
-        // Update user and global umbrella accounting.
-        uint256 userSharesLeft = userShares - shares;
-        userSharesByEpoch[msg.sender][epochId] = userSharesLeft;
-        umbrellaSharesByEpoch[epochId] = umbrellaShares - shares;
-
-        if (userSharesLeft == 0) {
-            userSnapshotPrice[msg.sender][epochId] = 0;
-        }
-
-        uint256 sharesToBurn = (shares * cancelUnstakeFeeBps) / BASIS_POINTS;
-        uint256 returnShares = shares - sharesToBurn;
-
-        if (sharesToBurn > 0) {
-            _burn(address(this), sharesToBurn);
-        }
-        if (returnShares > 0) {
-            _transfer(address(this), msg.sender, returnShares);
-        }
-
-        emit UnstakeCancelled(msg.sender, epochId, shares);
     }
 
     /// @notice Claim assets for finalized epoch after admin has finalized it.
@@ -392,15 +340,6 @@ contract Tranche is
         if (bps >= BASIS_POINTS) revert InvalidAmount();
         unstakeYieldReductionBps = bps;
         emit UnstakeYieldReductionBpsUpdated(bps);
-    }
-
-    /// @notice Set cancel fee, in bps of canceled shares.
-    function setCancelUnstakeFeeBps(
-        uint256 bps
-    ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (bps >= BASIS_POINTS) revert InvalidAmount();
-        cancelUnstakeFeeBps = bps;
-        emit CancelUnstakeFeeBpsUpdated(bps);
     }
 
     /// @notice Update deposit limits.

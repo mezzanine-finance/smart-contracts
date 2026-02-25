@@ -56,7 +56,6 @@ Notes:
 
 - `setUnstakeDelayEpochs` for umbrella tranches.
 - `setUnstakeYieldReductionBps` (optional): slash bps on positive pending-withdrawal yield at claim.
-- `setCancelUnstakeFeeBps` (optional): fee bps burned from canceled unstake shares.
 - `setDepositLimits(capMZUSD, tvlBps)` where needed.
 - `setDepositLimitEnabled(enabled)` to toggle limits without changing `capMZUSD`/`tvlBps`.
 - Deployment-time immutable:
@@ -114,12 +113,12 @@ Recommended role mapping follows `scripts/deployment/deploy.ts`:
     - `setVault` -> `ADMIN_ROLE`
 - Tranche:
     - admin setters (`setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`,
-      `setCancelUnstakeFeeBps`, `setDepositLimits`, `setDepositLimitEnabled`) -> `ADMIN_ROLE`
+      `setDepositLimits`, `setDepositLimitEnabled`) -> `ADMIN_ROLE`
 - LossManager:
     - `setMaxLossPerTxUSDC` -> `ADMIN_ROLE`
 - NavOracleAutomation:
     - `submitNav` -> `ORACLE_ROLE`
-    - `rejectPendingNav`, `setVetoPeriod` -> `ADMIN_ROLE`
+    - `rejectPendingNav`, `setVetoPeriod`, `setOracles`, `setMaxAnswerStaleness` -> `ADMIN_ROLE`
 
 Also grant `UPGRADER_ROLE` for `upgradeToAndCall` on UUPS contracts and pause roles on PauseManager.
 
@@ -201,9 +200,6 @@ Tranches:
 - `tranches[].riskPremiumBps` + `enabled`: used in IssuanceVault distribution config.
 - `tranches[].unstakeYieldReductionBps` (optional):
     - applies via `setUnstakeYieldReductionBps`;
-    - must be `< 10_000` bps.
-- `tranches[].cancelUnstakeFeeBps` (optional):
-    - applies via `setCancelUnstakeFeeBps`;
     - must be `< 10_000` bps.
 - `tranches[].depositLimits` (optional):
     - `capMZUSD` preferred;

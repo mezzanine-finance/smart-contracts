@@ -112,52 +112,6 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
         }
     }
 
-    function testFuzz_CancelUnstakeBurnsConfiguredFeeAndKeepsSnapshotOnPartialCancel(
-        uint96 depositSeed,
-        uint96 yieldSeed,
-        uint16 feeBpsSeed,
-        uint96 withdrawSeed,
-        uint96 cancelSeed,
-        address user
-    ) public {
-        _assumeValidUser(user);
-
-        uint256 depositUSDC = bound(uint256(depositSeed), 2, 3_000_000e6);
-        uint256 reportedYieldUSDC = bound(uint256(yieldSeed), 0, 3_000_000e6);
-        uint256 feeBps = bound(uint256(feeBpsSeed), 0, BPS - 1);
-
-        _fundAndDeposit(user, depositUSDC);
-        tranche.setCancelUnstakeFeeBps(feeBps);
-
-        _advanceEpochAndDistributeYield(reportedYieldUSDC);
-
-        uint256 targetEpoch = vault.currentEpochId();
-        uint256 userShares = tranche.balanceOf(user);
-        uint256 requestedShares = bound(uint256(withdrawSeed), 2, userShares);
-
-        vm.prank(user);
-        tranche.requestWithdrawal(requestedShares);
-
-        uint256 snapshotBefore = tranche.userSnapshotPrice(user, targetEpoch);
-        uint256 walletSharesBefore = tranche.balanceOf(user);
-        uint256 supplyBefore = tranche.totalSupply();
-
-        uint256 umbrellaShares = tranche.umbrellaSharesByEpoch(targetEpoch);
-        vm.assume(umbrellaShares >= 2);
-        uint256 cancelShares = bound(uint256(cancelSeed), 1, requestedShares - 1);
-        vm.assume(cancelShares <= umbrellaShares);
-        uint256 expectedBurn = (cancelShares * feeBps) / BPS;
-        uint256 expectedReturn = cancelShares - expectedBurn;
-
-        vm.prank(user);
-        tranche.cancelUnstake(targetEpoch, cancelShares);
-
-        assertEq(tranche.balanceOf(user) - walletSharesBefore, expectedReturn);
-        assertEq(supplyBefore - tranche.totalSupply(), expectedBurn);
-        assertEq(tranche.userSharesByEpoch(user, targetEpoch), requestedShares - cancelShares);
-        assertEq(tranche.userSnapshotPrice(user, targetEpoch), snapshotBefore);
-    }
-
     function testFuzz_GetUserEpochInfoMatchesClaimMathWithSlashing(
         uint96 depositASeed,
         uint96 depositBSeed,

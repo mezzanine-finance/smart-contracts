@@ -56,7 +56,7 @@ If paused, call reverts with `CategoryPaused(category)`.
 - `DEPOSITS`: `deposit`
 - `WITHDRAWALS`: `requestWithdrawal`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`
+- `ADMIN`: `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setWithdrawalFeeBps`
 - `PROTOCOL`: `mint`, `burn`
 
 Note: `setVault` is `restricted` but not pause-gated.
@@ -64,15 +64,15 @@ Note: `setVault` is `restricted` but not pause-gated.
 ### Tranche
 
 - `DEPOSITS`: `deposit`, `mint` (via ERC4626 overrides)
-- `WITHDRAWALS`: `requestWithdrawal`, `cancelUnstake`, `claim`, `withdraw`, `redeem`
+- `WITHDRAWALS`: `requestWithdrawal`, `claim`, `withdraw`, `redeem`
 - `TRANSFERS`: `transfer`, `transferFrom`, `approve`
-- `ADMIN`: `setDepositLimits`, `setDepositLimitEnabled`, `setUnstakeDelayEpochs`
+- `ADMIN`: `setDepositLimits`, `setDepositLimitEnabled`, `setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`
 - `PROTOCOL`: `notifyYield`, `finalizeEpoch`, `burnMZUSD`
 
 Important implementation detail:
 - `Tranche` applies the `TRANSFERS` pause check in ERC20 `_update`. Because `_update` is used by
   mint/burn/transfer internals, pausing `TRANSFERS` also blocks share mint/burn paths
-  (`deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal`, `cancelUnstake`, `finalizeEpoch`).
+  (`deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal`, `finalizeEpoch`).
 
 ### IssuanceVault
 

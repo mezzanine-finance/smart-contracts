@@ -46,7 +46,7 @@ Role IDs are configurable `uint64` values in deployment config.
 
 - `mint` -> only configured IssuanceVault (`onlyVault`)
 - `burn` -> `BURNER_ROLE` (`restricted`, plus `PROTOCOL` pause gate)
-- `setGlobalRedemptionCap`, `setRedemptionWindowDuration` -> `ADMIN_ROLE`
+- `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setWithdrawalFeeBps` -> `ADMIN_ROLE`
 - `setVault` (one-time) -> `ADMIN_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
@@ -64,7 +64,7 @@ Role IDs are configurable `uint64` values in deployment config.
 
 - `notifyYield` -> only configured `vault`
 - `burnMZUSD` -> only `IVault(vault).lossManager()`
-- `setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`, `setCancelUnstakeFeeBps`,
+- `setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`,
   `setDepositLimits`, `setDepositLimitEnabled` -> `ADMIN_ROLE`
 - `finalizeEpoch` -> public (pause-gated, not `restricted`)
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
@@ -92,7 +92,7 @@ Role IDs are configurable `uint64` values in deployment config.
 ### NavOracleAutomation (non-upgradeable)
 
 - `submitNav` -> `ORACLE_ROLE`
-- `rejectPendingNav`, `setVetoPeriod` -> `ADMIN_ROLE`
+- `rejectPendingNav`, `setVetoPeriod`, `setOracles`, `setMaxAnswerStaleness` -> `ADMIN_ROLE`
 
 ## Cross-contract grants and wiring
 

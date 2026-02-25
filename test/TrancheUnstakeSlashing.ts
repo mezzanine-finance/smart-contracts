@@ -260,25 +260,18 @@ describe("Tranche unstake slashing", () => {
         expect(drift).to.be.lte(5_000_000_000_000n);
     });
 
-    it("reverts when slashing or cancel fee bps are >= 10_000", async () => {
+    it("reverts when slashing bps are >= 10_000", async () => {
         await expect(
             tranche.connect(deployer).setUnstakeYieldReductionBps(BPS)
-        ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
-        await expect(
-            tranche.connect(deployer).setCancelUnstakeFeeBps(BPS)
         ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
 
         await expect(
             tranche.connect(deployer).setUnstakeYieldReductionBps(BPS + 1n)
         ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
-        await expect(
-            tranche.connect(deployer).setCancelUnstakeFeeBps(BPS + 1n)
-        ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
     });
 
     it("reverts when non-admin tries to set slashing params", async () => {
         await expect(tranche.connect(alice).setUnstakeYieldReductionBps(1n)).to.be.reverted;
-        await expect(tranche.connect(alice).setCancelUnstakeFeeBps(1n)).to.be.reverted;
     });
 
     it("slashes positive pending yield on claim and releases full reserved amount", async () => {
@@ -701,115 +694,6 @@ describe("Tranche unstake slashing", () => {
         expect(bobAfter - bobBefore).to.equal(bobFullAssets);
         expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
         expect(await tranche.userSnapshotPrice(bob.address, targetEpoch)).to.equal(0n);
-    });
-
-    it("full cancel and re-request in same epoch refreshes snapshot and reduces slash", async () => {
-        const slashBps = 5_000n;
-        await tranche.connect(deployer).setUnstakeYieldReductionBps(slashBps);
-        await tranche.connect(deployer).setCancelUnstakeFeeBps(0n);
-
-        await mintAndDepositIntoTranche(alice, to6(300n));
-        await mintAndDepositIntoTranche(bob, to6(700n));
-
-        await advanceEpoch(to6(200n));
-
-        const targetEpoch = await vault.currentEpochId();
-        const scale = await shareUnit();
-        const aliceShares = await tranche.balanceOf(alice.address);
-
-        await tranche.connect(alice).requestWithdrawal(aliceShares);
-        const initialSnapshot = await tranche.userSnapshotPrice(alice.address, targetEpoch);
-        expect(initialSnapshot).to.be.gt(0n);
-
-        const epochDuration = await vault.epochDuration();
-        await time.increase(epochDuration / 2n);
-
-        await tranche.connect(alice).cancelUnstake(targetEpoch, aliceShares);
-        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
-        expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
-
-        await tranche.connect(alice).requestWithdrawal(aliceShares);
-        const refreshedSnapshot = await tranche.userSnapshotPrice(alice.address, targetEpoch);
-        expect(refreshedSnapshot).to.be.gt(initialSnapshot);
-
-        await advanceEpoch(0n);
-        await tranche.connect(deployer).finalizeEpoch(targetEpoch);
-
-        const [totalShares, totalAssets, finalizationPrice] =
-            await tranche.finalizedEpochs(targetEpoch);
-        const fullUserAssets = (aliceShares * totalAssets) / totalShares;
-
-        let slashWithInitial = computeSlash(
-            finalizationPrice,
-            initialSnapshot,
-            slashBps,
-            aliceShares,
-            scale
-        );
-        if (slashWithInitial > fullUserAssets) {
-            slashWithInitial = fullUserAssets;
-        }
-
-        let slashWithRefreshed = computeSlash(
-            finalizationPrice,
-            refreshedSnapshot,
-            slashBps,
-            aliceShares,
-            scale
-        );
-        if (slashWithRefreshed > fullUserAssets) {
-            slashWithRefreshed = fullUserAssets;
-        }
-
-        expect(slashWithRefreshed).to.be.lt(slashWithInitial);
-
-        const aliceBefore = await mzusd.balanceOf(alice.address);
-        await tranche.connect(alice).claim(alice.address, targetEpoch);
-        const aliceAfter = await mzusd.balanceOf(alice.address);
-
-        expect(aliceAfter - aliceBefore).to.equal(fullUserAssets - slashWithRefreshed);
-    });
-
-    it("applies cancel fee burn and keeps snapshot unchanged on partial cancel", async () => {
-        const cancelFeeBps = 1_000n;
-        await tranche.connect(deployer).setCancelUnstakeFeeBps(cancelFeeBps);
-
-        await mintAndDepositIntoTranche(alice, to6(200n));
-        await advanceEpoch(to6(40n));
-
-        const targetEpoch = await vault.currentEpochId();
-        const totalShares = await tranche.balanceOf(alice.address);
-        const requestedShares = (totalShares * 3n) / 5n;
-
-        await tranche.connect(alice).requestWithdrawal(requestedShares);
-
-        const snapshotBefore = await tranche.userSnapshotPrice(alice.address, targetEpoch);
-        const userWalletBefore = await tranche.balanceOf(alice.address);
-        const supplyBefore = await tranche.totalSupply();
-
-        const cancelShares = requestedShares / 2n;
-        const sharesToBurn = (cancelShares * cancelFeeBps) / BPS;
-        const returnShares = cancelShares - sharesToBurn;
-
-        await tranche.connect(alice).cancelUnstake(targetEpoch, cancelShares);
-
-        const userWalletAfter = await tranche.balanceOf(alice.address);
-        const supplyAfter = await tranche.totalSupply();
-        const userSharesLeft = requestedShares - cancelShares;
-
-        expect(userWalletAfter - userWalletBefore).to.equal(returnShares);
-        expect(supplyAfter).to.equal(supplyBefore - sharesToBurn);
-        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(
-            userSharesLeft
-        );
-        expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(
-            snapshotBefore
-        );
-
-        await tranche.connect(alice).cancelUnstake(targetEpoch, userSharesLeft);
-
-        expect(await tranche.userSharesByEpoch(alice.address, targetEpoch)).to.equal(0n);
-        expect(await tranche.userSnapshotPrice(alice.address, targetEpoch)).to.equal(0n);
     });
 
     it("getUserEpochInfo returns claim preview with slashing", async () => {

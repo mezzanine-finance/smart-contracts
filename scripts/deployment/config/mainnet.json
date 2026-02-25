@@ -81,7 +81,6 @@
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 2,
             "unstakeYieldReductionBps": 0,
-            "cancelUnstakeFeeBps": 0,
             "depositLimits": {
                 "enabled": true,
                 "tvlBps": 3000
@@ -97,7 +96,6 @@
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 4,
             "unstakeYieldReductionBps": 0,
-            "cancelUnstakeFeeBps": 0,
             "depositLimits": {
                 "enabled": true,
                 "tvlBps": 1000

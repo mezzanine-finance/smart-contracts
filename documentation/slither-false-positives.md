@@ -17,12 +17,10 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
       non-standard tokens, we can switch to `SafeERC20`.
 
 - `divide-before-multiply` (Medium)
-    - Files: `contracts/MZUSD.sol`, `contracts/IssuanceVault.sol`, `contracts/Tranche.sol`.
+    - Files: `contracts/MZUSD.sol`, `contracts/IssuanceVault.sol`.
     - Reason: rounding down to 6-decimal USDC is intentional; burn uses the
       rounded amount to avoid dust mismatch in `MZUSD.requestWithdrawal`; in IssuanceVault
-      this is expected integer arithmetic with accepted rounding. In Tranche slashing
-      math (`claim`/`getUserEpochInfo`), division ordering intentionally mirrors on-chain
-      payout semantics (floor rounding and slash capped by claimable assets).
+      this is expected integer arithmetic with accepted rounding.
 
 - `incorrect-equality` (Medium)
     - File: `contracts/IssuanceVault.sol` (`available == 0` in `setBuffer` and `_rebalance`).
@@ -40,12 +38,15 @@ Use `npm run slither:md` for report-only runs or `npm run slither:md:strict` to 
 
 - `uninitialized-local` (Medium)
     - Files: `contracts/IssuanceVault.sol`.
-    - Reason: loop variables default to zero in Solidity; pattern is idiomatic.
+    - Reason: local variables default to zero in Solidity (including loop counters
+      and local accumulators); pattern is idiomatic.
 
 - `unused-return` (Medium)
-    - Files: `contracts/IssuanceVault.sol`, `contracts/LossManager.sol`.
+    - Files: `contracts/IssuanceVault.sol`, `contracts/LossManager.sol`,
+      `contracts/automation/NavOracleAutomation.sol`.
     - Reason: return values are not required for correctness; used for calls
-      where revert semantics are sufficient.
+      where revert semantics are sufficient. For `latestRoundData`, we intentionally
+      consume only `answer` and `updatedAt` and ignore other tuple fields.
 
 - `missing-zero-check` (Low)
     - Files: `contracts/automation/NavOracleAutomation.sol`,

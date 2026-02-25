@@ -34,7 +34,6 @@ It is a technical overview intended for engineers, integrators, and auditors.
     - umbrella mode (`directWithdrawEnabled = false`): request -> finalize epoch -> claim.
 - Umbrella mode includes optional unstake economics:
     - `unstakeYieldReductionBps`: slashes a share of positive pending-withdrawal yield at claim time;
-    - `cancelUnstakeFeeBps`: burns a share of canceled unstake shares.
 - Streams notified yield linearly over `IssuanceVault.epochDuration()`.
 - `totalAssets()` uses virtual NAV:
     - `balance(asset) - unaccruedYield - reservedAssets`.

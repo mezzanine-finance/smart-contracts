@@ -80,7 +80,6 @@ export interface TrancheConfig {
     directWithdrawEnabled: boolean;
     unstakeDelayEpochs?: number;
     unstakeYieldReductionBps?: number;
-    cancelUnstakeFeeBps?: number;
     depositLimits?: {
         enabled: boolean;
         capMZUSD?: string;
@@ -243,13 +242,6 @@ function validateConfig(config: DeployConfig, filePath: string) {
             assert(
                 tranche.unstakeYieldReductionBps < 10_000,
                 `Tranche ${tranche.key}: unstakeYieldReductionBps must be < 10_000`
-            );
-        }
-        if (tranche.cancelUnstakeFeeBps !== undefined) {
-            parseBps(tranche.cancelUnstakeFeeBps);
-            assert(
-                tranche.cancelUnstakeFeeBps < 10_000,
-                `Tranche ${tranche.key}: cancelUnstakeFeeBps must be < 10_000`
             );
         }
         if (tranche.depositLimits) {
