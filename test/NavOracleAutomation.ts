@@ -1,6 +1,7 @@
 import {expect} from "chai";
 import {ethers, upgrades, network} from "hardhat";
 import {parseUnits} from "ethers";
+import {anyValue} from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import {
     impersonateAccount,
     setBalance,
@@ -504,7 +505,7 @@ describe("NavOracleAutomation", () => {
         expect(neededAfter).to.equal(true);
     });
 
-    it("reverts submitNav when oracle answer is stale", async () => {
+    it("reverts submitNav when NAV oracle answer is stale", async () => {
         await mintAndDepositIntoTranche(oracle, to6(1n));
 
         const totalSupplyMZ = await mzusd.totalSupply();
@@ -512,11 +513,61 @@ describe("NavOracleAutomation", () => {
         const navUSDC = totalSupplyUSDC + to6(1n);
         const staleUpdatedAt = BigInt(await time.latest()) - BigInt(DAY);
         await pushOracleAnswers(navUSDC, totalSupplyMZ, staleUpdatedAt);
+        const maxStaleness = await navAutomation.maxAnswerStaleness();
 
-        await expect(navAutomation.connect(oracle).submitNav()).to.be.revertedWithCustomError(
-            navAutomation,
-            "StaleOracleAnswer"
-        );
+        await expect(navAutomation.connect(oracle).submitNav())
+            .to.be.revertedWithCustomError(navAutomation, "StaleOracleAnswer")
+            .withArgs(navFeedOracle.target, staleUpdatedAt, anyValue, maxStaleness);
+    });
+
+    it("reverts submitNav when total supply oracle answer is stale", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(1n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        const nowTs = BigInt(await time.latest());
+        const staleUpdatedAt = nowTs - BigInt(DAY);
+        const maxStaleness = await navAutomation.maxAnswerStaleness();
+
+        await navFeedOracle.setLatestRoundData(navUSDC, nowTs);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, staleUpdatedAt);
+
+        await expect(navAutomation.connect(oracle).submitNav())
+            .to.be.revertedWithCustomError(navAutomation, "StaleOracleAnswer")
+            .withArgs(totalSupplyFeedOracle.target, staleUpdatedAt, anyValue, maxStaleness);
+    });
+
+    it("reverts submitNav when NAV oracle timestamp is invalid", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(1n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        const futureUpdatedAt = BigInt(await time.latest()) + 60n;
+
+        await pushOracleAnswers(navUSDC, totalSupplyMZ, futureUpdatedAt);
+
+        await expect(navAutomation.connect(oracle).submitNav())
+            .to.be.revertedWithCustomError(navAutomation, "InvalidOracleTimestamp")
+            .withArgs(navFeedOracle.target, futureUpdatedAt);
+    });
+
+    it("reverts submitNav when total supply oracle timestamp is invalid", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(1n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        const nowTs = BigInt(await time.latest());
+        const futureUpdatedAt = nowTs + 60n;
+
+        await navFeedOracle.setLatestRoundData(navUSDC, nowTs);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, futureUpdatedAt);
+
+        await expect(navAutomation.connect(oracle).submitNav())
+            .to.be.revertedWithCustomError(navAutomation, "InvalidOracleTimestamp")
+            .withArgs(totalSupplyFeedOracle.target, futureUpdatedAt);
     });
 
     it("ignores checkData and performData payloads", async () => {

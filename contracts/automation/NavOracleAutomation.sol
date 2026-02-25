@@ -58,8 +58,9 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error InvalidVetoPeriod();
     error InvalidAnswerStaleness();
     error InvalidOracleAnswer(int256 answer);
-    error InvalidOracleTimestamp(uint256 updatedAt);
+    error InvalidOracleTimestamp(address oracle, uint256 updatedAt);
     error StaleOracleAnswer(
+        address oracle,
         uint256 updatedAt,
         uint256 currentTimestamp,
         uint256 maxAnswerStaleness
@@ -236,20 +237,30 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         (, int256 navAnswer, , uint256 navUpdatedAt, ) = navOracle_.latestRoundData();
         if (navAnswer < 0) revert InvalidOracleAnswer(navAnswer);
         if (navUpdatedAt == 0 || navUpdatedAt > block.timestamp) {
-            revert InvalidOracleTimestamp(navUpdatedAt);
+            revert InvalidOracleTimestamp(address(navOracle_), navUpdatedAt);
         }
         if (block.timestamp - navUpdatedAt > uint256(maxAnswerStaleness)) {
-            revert StaleOracleAnswer(navUpdatedAt, block.timestamp, maxAnswerStaleness);
+            revert StaleOracleAnswer(
+                address(navOracle_),
+                navUpdatedAt,
+                block.timestamp,
+                maxAnswerStaleness
+            );
         }
         navUSDC = uint256(navAnswer);
 
         (, int256 supplyAnswer, , uint256 supplyUpdatedAt, ) = totalSupplyOracle_.latestRoundData();
         if (supplyAnswer < 0) revert InvalidOracleAnswer(supplyAnswer);
         if (supplyUpdatedAt == 0 || supplyUpdatedAt > block.timestamp) {
-            revert InvalidOracleTimestamp(supplyUpdatedAt);
+            revert InvalidOracleTimestamp(address(totalSupplyOracle_), supplyUpdatedAt);
         }
         if (block.timestamp - supplyUpdatedAt > uint256(maxAnswerStaleness)) {
-            revert StaleOracleAnswer(supplyUpdatedAt, block.timestamp, maxAnswerStaleness);
+            revert StaleOracleAnswer(
+                address(totalSupplyOracle_),
+                supplyUpdatedAt,
+                block.timestamp,
+                maxAnswerStaleness
+            );
         }
         totalSupplyMZ = uint256(supplyAnswer);
     }
