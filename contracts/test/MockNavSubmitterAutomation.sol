@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface INavOracleAutomationForMock {
     function hasPendingNav() external view returns (bool);
-    function submitNav(uint256 navUSDC) external;
+    function submitNav() external;
 }
 
 interface IVaultForMock {
@@ -57,7 +57,7 @@ contract MockNavSubmitterAutomation is AutomationCompatibleInterface {
         address navOracle = v.navOracle();
         uint256 totalSupplyUSDC = IERC20(v.mzusd()).totalSupply() / SCALE;
 
-        INavOracleAutomationForMock(navOracle).submitNav(navUSDC);
+        INavOracleAutomationForMock(navOracle).submitNav();
 
         emit NavSubmittedByAutomation(
             totalSupplyUSDC,
