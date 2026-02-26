@@ -1370,6 +1370,13 @@
         "implementation": "0x9478b2860b2aF0cc935c1c1c0C46e0B8aA83d640",
         "txHash": "0xcdeb29cd8c7073e75575c1ff2978d9d22a603fab378ff634bf9e40c9538ac0cd",
         "deployedAt": "2026-02-13T14:52:01.888Z"
+      },
+      {
+        "version": 4,
+        "address": "0x2683Cc4Bd2201e7aaea5aF22cb5f1e4790268B2d",
+        "implementation": "0x9DBB4DD787c605221483AD179D73A1Af2B01Ad00",
+        "deployedAt": "2026-02-26T11:00:51.610Z",
+        "txHash": "0xb7b46a6c00dd3f05dcde8c068a62dc6228bdcbef91a4242f39613db014ab0caf"
       }
     ],
     "Tranche.junior": [
@@ -1393,6 +1400,13 @@
         "implementation": "0x9478b2860b2aF0cc935c1c1c0C46e0B8aA83d640",
         "txHash": "0xbef7b4339bd5898555459e444e332421eb2c9cf653f5fc5a16d0b0308e8064b6",
         "deployedAt": "2026-02-13T14:52:12.857Z"
+      },
+      {
+        "version": 4,
+        "address": "0x7D0014516E0fFf688c4322a1c976395FC4C8BAD6",
+        "implementation": "0x9DBB4DD787c605221483AD179D73A1Af2B01Ad00",
+        "deployedAt": "2026-02-26T11:00:53.488Z",
+        "txHash": "0xe1e9f2ab5027c2ed5d616f19325c16b00379f1ea93da876823dd0102129916ca"
       }
     ],
     "PolJuniorTranche": [

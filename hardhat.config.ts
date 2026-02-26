@@ -83,10 +83,7 @@ const config: HardhatUserConfig = {
         },
     },
     etherscan: {
-        apiKey: {
-            buildbear: "verifyContract",
-            sepolia: envs.ETHERSCAN_API_KEY ?? "",
-        },
+        apiKey: envs.ETHERSCAN_API_KEY ?? "",
         customChains: [
             {
                 network: "buildbear",
@@ -94,14 +91,6 @@ const config: HardhatUserConfig = {
                 urls: {
                     apiURL: "https://rpc.buildbear.io/verify/etherscan/mezzanine-dev",
                     browserURL: "https://explorer.buildbear.io/mezzanine-dev",
-                },
-            },
-            {
-                network: "sepolia",
-                chainId: 11155111,
-                urls: {
-                    apiURL: "https://api.etherscan.io/v2/api?chainid=11155111",
-                    browserURL: "https://sepolia.etherscan.io",
                 },
             },
         ],
