@@ -810,18 +810,15 @@ async function main() {
         throw new Error("navOracle.navFeed and navOracle.totalSupplyFeed must be set together");
     }
     if (hasNavFeed) {
+        const navFeed = config.navOracle.navFeed!;
+        const totalSupplyFeed = config.navOracle.totalSupplyFeed!;
         const currentNavFeed = await navOracle.contract.navOracle();
         const currentTotalSupplyFeed = await navOracle.contract.totalSupplyOracle();
         if (
-            currentNavFeed.toLowerCase() !== config.navOracle.navFeed!.toLowerCase() ||
-            currentTotalSupplyFeed.toLowerCase() !== config.navOracle.totalSupplyFeed!.toLowerCase()
+            currentNavFeed.toLowerCase() !== navFeed.toLowerCase() ||
+            currentTotalSupplyFeed.toLowerCase() !== totalSupplyFeed.toLowerCase()
         ) {
-            await (
-                await navOracleAdmin.setOracles(
-                    config.navOracle.navFeed,
-                    config.navOracle.totalSupplyFeed
-                )
-            ).wait();
+            await (await navOracleAdmin.setOracles(navFeed, totalSupplyFeed)).wait();
             log.success("NavOracleAutomation.setOracles");
         }
     }
