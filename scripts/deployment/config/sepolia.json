@@ -69,23 +69,6 @@
                 "key": "junior",
                 "amountMZUSD": "1"
             }
-        ],
-        "trancheDeposits": [
-            {
-                "key": "senior",
-                "amountMZUSD": "450000",
-                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
-            },
-            {
-                "key": "mezzanine",
-                "amountMZUSD": "220000",
-                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
-            },
-            {
-                "key": "junior",
-                "amountMZUSD": "80000",
-                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
-            }
         ]
     },
     "tranches": [
