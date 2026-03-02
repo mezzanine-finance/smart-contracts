@@ -118,7 +118,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         }
     }
 
-    /// @notice Rejects the pending NAV snapshot during the veto window.
+    /// @notice Rejects the pending NAV snapshot during the veto window or before NAV is applied.
     function rejectPendingNav() external restricted {
         if (!hasPendingNav()) revert NoPendingNav();
         emit NavRejected(pendingIsYield, pendingDeltaUSDC, pendingReadyAt);
@@ -235,7 +235,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (address(totalSupplyOracle_) == address(0)) revert ZeroAddress();
 
         (, int256 navAnswer, , uint256 navUpdatedAt, ) = navOracle_.latestRoundData();
-        if (navAnswer < 0) revert InvalidOracleAnswer(navAnswer);
+        if (navAnswer <= 0) revert InvalidOracleAnswer(navAnswer);
         if (navUpdatedAt == 0 || navUpdatedAt > block.timestamp) {
             revert InvalidOracleTimestamp(address(navOracle_), navUpdatedAt);
         }
@@ -250,7 +250,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         navUSDC = uint256(navAnswer);
 
         (, int256 supplyAnswer, , uint256 supplyUpdatedAt, ) = totalSupplyOracle_.latestRoundData();
-        if (supplyAnswer < 0) revert InvalidOracleAnswer(supplyAnswer);
+        if (supplyAnswer <= 0) revert InvalidOracleAnswer(supplyAnswer);
         if (supplyUpdatedAt == 0 || supplyUpdatedAt > block.timestamp) {
             revert InvalidOracleTimestamp(address(totalSupplyOracle_), supplyUpdatedAt);
         }
