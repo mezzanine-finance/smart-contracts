@@ -24,6 +24,7 @@ const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
+const FINALIZER_ROLE = 8n;
 
 async function imp(addr: string) {
     // Give the whale some ETH for gas
@@ -174,6 +175,10 @@ describe("Tranche", () => {
             ],
             ADMIN_ROLE
         );
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
+
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
         // 5) Wire IssuanceVault to MZUSD and register tranche in IssuanceVault (after roles are configured)

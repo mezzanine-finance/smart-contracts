@@ -383,7 +383,12 @@ async function main() {
             const finalizer = await ensureDeployment<UmbrellaEpochFinalizer>(
                 key,
                 FinalizerFactory,
-                async () => FinalizerFactory.deploy(trancheContract.address, finalizerStartEpoch),
+                async () =>
+                    FinalizerFactory.deploy(
+                        accessManager.address,
+                        trancheContract.address,
+                        finalizerStartEpoch
+                    ),
                 fresh,
                 deployments
             );
@@ -968,6 +973,12 @@ async function main() {
             [tranche.contract.interface.getFunction("upgradeToAndCall").selector],
             roleIds.UPGRADER_ROLE
         );
+        await ensureTargetRole(
+            accessManagerAdmin,
+            tranche.address,
+            [tranche.contract.interface.getFunction("finalizeEpoch").selector],
+            roleIds.FINALIZER_ROLE
+        );
     }
 
     await ensureTargetRole(
@@ -1069,6 +1080,10 @@ async function main() {
     const burnerMembers = new Set<string>(Array.from(trancheByKey.values(), (t) => t.address));
     for (const addr of burnerMembers) {
         await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
+    }
+
+    for (const fin of finalizers) {
+        await ensureRoleMember(accessManagerAdmin, roleIds.FINALIZER_ROLE, fin.address, 0);
     }
 
     // === Post-deploy checks ===

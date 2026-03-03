@@ -26,6 +26,8 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const DAY = 24 * 60 * 60;
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
+const FINALIZER_ROLE = 8n;
+const CHAINLINK_AUTOMATION = 9n;
 
 async function imp(addr: string) {
     // Give the whale some ETH for gas
@@ -40,6 +42,7 @@ describe("UmbrellaEpochFinalizer", () => {
     let deployer: any;
     let alice: any;
     let bob: any;
+    let chainlinkAutomation: any;
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -57,7 +60,7 @@ describe("UmbrellaEpochFinalizer", () => {
     let ADMIN_ROLE: bigint;
 
     before(async () => {
-        [deployer, alice, bob] = await ethers.getSigners();
+        [deployer, alice, bob, chainlinkAutomation] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -172,6 +175,10 @@ describe("UmbrellaEpochFinalizer", () => {
         );
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(CHAINLINK_AUTOMATION, chainlinkAutomation, 0);
+
         // Admin-only tranche functions used in tests
         const trancheDelaySelector =
             tranche.interface.getFunction("setUnstakeDelayEpochs").selector;
@@ -237,27 +244,34 @@ describe("UmbrellaEpochFinalizer", () => {
     async function deployFinalizer(startEpoch = 1n): Promise<UmbrellaEpochFinalizer> {
         const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
         const finalizer = (await Finalizer.deploy(
-            tranche.target,
+            accessManager,
+            tranche,
             startEpoch
         )) as unknown as UmbrellaEpochFinalizer;
         await finalizer.waitForDeployment();
+        await accessManager.grantRole(FINALIZER_ROLE, finalizer, 0);
+
+        const performUpkeepSel = finalizer.interface.getFunction("performUpkeep").selector;
+        await accessManager.setTargetFunctionRole(
+            finalizer,
+            [performUpkeepSel],
+            CHAINLINK_AUTOMATION
+        );
         return finalizer;
     }
 
     it("constructor rejects zero tranche address", async () => {
         const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
-        await expect(Finalizer.deploy(ethers.ZeroAddress, 1n)).to.be.revertedWithCustomError(
-            Finalizer,
-            "ZeroAddress"
-        );
+        await expect(
+            Finalizer.deploy(accessManager, ethers.ZeroAddress, 1n)
+        ).to.be.revertedWithCustomError(Finalizer, "ZeroAddress");
     });
 
     it("constructor rejects startEpoch below MIN_EPOCH_ID", async () => {
         const Finalizer = await ethers.getContractFactory("UmbrellaEpochFinalizer", deployer);
-        await expect(Finalizer.deploy(tranche.target, 0n)).to.be.revertedWithCustomError(
-            Finalizer,
-            "InvalidEpoch"
-        );
+        await expect(
+            Finalizer.deploy(accessManager, tranche.target, 0n)
+        ).to.be.revertedWithCustomError(Finalizer, "InvalidEpoch");
     });
 
     it("checkUpkeep returns false for epoch 0 when nothing is pending", async () => {
@@ -281,7 +295,7 @@ describe("UmbrellaEpochFinalizer", () => {
         expect(upkeepNeeded).to.equal(true);
         expect(performData).to.equal("0x");
 
-        await finalizer.performUpkeep("0x");
+        await finalizer.connect(chainlinkAutomation).performUpkeep("0x");
         expect(await finalizer.nextEpochId()).to.equal(await vault.currentEpochId());
 
         const [upkeepNeededAfter, performDataAfter] = await finalizer.checkUpkeep("0x");
@@ -299,7 +313,7 @@ describe("UmbrellaEpochFinalizer", () => {
 
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
 
-        await expect(finalizer.performUpkeep(performData))
+        await expect(finalizer.connect(chainlinkAutomation).performUpkeep(performData))
             .to.be.revertedWithCustomError(tranche, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
     });
@@ -313,7 +327,7 @@ describe("UmbrellaEpochFinalizer", () => {
         expect(upkeepNeeded).to.equal(true);
         expect(performData).to.equal("0x");
 
-        await finalizer.connect(bob).performUpkeep(performData);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(performData);
 
         const [totalShares] = await tranche.finalizedEpochs(candidate);
         expect(totalShares).to.equal(shares);
@@ -328,7 +342,7 @@ describe("UmbrellaEpochFinalizer", () => {
         const [upkeepNeeded, performData] = await finalizer.checkUpkeep("0x");
         expect(upkeepNeeded).to.equal(true);
 
-        await finalizer.connect(bob).performUpkeep(performData);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(performData);
 
         const [totalShares] = await tranche.finalizedEpochs(candidate);
         expect(totalShares).to.be.gt(0n);
@@ -336,10 +350,9 @@ describe("UmbrellaEpochFinalizer", () => {
 
     it("performUpkeep reverts with InvalidState before first epoch advance", async () => {
         const finalizer = await deployFinalizer();
-        await expect(finalizer.performUpkeep("0x")).to.be.revertedWithCustomError(
-            finalizer,
-            "InvalidState"
-        );
+        await expect(
+            finalizer.connect(chainlinkAutomation).performUpkeep("0x")
+        ).to.be.revertedWithCustomError(finalizer, "InvalidState");
     });
 
     it("performUpkeep reverts with NoWork when cursor already caught up", async () => {
@@ -348,20 +361,9 @@ describe("UmbrellaEpochFinalizer", () => {
         const currentEpoch = await vault.currentEpochId();
         const finalizer = await deployFinalizer(currentEpoch);
 
-        await expect(finalizer.performUpkeep("0x")).to.be.revertedWithCustomError(
-            finalizer,
-            "NoWork"
-        );
-    });
-
-    it("advances cursor when epoch was already finalized manually", async () => {
-        const {candidate} = await preparePendingEpoch(alice);
-        const finalizer = await deployFinalizer(candidate);
-
-        await tranche.connect(bob).finalizeEpoch(candidate);
-        await finalizer.performUpkeep("0x");
-
-        expect(await finalizer.nextEpochId()).to.equal(candidate + 1n);
+        await expect(
+            finalizer.connect(chainlinkAutomation).performUpkeep("0x")
+        ).to.be.revertedWithCustomError(finalizer, "NoWork");
     });
 
     it("ignores passed performData and uses on-chain cursor state", async () => {
@@ -374,7 +376,7 @@ describe("UmbrellaEpochFinalizer", () => {
 
         const manipulatedData = ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [10_000n]);
 
-        await finalizer.performUpkeep(manipulatedData);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(manipulatedData);
 
         // Work was finalized for current cursor epoch, not by manipulated calldata.
         const [totalShares] = await tranche.finalizedEpochs(candidate);
@@ -406,7 +408,7 @@ describe("UmbrellaEpochFinalizer", () => {
         expect(needed1).to.equal(true);
         expect(data1).to.equal("0x");
 
-        await finalizer.performUpkeep(data1);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(data1);
         const [totalShares2] = await tranche.finalizedEpochs(2n);
         expect(totalShares2).to.equal(shares1);
 
@@ -414,12 +416,12 @@ describe("UmbrellaEpochFinalizer", () => {
         const [needed2, data2] = await finalizer.checkUpkeep("0x");
         expect(needed2).to.equal(true);
         expect(data2).to.equal("0x");
-        await finalizer.performUpkeep(data2);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(data2);
 
         const [needed3, data3] = await finalizer.checkUpkeep("0x");
         expect(needed3).to.equal(true);
         expect(data3).to.equal("0x");
-        await finalizer.performUpkeep(data3);
+        await finalizer.connect(chainlinkAutomation).performUpkeep(data3);
         const [totalShares4] = await tranche.finalizedEpochs(4n);
         expect(totalShares4).to.equal(shares2);
 
@@ -428,14 +430,10 @@ describe("UmbrellaEpochFinalizer", () => {
         expect(data4).to.equal("0x");
     });
 
-    it("anyone can finalize directly", async () => {
+    it("Finalization directly revert", async () => {
         const {candidate} = await preparePendingEpoch(alice);
 
-        await tranche.connect(bob).finalizeEpoch(candidate);
-
-        const [totalShares] = await tranche.finalizedEpochs(candidate);
-        expect(totalShares).to.be.gt(0n);
-        expect(await tranche.umbrellaSharesByEpoch(candidate)).to.equal(0n);
+        await expect(tranche.connect(bob).finalizeEpoch(candidate)).to.be.reverted;
     });
 
     it("allows setting deployment start cursor to skip older epochs", async () => {

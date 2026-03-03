@@ -11,7 +11,9 @@
         "RESERVOIR_WITHDRAW_ROLE": 4,
         "BURNER_ROLE": 5,
         "ORACLE_ROLE": 6,
-        "KEEPER_ROLE": 7
+        "KEEPER_ROLE": 7,
+        "FINALIZER_ROLE": 8,
+        "CHAINLINK_AUTOMATION": 9
     },
     "roles": {
         "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",

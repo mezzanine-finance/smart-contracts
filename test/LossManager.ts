@@ -27,6 +27,7 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 const LOSS_MANAGER_ROLE = 3n;
 const BURNER_ROLE = 5n;
+const FINALIZER_ROLE = 8n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
@@ -201,11 +202,23 @@ describe("LossManager", () => {
         const burnSel = mzusd.interface.getFunction("burn").selector;
         await accessManager.setTargetFunctionRole(mzusdAddr, [setVaultSel], ADMIN_ROLE);
         await accessManager.setTargetFunctionRole(mzusdAddr, [burnSel], BURNER_ROLE);
-        await mzusd.setVault(vaultAddr);
+
+        const finalizeEpochSel = junior.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(juniorAddr, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.setTargetFunctionRole(
+            mezzanineAddr,
+            [finalizeEpochSel],
+            FINALIZER_ROLE
+        );
+        await accessManager.setTargetFunctionRole(seniorAddr, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
+
         await accessManager.grantRole(BURNER_ROLE, juniorAddr, 0);
         await accessManager.grantRole(BURNER_ROLE, mezzanineAddr, 0);
         await accessManager.grantRole(BURNER_ROLE, seniorAddr, 0);
         await accessManager.grantRole(BURNER_ROLE, polAddr, 0);
+
+        await mzusd.setVault(vaultAddr);
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);
 
         const polWithdrawSel = pol.interface.getFunction("withdraw").selector;
