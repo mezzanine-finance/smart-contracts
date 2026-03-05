@@ -15,6 +15,8 @@ import {
     IERC20,
     MZUSDNettingHelper,
     PauseManager,
+    Allowlist,
+    MockSanctionsList,
 } from "../typechain-types";
 import {PauseCategory, grantPausePermissions} from "./helpers/pause";
 
@@ -45,6 +47,8 @@ describe("MZUSD <-> USDC conversion", () => {
     let accessManager: any;
     let pauseManager: PauseManager;
     let vault: IssuanceVault;
+    let sanctionsList: MockSanctionsList;
+    let allowlist: Allowlist;
     let mzusd: MZUSD;
     let usdc: IERC20;
     let reservoir: ReservoirUSDC;
@@ -104,12 +108,32 @@ describe("MZUSD <-> USDC conversion", () => {
             }
         )) as unknown as ReservoirUSDC;
 
+        const SanctionsListFactory = await ethers.getContractFactory("MockSanctionsList", deployer);
+        sanctionsList = await SanctionsListFactory.deploy();
+        const AllowlistFactory = await ethers.getContractFactory("Allowlist", deployer);
+        allowlist = await upgrades.deployProxy(
+            AllowlistFactory,
+            [accessManager.target, sanctionsList.target],
+            {
+                kind: "uups",
+                initializer: "initialize",
+            }
+        );
+        await allowlist.addBatch([
+            deployer.address,
+            alice.address,
+            bob.address,
+            charlie.address,
+            dave.address,
+        ]);
+
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = await upgrades.deployProxy(
             MZUSDFactory,
             [
                 accessManager.target,
                 pauseManager.target,
+                allowlist.target,
                 usdcTotalSupply, // _limitUSDC (max allowed; configured below in tests)
             ],
             {
@@ -134,6 +158,7 @@ describe("MZUSD <-> USDC conversion", () => {
         );
         nettingHelper = await NettingHelperFactory.deploy();
         await nettingHelper.waitForDeployment();
+        await allowlist.add(nettingHelper);
 
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
         const burnSelector = mzusd.interface.getFunction("burn").selector;
@@ -159,7 +184,7 @@ describe("MZUSD <-> USDC conversion", () => {
             await expect(
                 upgrades.deployProxy(
                     MZUSDFactory,
-                    [ethers.ZeroAddress, pauseManager.target, usdcTotalSupply],
+                    [ethers.ZeroAddress, allowlist.target, pauseManager.target, usdcTotalSupply],
                     {
                         kind: "uups",
                         initializer: "initialize",
