@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
 import "./interfaces/IVault.sol";
+import "./interfaces/IAllowlist.sol";
 
 /// @title MZUSD stablecoin
 /// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
@@ -51,6 +52,9 @@ contract MZUSD is
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public withdrawalFeeBps;
 
+    /// @notice Address of allowlist for accounts validation.
+    IAllowlist public allowlist;
+
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
     event WithdrawalFeeUpdated(uint256 newFeeBps);
@@ -58,6 +62,7 @@ contract MZUSD is
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
     event VaultUpdated(address indexed vault);
+    event AllowlistUpdated(address indexed allowlist);
 
     error ZeroAmount();
     error ZeroAddress();
@@ -71,6 +76,7 @@ contract MZUSD is
     error TooSmallWithdrawalAmount(uint256 requestedMZ, uint256 usdcOut);
     error GlobalRedemptionCapExceeded(uint256 capUSDC, uint256 newTotal, uint256 attemptedUSDC);
     error InvalidUSDCDecimals(uint8 actualDecimals);
+    error AccountNotAllowed(address account);
 
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
@@ -88,15 +94,22 @@ contract MZUSD is
         _;
     }
 
+    /// @notice Validates if an account is allowed in the Allowlist.
+    modifier allowed(address account) {
+        require(allowlist.verifyAccount(account), AccountNotAllowed(account));
+        _;
+    }
+
     /// @param accessManager AccessManager address.
     /// @param pauseManager_ PauseManager address for category-based pauses.
     /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals).
     function initialize(
         address accessManager,
         address pauseManager_,
+        address allowlist_,
         uint256 _initialCapUSDC
     ) external initializer {
-        if (accessManager == address(0)) {
+        if (accessManager == address(0) || allowlist_ == address(0)) {
             revert ZeroAddress();
         }
 
@@ -108,6 +121,7 @@ contract MZUSD is
         windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
         nextRedemptionWindowDuration = redemptionWindowDuration;
+        allowlist = IAllowlist(allowlist_);
     }
 
     /// @notice Deposit USDC and mint MZUSD at fixed 1:1 notional value.
@@ -115,7 +129,10 @@ contract MZUSD is
     /// @dev Minted amount is amountUSDC * SCALE, so conversion is exact (no rounding loss on deposit).
     /// @dev Example: deposit 15_000_000 (15 USDC in 6d) -> mint 15_000_000_000_000_000_000 (15 MZUSD in 18d).
     /// @dev USDC is transferred directly to the IssuanceVault, MZUSD is minted to the depositor.
-    function deposit(uint256 amountUSDC) external whenNotPaused(PauseCategory.DEPOSITS) {
+    /// @dev Only allowed accounts can deposit.
+    function deposit(
+        uint256 amountUSDC
+    ) external whenNotPaused(PauseCategory.DEPOSITS) allowed(msg.sender) {
         if (amountUSDC == 0) revert ZeroAmount();
 
         // Accumulate deposit for atomic netting; if user withdraws later in this tx, this amount won't count against redemption cap
@@ -140,7 +157,10 @@ contract MZUSD is
     /// @dev Only burnAmount = usdcOut * SCALE is burned, any sub-SCALE remainder stays on user balance.
     /// @dev Example: if amountMZ = SCALE + 123, then usdcOut = 1, burnAmount = SCALE, and 123 MZUSD-wei remain.
     /// @dev If amountMZ < SCALE, tx reverts with `TooSmallWithdrawalAmount`.
-    function requestWithdrawal(uint256 amountMZ) external whenNotPaused(PauseCategory.WITHDRAWALS) {
+    /// @dev Only allowed accounts can withdraw.
+    function requestWithdrawal(
+        uint256 amountMZ
+    ) external whenNotPaused(PauseCategory.WITHDRAWALS) allowed(msg.sender) {
         uint256 usdcOutGross = amountMZ / SCALE;
         if (usdcOutGross == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOutGross);
         uint256 burnAmount = usdcOutGross * SCALE;
@@ -256,6 +276,13 @@ contract MZUSD is
         if (address(vault) != address(0)) revert VaultAlreadySet();
         vault = IVault(_vault);
         emit VaultUpdated(_vault);
+    }
+
+    /// @notice Set Allowlist.
+    function setAllowlist(address _allowlist) external restricted {
+        if (_allowlist == address(0)) revert ZeroAddress();
+        allowlist = IAllowlist(_allowlist);
+        emit AllowlistUpdated(_allowlist);
     }
 
     //GETTERS
