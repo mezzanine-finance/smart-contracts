@@ -33,6 +33,8 @@ Role IDs are configurable `uint64` values in deployment config.
     - Can call `NavOracleAutomation.submitNav`.
 - `BURNER_ROLE`
     - Can call `MZUSD.burn` (typically Tranche and PolJuniorTranche contracts).
+- `ALLOWLISTER_ROLE`
+    - Can call `Allowlist.add`, `remove`, `addBatch`, `removeBatch` to manage the account allowlist.
 
 ## Contract-level mapping
 
@@ -42,11 +44,17 @@ Role IDs are configurable `uint64` values in deployment config.
 - `unpauseGlobal`, `unpauseContract` -> `UNPAUSER_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
+### Allowlist (UUPS)
+
+- `add`, `remove`, `addBatch`, `removeBatch` -> `ALLOWLISTER_ROLE`
+- `upgradeToAndCall` -> `UPGRADER_ROLE`
+
 ### MZUSD (UUPS)
 
 - `mint` -> only configured IssuanceVault (`onlyVault`)
 - `burn` -> `BURNER_ROLE` (`restricted`, plus `PROTOCOL` pause gate)
-- `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setWithdrawalFeeBps` -> `ADMIN_ROLE`
+- `deposit`, `requestWithdrawal` -> public, but `allowed(msg.sender)` modifier requires caller to be in Allowlist and not sanctioned
+- `setGlobalRedemptionCap`, `setRedemptionWindowDuration`, `setWithdrawalFeeBps`, `setAllowlist` -> `ADMIN_ROLE`
 - `setVault` (one-time) -> `ADMIN_ROLE`
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
@@ -99,6 +107,7 @@ Role IDs are configurable `uint64` values in deployment config.
 - `IssuanceVault` and approved operators must hold `RESERVOIR_WITHDRAW_ROLE` for `ReservoirUSDC.withdraw`.
 - Keeper addresses must hold `KEEPER_ROLE` for `IssuanceVault.rebalance`.
 - Tranche/PolJuniorTranche addresses that burn on losses must hold `BURNER_ROLE` on MZUSD.
+- Allowlister addresses must hold `ALLOWLISTER_ROLE` on `Allowlist`.
 - Oracle submitter addresses must hold `ORACLE_ROLE` on `NavOracleAutomation`.
 
 Direct-check wiring:
@@ -108,6 +117,7 @@ Direct-check wiring:
 - `IssuanceVault.navOracle` is updatable (`setNavOracle`) with strict cross-reference checks.
 - `LossManager.vault` is immutable; `applyLoss` resolves NAV authority from `IssuanceVault.navOracle()`.
 - `MZUSD.vault` is one-time and gates `mint`.
+- `MZUSD.allowlist` gates `deposit` and `requestWithdrawal` via `verifyAccount`.
 - `Tranche.vault`, `PolJuniorTranche.vault` are immutable and gate `notifyYield`.
 
 ## Minimal separation recommendation

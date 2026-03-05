@@ -9,7 +9,7 @@ Accepts USDC (6 decimals) and mints MZUSD (18 decimals) 1:1 with a `1e12` scale.
 Users interact through ERC4626 tranches with direct or umbrella withdrawals.
 Tranche share token uses `_decimalsOffset() = 3` (`Tranche.decimals() = 21`).
 IssuanceVault computes yield/loss; NavOracleAutomation and LossManager apply it.
-Governance and safety: AccessManager + PauseManager (category-based pauses).
+Governance and safety: AccessManager + PauseManager (category-based pauses) + Allowlist (Chainalysis sanctions screening).
 
 ## Key contracts
 
@@ -22,6 +22,8 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
  `contracts/ReservoirUSDC.sol` - USDC liquidity buffer for rebalancing.
 
  `contracts/MZUSD.sol` - protocol stablecoin, mint/burn, redemption caps.
+
+ `contracts/Allowlist.sol` - account allowlist with Chainalysis sanctions check.
 
  `contracts/LossManager.sol` - loss application across tranches.
 
@@ -37,6 +39,7 @@ Governance and safety: AccessManager + PauseManager (category-based pauses).
 
 **MZUSD mint/redemption:** `MZUSD.deposit` takes USDC and mints MZUSD;
   `MZUSD.requestWithdrawal` burns MZUSD and asks IssuanceVault to pay USDC.
+  Both require the caller to be allowlisted and not sanctioned.
 
 **Tranche deposit/withdraw:** deposit MZUSD into ERC4626; direct-withdraw or
   umbrella (request → wait for epoch → finalize → claim).

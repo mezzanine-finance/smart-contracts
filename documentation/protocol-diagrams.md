@@ -30,6 +30,7 @@ flowchart TB
     direction LR
     Access["AccessManager<br/>access control"]
     Pause["PauseManager<br/>pause gates"]
+    Allowlist["Allowlist<br/>account gating"]
   end
 
   User -->|mint/redeem<br/>MZUSD| MZUSD
@@ -47,6 +48,7 @@ flowchart TB
   Tranches -->|burn own MZUSD<br/>on losses| MZUSD
   Vault <--> |rebalance USDC| Reservoir
   Admin -->|configure<br/>access rules| Access
+  Admin -->|manage<br/>allowlist| Allowlist
   Admin -->|toggle safety<br/>pauses| Pause
   Access -.->|access| Vault
   Access -.->|access| Tranches
@@ -58,6 +60,7 @@ flowchart TB
   Pause -.->|pause| MZUSD
   Pause -.->|pause| LossManager
   Pause -.->|pause| Reservoir
+  Allowlist -.->|verify| MZUSD
 ```
 
 ## Token movement (funds flow)
@@ -119,17 +122,22 @@ flowchart TB
 sequenceDiagram
   participant User
   participant MZUSD
+  participant Allowlist
   participant USDC
   participant Vault
   participant Reservoir
 
   alt User deposits USDC
     User->>MZUSD: Deposit USDC
+    MZUSD->>Allowlist: verifyAccount(user)
+    Allowlist-->>MZUSD: allowed
     MZUSD->>USDC: Transfer USDC to Vault
     MZUSD->>MZUSD: Mint MZUSD to user
     MZUSD-->>User: Deposit confirmed
   else User redeems MZUSD
     User->>MZUSD: Request withdrawal
+    MZUSD->>Allowlist: verifyAccount(user)
+    Allowlist-->>MZUSD: allowed
     MZUSD->>MZUSD: Burn MZUSD
     MZUSD->>Vault: Request USDC payout
     alt Vault short on USDC

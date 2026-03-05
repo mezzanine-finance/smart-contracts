@@ -15,18 +15,20 @@ User tranches are all instances of the same `Tranche` contract with different co
 1. `AccessManager`
 2. `PauseManager` (UUPS proxy)
 3. USDC (real token or `MockUSDC`)
-4. `ReservoirUSDC` (UUPS proxy)
-5. `MZUSD` (UUPS proxy)
-6. `IssuanceVault` (UUPS proxy)
-7. User `Tranche` proxies
-8. `LossManager` proxy
-9. `NavOracleAutomation`
-10. `UmbrellaEpochFinalizer` per umbrella tranche (optional)
+5. `Allowlist` (UUPS proxy)
+6. `ReservoirUSDC` (UUPS proxy)
+7. `MZUSD` (UUPS proxy)
+8. `IssuanceVault` (UUPS proxy)
+9. User `Tranche` proxies
+10. `LossManager` proxy
+11. `NavOracleAutomation`
+12. `UmbrellaEpochFinalizer` per umbrella tranche (optional)
 
 ## Wiring checklist
 
 ### Required core wiring
 
+- `Allowlist` address is passed to `MZUSD.initialize` (set at deployment)
 - `MZUSD.setVault(IssuanceVault)` (one-time)
 - `ReservoirUSDC.setVault(IssuanceVault)` (one-time, tracking only)
 - `IssuanceVault.setLossManager(LossManager)` (one-time)
@@ -105,9 +107,11 @@ Recommended role mapping follows `scripts/deployment/deploy.ts`:
     - `rebalance` -> `KEEPER_ROLE`
     - admin setters (`setLossManager`, `setNavOracle`, `setFeeRates`, `setFeeReceivers`,
       `setBuffer`, `setEpochConfig`, `registerTranche`, `setTrancheConfig`) -> `ADMIN_ROLE`
+- Allowlist:
+    - `add`, `remove`, `addBatch`, `removeBatch` -> `ALLOWLISTER_ROLE`
 - MZUSD:
     - `burn` -> `BURNER_ROLE`
-    - admin setters (`setVault`, redemption config, `setWithdrawalFeeBps`) -> `ADMIN_ROLE`
+    - admin setters (`setVault`, `setAllowlist`, redemption config, `setWithdrawalFeeBps`) -> `ADMIN_ROLE`
 - Reservoir:
     - `withdraw` -> `RESERVOIR_WITHDRAW_ROLE`
     - `setVault` -> `ADMIN_ROLE`
@@ -149,12 +153,14 @@ Important fields:
 - `dev.deployer`
 - `roleIds`:
     - `PAUSER_ROLE`, `UNPAUSER_ROLE`, `UPGRADER_ROLE`,
-      `RESERVOIR_WITHDRAW_ROLE`, `KEEPER_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`
+      `RESERVOIR_WITHDRAW_ROLE`, `KEEPER_ROLE`, `ORACLE_ROLE`, `BURNER_ROLE`, `ALLOWLISTER_ROLE`
 - `roles`:
     - `admin`, `pauser`, `unpauser`, `upgrader`
-    - optional `reservoirWithdrawers`, `keepers`, `roleDelays`
+    - optional `reservoirWithdrawers`, `keepers`, `allowlisters`, `roleDelays`
 - `usdc`:
     - real token address or mock config
+- `allowlist`:
+    - `sanctionsListAddress` (real Chainalysis address) or deploy MockSanctionsList via deployMockSanctionsList.ts
 - `mzusd.redemptionCapUSDC`:
     - required and must be non-zero (no on-chain upper-bound check vs USDC supply)
 - `vault`:
@@ -178,6 +184,10 @@ USDC:
 
 - `usdc.deployMock = true` requires `usdc.mock` block (name/symbol/decimals/initialMints).
 - `usdc.deployMock = false` requires `usdc.address`.
+
+Allowlist:
+
+- `allowlist.sanctionsListAddress`: real Chainalysis sanctions list address.
 
 MZUSD:
 
