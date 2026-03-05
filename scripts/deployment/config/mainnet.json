@@ -31,6 +31,9 @@
         "deployMock": false,
         "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     },
+    "allowlist": {
+        "sanctionsList": "0x40C57923924B5c5c5455c48D93317139ADDaC8fb"
+    },
     "mzusd": {
         "redemptionCapUSDC": "1000000",
         "redemptionWindowDurationSec": 3600

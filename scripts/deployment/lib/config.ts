@@ -11,6 +11,7 @@ export interface RoleIdsConfig {
     KEEPER_ROLE: number;
     ORACLE_ROLE: number;
     BURNER_ROLE: number;
+    ALLOWLISTER_ROLE: number;
 }
 
 export interface RolesConfig {
@@ -20,6 +21,7 @@ export interface RolesConfig {
     upgrader: string;
     reservoirWithdrawers: string[];
     keepers?: string[];
+    allowlisters?: string[];
     roleDelays?: {
         unpauser?: number;
         upgrader?: number;
@@ -28,6 +30,7 @@ export interface RolesConfig {
         keeper?: number;
         oracle?: number;
         burner?: number;
+        allowlister?: number;
     };
     oracles?: string[];
 }
@@ -51,6 +54,11 @@ export interface UsdcConfig {
         decimals: number;
         initialMints: UsdcMockMint[];
     };
+}
+
+export interface AllowlistConfig {
+    sanctionsListAddress?: string;
+    deployMockSanctionsList?: boolean;
 }
 
 export interface MZUSDConfig {
@@ -141,6 +149,7 @@ export interface DeployConfig {
     roleIds: RoleIdsConfig;
     roles: RolesConfig;
     usdc: UsdcConfig;
+    allowlist: AllowlistConfig;
     mzusd: MZUSDConfig;
     vault: VaultConfig;
     tranches: TrancheConfig[];
@@ -197,6 +206,15 @@ function validateConfig(config: DeployConfig, filePath: string) {
     }
     for (const addr of roles.oracles ?? []) {
         requireAddress(addr, "roles.oracles");
+    }
+    for (const addr of roles.allowlisters ?? []) {
+        requireAddress(addr, "roles.allowlisters");
+    }
+
+    const allowlistCfg = config.allowlist;
+    assert(allowlistCfg !== undefined, `Missing allowlist in ${filePath}`);
+    if (!allowlistCfg.deployMockSanctionsList) {
+        requireAddress(allowlistCfg.sanctionsListAddress ?? "", "allowlist.sanctionsListAddress");
     }
 
     const usdc = config.usdc;
