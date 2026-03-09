@@ -255,7 +255,7 @@ async function main() {
         deployments
     );
 
-    const sanctionsListAddress = config.allowlist.sanctionsListAddress;
+    const sanctionsListAddress = config.allowlist.sanctionsList;
     const AllowlistFactory = await ethers.getContractFactory("Allowlist", deployer);
     const allowlist = await ensureProxyDeployment<Allowlist>(
         "Allowlist",

@@ -11,7 +11,8 @@
         "RESERVOIR_WITHDRAW_ROLE": 4,
         "BURNER_ROLE": 5,
         "ORACLE_ROLE": 6,
-        "KEEPER_ROLE": 7
+        "KEEPER_ROLE": 7,
+        "ALLOWLISTER_ROLE": 8
     },
     "roles": {
         "admin": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",

@@ -57,7 +57,7 @@ export interface UsdcConfig {
 }
 
 export interface AllowlistConfig {
-    sanctionsListAddress: string;
+    sanctionsList: string;
 }
 
 export interface MZUSDConfig {
@@ -212,7 +212,7 @@ function validateConfig(config: DeployConfig, filePath: string) {
 
     const allowlistCfg = config.allowlist;
     assert(allowlistCfg !== undefined, `Missing allowlist in ${filePath}`);
-    requireAddress(allowlistCfg.sanctionsListAddress, "allowlist.sanctionsListAddress");
+    requireAddress(allowlistCfg.sanctionsList, "allowlist.sanctionsListAddress");
 
     const usdc = config.usdc;
     if (usdc.deployMock) {
