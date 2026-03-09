@@ -197,6 +197,7 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
 
     function _fundAndDeposit(address user, uint256 usdcAmount) internal {
         uint256 mzAmount = usdcAmount * SCALE;
+        _allowlistAccount(user);
 
         usdc.mint(user, usdcAmount);
         vm.startPrank(user);
@@ -241,6 +242,8 @@ contract TrancheUnstakeSlashingFuzzTest is BaseProtocolFuzzTest {
         vm.assume(user != address(reservoir));
         vm.assume(user != address(accessManager));
         vm.assume(user != address(pauseManager));
+        vm.assume(user != address(allowlist));
+        vm.assume(user != address(sanctionsList));
         vm.assume(user != address(tranche));
         vm.assume(user != navOracle);
     }

@@ -11,6 +11,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         address user
     ) public {
         _assumeValidUser(user);
+        _allowlistAccount(user);
         uint256 depositUSDC = bound(uint256(depositSeed), 1, 5_000_000e6);
 
         uint256 vaultBefore = usdc.balanceOf(address(vault));
@@ -33,6 +34,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         address user
     ) public {
         _assumeValidUser(user);
+        _allowlistAccount(user);
 
         uint256 depositUSDC = bound(uint256(depositSeed), 2, 5_000_000e6);
         uint256 withdrawUSDC = bound(uint256(withdrawSeed), 1, depositUSDC - 1);
@@ -56,6 +58,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
 
     function testFuzz_TooSmallWithdrawalAlwaysReverts(uint96 tinySeed, address user) public {
         _assumeValidUser(user);
+        _allowlistAccount(user);
         uint256 tinyMZ = bound(uint256(tinySeed), 1, SCALE - 1);
 
         vm.startPrank(user);
@@ -74,6 +77,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         uint256 capUSDC = bound(uint256(capSeed), 1, withdrawUSDC - 1);
 
         MZUSDNettingHelper helper = new MZUSDNettingHelper();
+        _allowlistAccount(address(helper));
 
         mzusd.setGlobalRedemptionCap(capUSDC);
         usdc.mint(address(helper), depositUSDC);
@@ -96,6 +100,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         uint256 capUSDC = bound(uint256(capSeed), 1, 5_000_000e6);
 
         MZUSDNettingHelper helper = new MZUSDNettingHelper();
+        _allowlistAccount(address(helper));
         uint256 withdrawUSDC = depositUSDC + excessWithdrawalUSDC;
         uint256 withdrawMZ = withdrawUSDC * SCALE;
 
@@ -130,6 +135,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         address user
     ) public {
         _assumeValidUser(user);
+        _allowlistAccount(user);
 
         uint256 capUSDC = bound(uint256(capSeed), 2, 5_000_000e6);
         uint256 firstWithdrawUSDC = bound(uint256(firstWithdrawSeed), 1, capUSDC);
@@ -182,6 +188,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         address user
     ) public {
         _assumeValidUser(user);
+        _allowlistAccount(user);
 
         uint256 deposit1USDC = bound(uint256(deposit1Seed), 2, 3_000_000e6);
         uint256 deposit2USDC = bound(uint256(deposit2Seed), 0, 3_000_000e6);
@@ -276,5 +283,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         vm.assume(user != address(reservoir));
         vm.assume(user != address(accessManager));
         vm.assume(user != address(pauseManager));
+        vm.assume(user != address(allowlist));
+        vm.assume(user != address(sanctionsList));
     }
 }
