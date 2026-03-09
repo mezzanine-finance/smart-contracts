@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
 import {MZUSD} from "contracts/MZUSD.sol";
 import {MZUSDNettingHelper} from "contracts/test/MZUSDNettingHelper.sol";
+import {Allowlist} from "contracts/Allowlist.sol";
 import {BaseProtocolFuzzTest} from "./BaseProtocolFuzz.t.sol";
 
 contract MZUSDFuzzTest is BaseProtocolFuzzTest {
@@ -272,6 +274,38 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
             mzusd.balanceOf(user),
             (totalAvailableUSDC - withdraw1USDC - withdraw2USDC) * SCALE
         );
+    }
+
+    function test_SetAllowlist() public {
+        Allowlist newAllowlistImpl = new Allowlist();
+        Allowlist newAllowlist = Allowlist(
+            _deployProxy(
+                address(newAllowlistImpl),
+                abi.encodeCall(Allowlist.initialize, (address(accessManager), sanctionsList))
+            )
+        );
+
+        vm.expectEmit(true, false, false, false, address(mzusd));
+        emit MZUSD.AllowlistUpdated(address(newAllowlist));
+        mzusd.setAllowlist(address(newAllowlist));
+
+        assertEq(address(mzusd.allowlist()), address(newAllowlist));
+    }
+
+    function test_SetAllowlistRevertsOnZeroAddress() public {
+        vm.expectRevert(MZUSD.ZeroAddress.selector);
+        mzusd.setAllowlist(address(0));
+    }
+
+    function test_SetAllowlistRevertsWhenUnauthorized(address caller) public {
+        vm.assume(caller != address(0));
+        vm.assume(caller != address(this));
+
+        vm.prank(caller);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, caller)
+        );
+        mzusd.setAllowlist(address(allowlist));
     }
 
     function _assumeValidUser(address user) internal view {
