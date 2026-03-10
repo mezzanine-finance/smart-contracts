@@ -26,13 +26,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     AggregatorV3Interface public navOracle;
     AggregatorV3Interface public totalSupplyOracle;
 
-    // Packed storage:
-    // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte)
-    //         + vetoPeriod (4 bytes) + maxAnswerStaleness (4 bytes)
+    // Packed storage (31 bytes → 1 slot):
+    // pendingDeltaUSDC (16) + pendingReadyAt (6) + pendingIsYield (1)
+    // + vetoPeriod (4) + maxAnswerStaleness (4)
     // uint128 comfortably covers practical USDC (6d) deltas with wide headroom.
     uint128 public pendingDeltaUSDC;
-    // uint64 timestamp and uint32 durations match protocol style (IssuanceVault epoch config) and are ample.
-    uint64 public pendingReadyAt;
+    // uint48 timestamp is ample for ~8.9 million years; fits in one slot with surrounding fields.
+    uint48 public pendingReadyAt;
     // Direction is stored separately to avoid signed-int casts/abs math during upkeep execution.
     bool public pendingIsYield;
     uint32 public vetoPeriod;
@@ -95,20 +95,20 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (hasPendingNav()) revert PendingNavExists();
 
         (uint256 navUSDC, uint256 totalSupplyMZ) = _readFreshAnswer(navOracle, totalSupplyOracle);
-        if (block.timestamp > type(uint64).max) {
+        if (block.timestamp > type(uint48).max) {
             revert ValueTooLarge();
         }
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 
-        uint64 submittedAt = uint64(block.timestamp);
+        uint48 submittedAt = uint48(block.timestamp);
         uint256 readyAt = uint256(submittedAt) + uint256(vetoPeriod);
-        if (readyAt > type(uint64).max) revert ValueTooLarge();
+        if (readyAt > type(uint48).max) revert ValueTooLarge();
 
         if (deltaUSDC > type(uint128).max) revert ValueTooLarge();
         pendingDeltaUSDC = uint128(deltaUSDC);
         // Snapshot readiness for this pending NAV; changing vetoPeriod later
         // does not shift already submitted snapshots.
-        pendingReadyAt = uint64(readyAt);
+        pendingReadyAt = uint48(readyAt);
         pendingIsYield = isYield;
 
         emit NavSubmitted(navUSDC, totalSupplyMZ, isYield, deltaUSDC, submittedAt, readyAt);

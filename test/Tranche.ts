@@ -399,8 +399,8 @@ describe("Tranche", () => {
         it("Pauses deposits via PauseManager", async () => {
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(tranche.deposit(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(alice.address, 1n, 0n);
         });
 
         it("Pauses all guarded functions (umbrella mode)", async () => {
@@ -419,11 +419,11 @@ describe("Tranche", () => {
 
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(tranche.deposit(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(alice.address, 1n, 0n);
             await expect(tranche.mint(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxMint")
+                .withArgs(alice.address, 1n, 0n);
             await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
 
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
@@ -1318,8 +1318,8 @@ describe("Tranche", () => {
             const bob170 = to18(170n);
             await mzusd.connect(bob).approve(tranche.target, bob170);
             await expect(tranche.connect(bob).deposit(bob170, bob.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(bob170, limit1);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(bob.address, bob170, limit1);
 
             // Admin sets a tighter global cap to bind instead of TVL-bps
             const cap3 = to18(250n);
@@ -1334,8 +1334,8 @@ describe("Tranche", () => {
             const bob60 = to18(60n);
             await mzusd.connect(bob).approve(tranche.target, bob60);
             await expect(tranche.connect(bob).deposit(bob60, bob.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(bob60, capRemaining);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(bob.address, bob60, capRemaining);
 
             await mzusd.connect(bob).approve(tranche.target, capRemaining);
             await (await tranche.connect(bob).deposit(capRemaining, bob.address)).wait();
@@ -1344,8 +1344,8 @@ describe("Tranche", () => {
             const carol1 = to18(1n);
             await mzusd.connect(carol).approve(tranche.target, carol1);
             await expect(tranche.connect(carol).deposit(carol1, carol.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(carol1, 0n);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(carol.address, carol1, 0n);
 
             // Phase 3: streaming NAV stress (limits should use virtual NAV, not raw balance)
             // Start a yield stream by advancing epoch and distributing yield
@@ -1374,7 +1374,7 @@ describe("Tranche", () => {
             await mzusd.connect(carol).approve(tranche.target, big);
             await expect(
                 tranche.connect(carol).deposit(big, carol.address)
-            ).to.be.revertedWithCustomError(tranche, "DepositLimitExceeded");
+            ).to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit");
 
             // A small enough deposit should pass even mid-stream
             const small = to18(1n);
