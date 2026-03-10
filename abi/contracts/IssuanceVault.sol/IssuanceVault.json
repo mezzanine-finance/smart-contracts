@@ -110,6 +110,17 @@
                 "type": "address"
             }
         ],
+        "name": "DisabledTrancheHasRiskPremium",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            }
+        ],
         "name": "DuplicateTranche",
         "type": "error"
     },

@@ -128,6 +128,7 @@ contract IssuanceVault is
     error PairNotContiguous(uint256 index);
     error TrancheNotRegistered(address tranche);
     error PairedTrancheRiskPremiumMustBeZero();
+    error DisabledTrancheHasRiskPremium(address tranche);
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -350,13 +351,16 @@ contract IssuanceVault is
         if (len == 0) revert NoTranchesAdded();
         if (_isPairedWithNext.length != len) revert LengthMismatch();
 
-        // Validate registered, no duplicates, and sum yield to BPS.
+        // Validate registered, no duplicates, enabled↔premium consistency, and sum yield to BPS.
         uint256 total = _baseRewardBps;
         for (uint256 i; i < len; ++i) {
             address tranche = _tranches[i].tranche;
             if (!isTranche[tranche]) revert TrancheNotRegistered(tranche);
             for (uint256 j; j < i; ++j) {
                 if (_tranches[j].tranche == tranche) revert DuplicateTranche(tranche);
+            }
+            if (!_tranches[i].enabled && _tranches[i].riskPremiumBps != 0) {
+                revert DisabledTrancheHasRiskPremium(tranche);
             }
             total += _tranches[i].riskPremiumBps;
         }

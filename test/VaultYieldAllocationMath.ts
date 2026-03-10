@@ -863,19 +863,20 @@ describe("IssuanceVault Yield Allocation Math", () => {
     describe("setTrancheConfig", () => {
         it("should update baseRewardBps, per-tranche riskPremiumBps and enabled flags", async () => {
             // 3 tranches registered: senior=idx0, mezzanine=idx1, junior=idx2
+            // Disabled tranche must have riskPremiumBps = 0.
             await expect(
                 vault.setTrancheConfig(
                     [
                         {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
-                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: false},
+                        {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
                         {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
                     ],
                     [false, false, false],
-                    5000
+                    7000
                 )
             ).to.emit(vault, "TrancheConfigUpdated");
 
-            expect(await vault.baseRewardBps()).to.equal(5000);
+            expect(await vault.baseRewardBps()).to.equal(7000);
 
             const t0 = await vault.tranches(0);
             const t1 = await vault.tranches(1);
@@ -884,7 +885,7 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(t0.riskPremiumBps).to.equal(1000);
             expect(t0.enabled).to.equal(true);
 
-            expect(t1.riskPremiumBps).to.equal(2000);
+            expect(t1.riskPremiumBps).to.equal(0);
             expect(t1.enabled).to.equal(false);
 
             expect(t2.riskPremiumBps).to.equal(2000);
@@ -945,6 +946,36 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     7000
                 )
             ).to.be.revertedWithCustomError(vault, "PairedTrancheRiskPremiumMustBeZero");
+        });
+
+        it("should revert when disabled tranche has non-zero riskPremiumBps", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 5000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 3000, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    ],
+                    [false, false, false],
+                    0
+                )
+            )
+                .to.be.revertedWithCustomError(vault, "DisabledTrancheHasRiskPremium")
+                .withArgs(mezzanine.target);
+        });
+
+        it("should accept disabled tranche with zero riskPremiumBps", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 5000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 5000, enabled: true},
+                    ],
+                    [false, false, false],
+                    0
+                )
+            ).to.emit(vault, "TrancheConfigUpdated");
         });
 
         it("should accept paired tranches when second has riskPremiumBps = 0", async () => {
