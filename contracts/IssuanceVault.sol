@@ -129,6 +129,7 @@ contract IssuanceVault is
     error TrancheNotRegistered(address tranche);
     error PairedTrancheRiskPremiumMustBeZero();
     error DisabledTrancheHasRiskPremium(address tranche);
+    error TrancheCountMismatch(uint256 provided, uint256 registered);
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -349,6 +350,7 @@ contract IssuanceVault is
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         uint256 len = _tranches.length;
         if (len == 0) revert NoTranchesAdded();
+        if (len != tranches.length) revert TrancheCountMismatch(len, tranches.length);
         if (_isPairedWithNext.length != len) revert LengthMismatch();
 
         // Validate registered, no duplicates, enabled↔premium consistency, and sum yield to BPS.
