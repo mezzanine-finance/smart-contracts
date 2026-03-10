@@ -15,6 +15,20 @@ import {IVault} from "../interfaces/IVault.sol";
 ///      a role that can call IssuanceVault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
 /// @dev Trust model: submitted NAV is trusted oracle input. This contract does not validate NAV truthfulness,
 ///      it only enforces role-gated submission and optional veto delay before applying protocol accounting.
+/// @dev The oracle uses a multi-package oracle solution by Redstone to retrieve NAV and Total Supply simultaoneusly.
+/** @dev Description of the oracle solution:
+ * Related RedStone feeds can be bundled into a single multi-point package and are then treated as one atomic update unit.
+ *
+ * Mechanism:
+ * - On the node side, prices for both tokens are fetched separately.
+ * - They are then combined into a single multi-point package signed once as one payload.
+ * - Both the individual feeds and the combined package are broadcast to the Data Distribution Layer.
+ * - On the relayer side, an additional guard ensures that feeds belonging to the same package cannot be updated independently on-chain.
+ *
+ * Guarantee:
+ * - If two feeds are packaged together, either both are updated or neither is.
+ * - If any token is missing from the multi-point package for any reason, the relayer skips the update for all feeds in that package.
+ */
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
