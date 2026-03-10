@@ -194,7 +194,7 @@ contract Tranche is
         uint256 currentPrice = convertToAssets(10 ** decimals());
         // For repeat requests in the same target epoch keep weighted-average snapshot.
         // If snapshot is not initialized (possible after upgrade for old pending requests), initialize to current.
-        if (existingShares == 0 || userSnapshotPrice[msg.sender][targetEpoch] == 0) {
+        if (existingShares == 0) {
             userSnapshotPrice[msg.sender][targetEpoch] = currentPrice;
         } else {
             uint256 oldSnapshot = userSnapshotPrice[msg.sender][targetEpoch];
