@@ -37,9 +37,6 @@ contract IssuanceVault is
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
-    // Max allowed tranche weight (relative, not bps).
-    // aderyn-ignore-next-line(large-numeric-literal)
-    uint16 public constant TRANCHE_WEIGHT_LIMIT = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
