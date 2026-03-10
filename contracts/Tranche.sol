@@ -232,11 +232,7 @@ contract Tranche is
         uint256 userAssets = fullUserAssets;
 
         uint256 snapshotPrice = userSnapshotPrice[user][epochId];
-        if (
-            snapshotPrice != 0 &&
-            unstakeYieldReductionBps > 0 &&
-            finalizedData.finalizationPrice > snapshotPrice
-        ) {
+        if (unstakeYieldReductionBps > 0 && finalizedData.finalizationPrice > snapshotPrice) {
             uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
             uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
                 BASIS_POINTS /
