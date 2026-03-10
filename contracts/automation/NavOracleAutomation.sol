@@ -196,7 +196,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @notice Applies pending NAV after the veto period.
     /// @param performData Unused; kept only for Chainlink Automation compatibility.
     /// @dev Action is derived from on-chain state to avoid data manipulation via calldata.
-    function performUpkeep(bytes calldata performData) external {
+    function performUpkeep(bytes calldata performData) external restricted {
         performData;
         if (!hasPendingNav()) revert NoPendingNav();
         uint256 readyAt = pendingReadyAt;

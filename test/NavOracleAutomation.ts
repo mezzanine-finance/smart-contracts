@@ -33,6 +33,7 @@ const SCALE = 10n ** 12n;
 const LOSS_MANAGER_ROLE = 3n;
 const ORACLE_ROLE = 6n;
 const BURNER_ROLE = 5n;
+const CHAINLINK_AUTOMATION = 9n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -49,6 +50,7 @@ describe("NavOracleAutomation", () => {
     let deployer: any;
     let oracle: any;
     let bob: any;
+    let chainlinkAutomation: any;
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -65,7 +67,7 @@ describe("NavOracleAutomation", () => {
     let whale: any;
 
     before(async () => {
-        [deployer, oracle, bob] = await ethers.getSigners();
+        [deployer, oracle, bob, chainlinkAutomation] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -82,6 +84,7 @@ describe("NavOracleAutomation", () => {
         pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
+            unsafeAllow: ["constructor"],
         })) as unknown as PauseManager;
 
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
@@ -233,6 +236,15 @@ describe("NavOracleAutomation", () => {
         );
         await accessManager.grantRole(ORACLE_ROLE, oracle.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target, 0);
+
+        const performUpkeepSelector = navAutomation.interface.getFunction("performUpkeep").selector;
+        await accessManager.setTargetFunctionRole(
+            navAutomation.target,
+            [performUpkeepSelector],
+            CHAINLINK_AUTOMATION
+        );
+        await accessManager.grantRole(CHAINLINK_AUTOMATION, chainlinkAutomation, 0);
+
         await navAutomation
             .connect(deployer)
             .setOracles(navFeedOracle.target, totalSupplyFeedOracle.target);
@@ -321,7 +333,7 @@ describe("NavOracleAutomation", () => {
 
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
 
-        await expect(navAutomation.performUpkeep("0x"))
+        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
             .to.be.revertedWithCustomError(vault, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
     });
@@ -337,7 +349,7 @@ describe("NavOracleAutomation", () => {
         await navAutomation.connect(oracle).submitNav();
         const readyAt = await navAutomation.pendingReadyAt();
 
-        await expect(navAutomation.performUpkeep("0x"))
+        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
             .to.be.revertedWithCustomError(navAutomation, "NotReady")
             .withArgs(readyAt);
     });
@@ -409,7 +421,7 @@ describe("NavOracleAutomation", () => {
         expect(upkeepNeeded).to.equal(true);
 
         const epochBefore = await vault.currentEpochId();
-        await expect(navAutomation.performUpkeep("0x"))
+        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
             .to.emit(navAutomation, "NavApplied")
             .withArgs(true, deltaUSDC, readyAt);
         const epochAfter = await vault.currentEpochId();
@@ -431,7 +443,7 @@ describe("NavOracleAutomation", () => {
         const readyAt = await navAutomation.pendingReadyAt();
         await time.increase(DAY);
 
-        await expect(navAutomation.performUpkeep("0x"))
+        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
             .to.emit(navAutomation, "NavApplied")
             .withArgs(false, deltaUSDC, readyAt);
 
@@ -451,7 +463,7 @@ describe("NavOracleAutomation", () => {
         await time.increase(DAY);
 
         const epochBefore = await vault.currentEpochId();
-        await navAutomation.performUpkeep("0x");
+        await navAutomation.connect(chainlinkAutomation).performUpkeep("0x");
         const epochAfter = await vault.currentEpochId();
         expect(epochAfter).to.equal(epochBefore + 1n);
         expect(await navAutomation.hasPendingNav()).to.equal(false);
@@ -585,7 +597,7 @@ describe("NavOracleAutomation", () => {
         expect(upkeepNeeded).to.equal(true);
 
         const epochBefore = await vault.currentEpochId();
-        await navAutomation.performUpkeep("0xdeadbeef");
+        await navAutomation.connect(chainlinkAutomation).performUpkeep("0xdeadbeef");
         const epochAfter = await vault.currentEpochId();
 
         expect(epochAfter).to.equal(epochBefore + 1n);
@@ -612,7 +624,7 @@ describe("NavOracleAutomation", () => {
 
         await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
-        await navAutomation.performUpkeep("0x");
+        await navAutomation.connect(chainlinkAutomation).performUpkeep("0x");
 
         const NavAutomationFactory = await ethers.getContractFactory(
             "NavOracleAutomation",
@@ -642,6 +654,13 @@ describe("NavOracleAutomation", () => {
             ADMIN_ROLE
         );
         await accessManager.grantRole(ADMIN_ROLE, navAutomation2.target, 0);
+        const performUpkeepSelector2 =
+            navAutomation2.interface.getFunction("performUpkeep").selector;
+        await accessManager.setTargetFunctionRole(
+            navAutomation2.target,
+            [performUpkeepSelector2],
+            CHAINLINK_AUTOMATION
+        );
         await navAutomation2
             .connect(deployer)
             .setOracles(navFeedOracle.target, totalSupplyFeedOracle.target);
@@ -660,7 +679,7 @@ describe("NavOracleAutomation", () => {
         await pushOracleAnswers(navUSDC2, totalSupplyMZ2);
         await navAutomation2.connect(bob).submitNav();
         await time.increase(DAY);
-        await navAutomation2.performUpkeep("0x");
+        await navAutomation2.connect(chainlinkAutomation).performUpkeep("0x");
 
         expect(await vault.navOracle()).to.equal(navAutomation2.target);
         expect(await navAutomation2.hasPendingNav()).to.equal(false);
@@ -678,7 +697,7 @@ describe("NavOracleAutomation", () => {
         await pushOracleAnswers(totalSupplyUSDC, totalSupplyMZ);
         await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
-        await navAutomation.performUpkeep("0x"); // epoch advances, epochDuration = 2 days
+        await navAutomation.connect(chainlinkAutomation).performUpkeep("0x"); // epoch advances, epochDuration = 2 days
 
         // Submit a new yield NAV
         totalSupplyMZ = await mzusd.totalSupply();

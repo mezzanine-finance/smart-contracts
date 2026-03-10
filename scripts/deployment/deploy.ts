@@ -203,6 +203,7 @@ async function main() {
             upgrades.deployProxy(PauseManagerFactory, [accessManager.address], {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }),
         fresh,
         deployments
@@ -998,6 +999,21 @@ async function main() {
         ],
         adminRole
     );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        navOracle.address,
+        [navOracle.contract.interface.getFunction("performUpkeep").selector],
+        roleIds.CHAINLINK_AUTOMATION
+    );
+
+    for (const fin of finalizers) {
+        await ensureTargetRole(
+            accessManagerAdmin,
+            fin.address,
+            [fin.contract.interface.getFunction("performUpkeep").selector],
+            roleIds.CHAINLINK_AUTOMATION
+        );
+    }
 
     await ensureRoleMember(accessManagerAdmin, adminRole, config.roles.admin, 0);
 
