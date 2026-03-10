@@ -150,9 +150,10 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         emit MaxAnswerStalenessUpdated(newMaxAnswerStaleness);
     }
 
-    /// @notice Chainlink Automation check: pending NAV exists and veto period elapsed.
+    /// @notice Chainlink Automation check: pending NAV exists, veto period elapsed,
+    ///         and downstream calls will not revert.
     /// @param checkData Unused; kept only for Chainlink Automation compatibility.
-    /// @return upkeepNeeded True when a pending NAV exists and veto delay elapsed.
+    /// @return upkeepNeeded True when a pending NAV is ready and can be applied without reverting.
     /// @return performData Empty; action is derived from on-chain state in performUpkeep.
     function checkUpkeep(
         bytes calldata checkData
@@ -160,6 +161,21 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         checkData;
         if (!hasPendingNav()) return (false, "");
         if (block.timestamp < pendingReadyAt) return (false, "");
+
+        // Both distributeYield and applyLoss advance the epoch, which reverts if
+        // the current epoch has not fully elapsed yet.
+        IVault v = IVault(vault);
+        if (block.timestamp < v.epochStart() + v.epochDuration()) return (false, "");
+
+        if (pendingIsYield) {
+            // distributeYield reverts when no tranches are registered.
+            if (v.getTrancheOrder().length == 0) return (false, "");
+        } else {
+            // applyLoss reverts when the loss exceeds the per-tx cap.
+            uint256 maxLoss = ILossManager(lossManager).maxLossPerTxUSDC();
+            if (maxLoss != 0 && pendingDeltaUSDC > maxLoss) return (false, "");
+        }
+
         return (true, "");
     }
 

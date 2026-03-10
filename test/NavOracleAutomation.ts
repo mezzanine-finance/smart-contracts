@@ -665,4 +665,108 @@ describe("NavOracleAutomation", () => {
         expect(await vault.navOracle()).to.equal(navAutomation2.target);
         expect(await navAutomation2.hasPendingNav()).to.equal(false);
     });
+
+    it("checkUpkeep returns false when epoch has not elapsed", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+
+        // Queue a 2-day epoch duration (applied on next epoch advance)
+        await vault.connect(deployer).setEpochConfig(2 * DAY);
+
+        // Advance epoch to apply the queued duration: submit zero-yield, wait veto, perform
+        let totalSupplyMZ = await mzusd.totalSupply();
+        let totalSupplyUSDC = totalSupplyMZ / SCALE;
+        await pushOracleAnswers(totalSupplyUSDC, totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+        await navAutomation.performUpkeep("0x"); // epoch advances, epochDuration = 2 days
+
+        // Submit a new yield NAV
+        totalSupplyMZ = await mzusd.totalSupply();
+        totalSupplyUSDC = totalSupplyMZ / SCALE;
+        await pushOracleAnswers(totalSupplyUSDC + to6(5n), totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+
+        // 1 day later: veto elapsed, but epoch (2 days) has not
+        await time.increase(DAY);
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
+
+        // 1 more day: epoch also elapsed
+        await time.increase(DAY);
+        const [neededAfter] = await navAutomation.checkUpkeep("0x");
+        expect(neededAfter).to.equal(true);
+    });
+
+    it("checkUpkeep returns false when no tranches registered (yield)", async () => {
+        // Deploy a fresh vault with no tranches
+        const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
+        const vaultNoTranches = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, oracle.address],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
+
+        const LossManagerFactory = await ethers.getContractFactory("LossManager", deployer);
+        const lm2 = (await upgrades.deployProxy(LossManagerFactory, [0], {
+            kind: "uups",
+            initializer: "initialize",
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+            constructorArgs: [vaultNoTranches.target],
+        })) as unknown as LossManager;
+
+        const NavAutomationFactory = await ethers.getContractFactory(
+            "NavOracleAutomation",
+            deployer
+        );
+        const navAuto2 = (await NavAutomationFactory.deploy(
+            lm2.target,
+            DAY
+        )) as unknown as NavOracleAutomation;
+
+        const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+        const submitSelector = navAuto2.interface.getFunction("submitNav").selector;
+        const setOraclesSelector = navAuto2.interface.getFunction("setOracles").selector;
+        await accessManager.setTargetFunctionRole(navAuto2.target, [submitSelector], ORACLE_ROLE);
+        await accessManager.setTargetFunctionRole(
+            navAuto2.target,
+            [setOraclesSelector],
+            ADMIN_ROLE
+        );
+        await navAuto2
+            .connect(deployer)
+            .setOracles(navFeedOracle.target, totalSupplyFeedOracle.target);
+
+        // Push yield scenario (navUSDC > totalSupplyUSDC → isYield=true)
+        await pushOracleAnswers(to6(100n), to18(50n));
+        await navAuto2.connect(oracle).submitNav();
+
+        await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAuto2.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when loss exceeds maxLossPerTxUSDC", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+
+        // Cap loss at 5 USDC
+        await lossManager.connect(deployer).setMaxLossPerTxUSDC(to6(5n));
+
+        // Submit a 20 USDC loss (exceeds the 5 USDC cap)
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC - to6(20n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+
+        await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
 });
