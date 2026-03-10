@@ -1608,5 +1608,75 @@ describe("Tranche", () => {
                 "NothingToFinalize"
             );
         });
+
+        it("maxDeposit returns type(uint256).max when deposit limits are disabled", async () => {
+            expect(await tranche.depositLimitEnabled()).to.equal(false);
+            expect(await tranche.maxDeposit(alice.address)).to.equal(ethers.MaxUint256);
+        });
+
+        it("maxMint returns type(uint256).max when deposit limits are disabled", async () => {
+            expect(await tranche.depositLimitEnabled()).to.equal(false);
+            expect(await tranche.maxMint(alice.address)).to.equal(ethers.MaxUint256);
+        });
+
+        it("maxDeposit reflects the effective deposit limit", async () => {
+            await mintMZUSDFor(alice, to6(200n));
+
+            const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+            const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
+            await accessManager.setTargetFunctionRole(
+                tranche.target,
+                [setDepositLimitsSel, setDepositLimitEnabledSel],
+                ADMIN_ROLE
+            );
+
+            // Set cap = 100 MZUSD, tvlBps = 100%
+            const cap = to18(100n);
+            await tranche.connect(deployer).setDepositLimits(cap, 10_000n);
+            await tranche.connect(deployer).setDepositLimitEnabled(true);
+
+            // No deposits yet → full cap available
+            expect(await tranche.maxDeposit(alice.address)).to.equal(cap);
+
+            // Alice deposits 60 MZUSD → 40 remaining
+            const deposit1 = to18(60n);
+            await mzusd.connect(alice).approve(tranche.target, deposit1);
+            await tranche.connect(alice).deposit(deposit1, alice.address);
+
+            expect(await tranche.maxDeposit(alice.address)).to.equal(cap - deposit1);
+        });
+
+        it("maxMint converts the deposit limit to shares", async () => {
+            await mintMZUSDFor(alice, to6(200n));
+
+            const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+            const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
+            await accessManager.setTargetFunctionRole(
+                tranche.target,
+                [setDepositLimitsSel, setDepositLimitEnabledSel],
+                ADMIN_ROLE
+            );
+
+            const cap = to18(100n);
+            await tranche.connect(deployer).setDepositLimits(cap, 10_000n);
+            await tranche.connect(deployer).setDepositLimitEnabled(true);
+
+            const expectedShares = await tranche.previewDeposit(cap);
+            expect(await tranche.maxMint(alice.address)).to.equal(expectedShares);
+        });
+
+        it("maxDeposit returns 0 when deposits are paused", async () => {
+            await pauseManager.connect(deployer).pauseGlobal(PauseCategory.DEPOSITS);
+            expect(await tranche.maxDeposit(alice.address)).to.equal(0n);
+        });
+
+        it("maxMint returns 0 when deposits are paused", async () => {
+            await pauseManager.connect(deployer).pauseGlobal(PauseCategory.DEPOSITS);
+            expect(await tranche.maxMint(alice.address)).to.equal(0n);
+        });
     });
 });

@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IMZUSD.sol";
 
@@ -365,6 +366,22 @@ contract Tranche is
 
     // GETTERS
     // ERC4626 overrides (NAV with linear yield)
+
+    /// @notice Maximum assets that can be deposited, respecting deposit limits and pause state.
+    function maxDeposit(address) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.DEPOSITS)) return 0;
+        (uint256 limit, , ) = _computeDepositLimit();
+        return limit;
+    }
+
+    /// @notice Maximum shares that can be minted, respecting deposit limits and pause state.
+    function maxMint(address) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.DEPOSITS)) return 0;
+        (uint256 limit, , ) = _computeDepositLimit();
+        if (limit == type(uint256).max) return type(uint256).max;
+        return previewDeposit(limit);
+    }
+
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
     function totalAssets() public view override returns (uint256 totalAssets_) {
