@@ -146,6 +146,19 @@ export async function grantRoles() {
         await ensureRoleMember(accessManager, config.roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
     }
 
+    const allowlisters = uniqueAddresses([
+        ...(config.roles.allowlisters ?? []),
+        ...(includeDev ? [config.dev.deployer] : []),
+    ]);
+    for (const addr of allowlisters) {
+        await ensureRoleMember(
+            accessManager,
+            config.roleIds.ALLOWLISTER_ROLE,
+            addr,
+            delays.allowlister ?? 0
+        );
+    }
+
     log.success("Role grants complete");
 }
 
@@ -216,6 +229,11 @@ export async function renounceRoles() {
             name: "BURNER_ROLE",
             roleId: roleIds.BURNER_ROLE,
             members: burnerMembers,
+        },
+        {
+            name: "ALLOWLISTER_ROLE",
+            roleId: roleIds.ALLOWLISTER_ROLE,
+            members: config.roles.allowlisters ?? [],
         },
     ];
 

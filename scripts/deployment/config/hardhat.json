@@ -43,7 +43,7 @@
         }
     },
     "allowlist": {
-        "sanctionsList": ""
+        "sanctionsList": "0x40C57923924B5c5c5455c48D93317139ADDaC8fb"
     },
     "mzusd": {
         "redemptionCapUSDC": "1000000",
