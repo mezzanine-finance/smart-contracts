@@ -1667,7 +1667,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],
@@ -1696,7 +1696,7 @@
         "outputs": [
             {
                 "internalType": "bool",
-                "name": "",
+                "name": "success",
                 "type": "bool"
             }
         ],

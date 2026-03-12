@@ -507,13 +507,32 @@ contract Tranche is
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 
-    /// @dev Overrides ERC20 _update to enforce pause.
-    function _update(
+    /// @dev Overrides ERC20 transfer to enforce pause on user transfers only.
+    /// Unlike _update, this does not block internal _mint/_burn used by deposit/withdraw.
+    function transfer(
+        address to,
+        uint256 value
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
+        return super.transfer(to, value);
+    }
+
+    /// @dev Overrides ERC20 transferFrom to enforce pause on user transfers only.
+    function transferFrom(
         address from,
         address to,
         uint256 value
-    ) internal override whenNotPaused(PauseCategory.TRANSFERS) {
-        super._update(from, to, value);
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
+        return super.transferFrom(from, to, value);
     }
 
     /// @dev Overrides ERC20 approve to enforce pause.

@@ -448,6 +448,7 @@ describe("Tranche", () => {
             await expect(tranche.transferFrom(alice.address, bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.TRANSFERS);
+            // Deposit also reverts because MZUSD's transferFrom is paused globally
             await expect(tranche.connect(alice).deposit(1n, alice.address)).to.be.reverted;
             await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
 
