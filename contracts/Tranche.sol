@@ -40,6 +40,7 @@ contract Tranche is
     // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BASIS_POINTS = 10_000;
     uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;
@@ -112,6 +113,7 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
+    error FullWithdrawNotAllowed();
 
     /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
@@ -500,6 +502,8 @@ contract Tranche is
         uint256 assets,
         uint256 shares
     ) internal override whenDirectEnabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+        if (shares == totalSupply() - balanceOf(VIRTUAL_SHARES_RECEIVER) && _unaccruedYield() != 0)
+            revert FullWithdrawNotAllowed();
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 

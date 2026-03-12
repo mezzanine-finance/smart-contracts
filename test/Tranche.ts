@@ -571,6 +571,71 @@ describe("Tranche", () => {
             ).wait();
             expect(await directTranche.totalSupply()).to.equal(0n);
         });
+
+        it("Direct mode: full withdraw reverts while yield is unaccrued, succeeds after full accrual", async () => {
+            const directTranche = await deployDirectTranche();
+            const vaultSigner = await imp(vault.target as string);
+            const DEAD = "0x000000000000000000000000000000000000dEaD";
+
+            // Alice and Bob both deposit into the direct tranche
+            const aliceMZ = await mintMZUSDFor(alice, to6(100n));
+            await mzusd.connect(alice).approve(directTranche.target, aliceMZ);
+            await directTranche.connect(alice).deposit(aliceMZ, alice.address);
+
+            const bobMZ = await mintMZUSDFor(bob, to6(50n));
+            await mzusd.connect(bob).approve(directTranche.target, bobMZ);
+            await directTranche.connect(bob).deposit(bobMZ, bob.address);
+
+            // Bob transfers some shares to the dead address to simulate dead shares
+            const bobShares = await directTranche.balanceOf(bob.address);
+            await directTranche.connect(bob).transfer(DEAD, bobShares);
+
+            const deadShares = await directTranche.balanceOf(DEAD);
+            expect(deadShares).to.equal(bobShares);
+            expect(deadShares).to.be.gt(0n);
+
+            const aliceShares = await directTranche.balanceOf(alice.address);
+            // totalSupply includes dead shares, alice's shares alone are less than totalSupply
+            const totalSupply = await directTranche.totalSupply();
+            expect(totalSupply).to.equal(aliceShares + deadShares);
+            expect(aliceShares).to.be.lt(totalSupply);
+
+            // Send yield to the tranche and start streaming
+            const yieldAmt = to18(10n);
+            await mzusd.connect(vaultSigner).mint(directTranche.target, yieldAmt);
+            await directTranche.connect(vaultSigner).notifyYield(yieldAmt);
+
+            // Confirm there is unaccrued yield
+            expect(await directTranche.unaccruedYield()).to.be.gt(0n);
+
+            // Full withdrawal (all user shares) should revert while yield is still streaming
+            await expect(
+                directTranche.connect(alice).redeem(aliceShares, alice.address, alice.address)
+            ).to.be.revertedWithCustomError(directTranche, "FullWithdrawNotAllowed");
+
+            // Partial withdrawal should still work
+            await directTranche
+                .connect(alice)
+                .redeem(aliceShares / 2n, alice.address, alice.address);
+
+            // Wait for the full epoch duration so yield is fully accrued
+            const epochDuration = await vault.epochDuration();
+            await time.increase(epochDuration);
+
+            // Confirm yield is now fully accrued
+            expect(await directTranche.unaccruedYield()).to.equal(0n);
+
+            // Full withdrawal should now succeed
+            const remainingShares = await directTranche.balanceOf(alice.address);
+            await directTranche
+                .connect(alice)
+                .redeem(remainingShares, alice.address, alice.address);
+            expect(await directTranche.balanceOf(alice.address)).to.equal(0n);
+
+            // Dead shares remain — only user shares were withdrawn
+            expect(await directTranche.balanceOf(DEAD)).to.equal(deadShares);
+            expect(await directTranche.totalSupply()).to.equal(deadShares);
+        });
     });
 
     describe("Direct mode inflation", () => {
