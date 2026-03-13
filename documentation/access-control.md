@@ -66,7 +66,7 @@ Role IDs are configurable `uint64` values in deployment config.
 - `burnMZUSD` -> only `IVault(vault).lossManager()`
 - `setUnstakeDelayEpochs`, `setUnstakeYieldReductionBps`,
   `setDepositLimits`, `setDepositLimitEnabled` -> `ADMIN_ROLE`
-- `finalizeEpoch` -> public (pause-gated, not `restricted`)
+- `finalizeEpoch` -> `FINALIZER_ROLE` (pause-gated,)
 - `upgradeToAndCall` -> `UPGRADER_ROLE`
 
 ### PolJuniorTranche (UUPS)
@@ -93,6 +93,9 @@ Role IDs are configurable `uint64` values in deployment config.
 
 - `submitNav` -> `ORACLE_ROLE`
 - `rejectPendingNav`, `setVetoPeriod`, `setOracles`, `setMaxAnswerStaleness` -> `ADMIN_ROLE`
+
+### UmbrellaEpochFinalizer (non-upgradeable)
+- `performUpkeep` -> `CHAINLINK_AUTOMATION` (Forwarder)
 
 ## Cross-contract grants and wiring
 

@@ -915,6 +915,7 @@ describe("MZUSD <-> USDC conversion", () => {
             const [, , remainingAfter] = await mzusd.getRemainingRedemptionCap();
 
             expect(storedDurationAfter).to.equal(longerDuration);
+            expect(await mzusd.nextRedemptionWindowDuration()).to.equal(0); // Pending was reset
 
             const latestTs = await time.latest();
             expect(windowStartAfter).to.equal(BigInt(latestTs));

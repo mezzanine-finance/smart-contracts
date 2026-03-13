@@ -350,22 +350,23 @@ describe("IssuanceVault Yield Integration", () => {
             expect(await vault.protocolFeeReceiver()).to.equal(carol.address);
 
             // Tranche info updates via setYieldDistribution
+            // Disabled tranche must have riskPremiumBps = 0.
             await vault.setTrancheConfig(
                 [
                     {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
-                    {tranche: mezzanine.target, riskPremiumBps: 1500, enabled: false},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
                     {tranche: senior.target, riskPremiumBps: 2500, enabled: true},
                 ],
                 [false, false, false],
-                5000
+                6500
             );
 
             const [t1b, r1b, e1b] = await vault.tranches(1);
             expect(t1b).to.equal(mezzanine.target);
-            expect(r1b).to.equal(1500n);
+            expect(r1b).to.equal(0n);
             expect(e1b).to.equal(false);
 
-            expect(await vault.baseRewardBps()).to.equal(5000n);
+            expect(await vault.baseRewardBps()).to.equal(6500n);
 
             // getTranches
             const [emptyTranches, emptyRisks, emptyEnabled] = await vault.getTranches(0, 0);
@@ -375,7 +376,7 @@ describe("IssuanceVault Yield Integration", () => {
 
             const [allTranches, allRisks, allEnabled] = await vault.getTranches(0, 10);
             expect(allTranches).to.deep.equal([junior.target, mezzanine.target, senior.target]);
-            expect(allRisks).to.deep.equal([1000n, 1500n, 2500n]);
+            expect(allRisks).to.deep.equal([1000n, 0n, 2500n]);
             expect(allEnabled).to.deep.equal([true, false, true]);
 
             // Epoch config

@@ -6,6 +6,7 @@ interface IVault {
     function distributeYield(uint256 usdcReported) external;
     function advanceEpoch() external returns (uint256 newEpochId);
     function currentEpochId() external view returns (uint64 epochId);
+    function epochStart() external view returns (uint64 start);
     function epochDuration() external view returns (uint64 duration);
     function lossManager() external view returns (address lossManager);
     function navOracle() external view returns (address navOracleAddress);
