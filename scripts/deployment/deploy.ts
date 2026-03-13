@@ -204,6 +204,7 @@ async function main() {
             upgrades.deployProxy(PauseManagerFactory, [accessManager.address], {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }),
         fresh,
         deployments
@@ -399,7 +400,12 @@ async function main() {
             const finalizer = await ensureDeployment<UmbrellaEpochFinalizer>(
                 key,
                 FinalizerFactory,
-                async () => FinalizerFactory.deploy(trancheContract.address, finalizerStartEpoch),
+                async () =>
+                    FinalizerFactory.deploy(
+                        accessManager.address,
+                        trancheContract.address,
+                        finalizerStartEpoch
+                    ),
                 fresh,
                 deployments
             );
@@ -1008,6 +1014,12 @@ async function main() {
             [tranche.contract.interface.getFunction("upgradeToAndCall").selector],
             roleIds.UPGRADER_ROLE
         );
+        await ensureTargetRole(
+            accessManagerAdmin,
+            tranche.address,
+            [tranche.contract.interface.getFunction("finalizeEpoch").selector],
+            roleIds.FINALIZER_ROLE
+        );
     }
 
     await ensureTargetRole(
@@ -1027,6 +1039,21 @@ async function main() {
         ],
         adminRole
     );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        navOracle.address,
+        [navOracle.contract.interface.getFunction("performUpkeep").selector],
+        roleIds.CHAINLINK_AUTOMATION
+    );
+
+    for (const fin of finalizers) {
+        await ensureTargetRole(
+            accessManagerAdmin,
+            fin.address,
+            [fin.contract.interface.getFunction("performUpkeep").selector],
+            roleIds.CHAINLINK_AUTOMATION
+        );
+    }
 
     await ensureRoleMember(accessManagerAdmin, adminRole, config.roles.admin, 0);
 
@@ -1122,6 +1149,9 @@ async function main() {
             addr,
             delays.allowlister ?? 0
         );
+    }
+    for (const fin of finalizers) {
+        await ensureRoleMember(accessManagerAdmin, roleIds.FINALIZER_ROLE, fin.address, 0);
     }
 
     // === Post-deploy checks ===

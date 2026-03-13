@@ -12,7 +12,9 @@
         "BURNER_ROLE": 5,
         "ORACLE_ROLE": 6,
         "KEEPER_ROLE": 7,
-        "ALLOWLISTER_ROLE": 8
+        "ALLOWLISTER_ROLE": 8,
+        "FINALIZER_ROLE": 9,
+        "CHAINLINK_AUTOMATION": 10
     },
     "roles": {
         "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",

@@ -12,6 +12,8 @@ export interface RoleIdsConfig {
     ORACLE_ROLE: number;
     BURNER_ROLE: number;
     ALLOWLISTER_ROLE: number;
+    FINALIZER_ROLE: number;
+    CHAINLINK_AUTOMATION: number;
 }
 
 export interface RolesConfig {

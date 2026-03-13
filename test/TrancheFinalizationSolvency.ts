@@ -26,6 +26,7 @@ const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
 
 const DAY = 24 * 60 * 60;
+const FINALIZER_ROLE = 8n;
 
 async function imp(addr: string) {
     await setBalance(addr, to18(10));
@@ -160,6 +161,10 @@ describe("Tranche finalization solvency", () => {
             ADMIN_ROLE
         );
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
+
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
 
         await mzusd.setVault(vault.target);
         await vault.setLossManager(lossManagerRef.target);

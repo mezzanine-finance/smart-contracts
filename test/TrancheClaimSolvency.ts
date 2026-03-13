@@ -25,6 +25,7 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 const LOSS_MANAGER_ROLE = 3n;
 const BURNER_ROLE = 5n;
+const FINALIZER_ROLE = 8n;
 
 const to6 = (v: string | number | bigint) => parseUnits(v.toString(), 6);
 const to18 = (v: string | number | bigint) => parseUnits(v.toString(), 18);
@@ -184,6 +185,10 @@ describe("Tranche claim solvency", () => {
 
         const applyLossSel = lossManager.interface.getFunction("applyLoss").selector;
         await accessManager.setTargetFunctionRole(lossManagerAddr, [applyLossSel], ADMIN_ROLE);
+
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
 
         // Wire contracts
         await mzusd.setVault(vaultAddr);

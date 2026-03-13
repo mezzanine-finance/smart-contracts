@@ -24,6 +24,7 @@ const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
+const FINALIZER_ROLE = 8n;
 
 async function imp(addr: string) {
     // Give the whale some ETH for gas
@@ -180,6 +181,10 @@ describe("Tranche", () => {
             ],
             ADMIN_ROLE
         );
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
+
         await accessManager.setTargetFunctionRole(mzusd.target, [setVaultSelector], ADMIN_ROLE);
 
         // 5) Wire IssuanceVault to MZUSD and register tranche in IssuanceVault (after roles are configured)
@@ -400,8 +405,8 @@ describe("Tranche", () => {
         it("Pauses deposits via PauseManager", async () => {
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(tranche.deposit(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(alice.address, 1n, 0n);
         });
 
         it("Pauses all guarded functions (umbrella mode)", async () => {
@@ -420,11 +425,11 @@ describe("Tranche", () => {
 
             await pauseManager.pauseGlobal(PauseCategory.DEPOSITS);
             await expect(tranche.deposit(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(alice.address, 1n, 0n);
             await expect(tranche.mint(1n, alice.address))
-                .to.be.revertedWithCustomError(tranche, "CategoryPaused")
-                .withArgs(PauseCategory.DEPOSITS);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxMint")
+                .withArgs(alice.address, 1n, 0n);
             await pauseManager.unpauseGlobal(PauseCategory.DEPOSITS);
 
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
@@ -449,6 +454,7 @@ describe("Tranche", () => {
             await expect(tranche.transferFrom(alice.address, bob.address, 1n))
                 .to.be.revertedWithCustomError(tranche, "CategoryPaused")
                 .withArgs(PauseCategory.TRANSFERS);
+            // Deposit also reverts because MZUSD's transferFrom is paused globally
             await expect(tranche.connect(alice).deposit(1n, alice.address)).to.be.reverted;
             await pauseManager.unpauseGlobal(PauseCategory.TRANSFERS);
 
@@ -571,6 +577,71 @@ describe("Tranche", () => {
                     .redeem(expectedSharesSecond, alice.address, alice.address)
             ).wait();
             expect(await directTranche.totalSupply()).to.equal(0n);
+        });
+
+        it("Direct mode: full withdraw reverts while yield is unaccrued, succeeds after full accrual", async () => {
+            const directTranche = await deployDirectTranche();
+            const vaultSigner = await imp(vault.target as string);
+            const DEAD = "0x000000000000000000000000000000000000dEaD";
+
+            // Alice and Bob both deposit into the direct tranche
+            const aliceMZ = await mintMZUSDFor(alice, to6(100n));
+            await mzusd.connect(alice).approve(directTranche.target, aliceMZ);
+            await directTranche.connect(alice).deposit(aliceMZ, alice.address);
+
+            const bobMZ = await mintMZUSDFor(bob, to6(50n));
+            await mzusd.connect(bob).approve(directTranche.target, bobMZ);
+            await directTranche.connect(bob).deposit(bobMZ, bob.address);
+
+            // Bob transfers some shares to the dead address to simulate dead shares
+            const bobShares = await directTranche.balanceOf(bob.address);
+            await directTranche.connect(bob).transfer(DEAD, bobShares);
+
+            const deadShares = await directTranche.balanceOf(DEAD);
+            expect(deadShares).to.equal(bobShares);
+            expect(deadShares).to.be.gt(0n);
+
+            const aliceShares = await directTranche.balanceOf(alice.address);
+            // totalSupply includes dead shares, alice's shares alone are less than totalSupply
+            const totalSupply = await directTranche.totalSupply();
+            expect(totalSupply).to.equal(aliceShares + deadShares);
+            expect(aliceShares).to.be.lt(totalSupply);
+
+            // Send yield to the tranche and start streaming
+            const yieldAmt = to18(10n);
+            await mzusd.connect(vaultSigner).mint(directTranche.target, yieldAmt);
+            await directTranche.connect(vaultSigner).notifyYield(yieldAmt);
+
+            // Confirm there is unaccrued yield
+            expect(await directTranche.unaccruedYield()).to.be.gt(0n);
+
+            // Full withdrawal (all user shares) should revert while yield is still streaming
+            await expect(
+                directTranche.connect(alice).redeem(aliceShares, alice.address, alice.address)
+            ).to.be.revertedWithCustomError(directTranche, "FullWithdrawNotAllowed");
+
+            // Partial withdrawal should still work
+            await directTranche
+                .connect(alice)
+                .redeem(aliceShares / 2n, alice.address, alice.address);
+
+            // Wait for the full epoch duration so yield is fully accrued
+            const epochDuration = await vault.epochDuration();
+            await time.increase(epochDuration);
+
+            // Confirm yield is now fully accrued
+            expect(await directTranche.unaccruedYield()).to.equal(0n);
+
+            // Full withdrawal should now succeed
+            const remainingShares = await directTranche.balanceOf(alice.address);
+            await directTranche
+                .connect(alice)
+                .redeem(remainingShares, alice.address, alice.address);
+            expect(await directTranche.balanceOf(alice.address)).to.equal(0n);
+
+            // Dead shares remain — only user shares were withdrawn
+            expect(await directTranche.balanceOf(DEAD)).to.equal(deadShares);
+            expect(await directTranche.totalSupply()).to.equal(deadShares);
         });
     });
 
@@ -1319,8 +1390,8 @@ describe("Tranche", () => {
             const bob170 = to18(170n);
             await mzusd.connect(bob).approve(tranche.target, bob170);
             await expect(tranche.connect(bob).deposit(bob170, bob.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(bob170, limit1);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(bob.address, bob170, limit1);
 
             // Admin sets a tighter global cap to bind instead of TVL-bps
             const cap3 = to18(250n);
@@ -1335,8 +1406,8 @@ describe("Tranche", () => {
             const bob60 = to18(60n);
             await mzusd.connect(bob).approve(tranche.target, bob60);
             await expect(tranche.connect(bob).deposit(bob60, bob.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(bob60, capRemaining);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(bob.address, bob60, capRemaining);
 
             await mzusd.connect(bob).approve(tranche.target, capRemaining);
             await (await tranche.connect(bob).deposit(capRemaining, bob.address)).wait();
@@ -1345,8 +1416,8 @@ describe("Tranche", () => {
             const carol1 = to18(1n);
             await mzusd.connect(carol).approve(tranche.target, carol1);
             await expect(tranche.connect(carol).deposit(carol1, carol.address))
-                .to.be.revertedWithCustomError(tranche, "DepositLimitExceeded")
-                .withArgs(carol1, 0n);
+                .to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit")
+                .withArgs(carol.address, carol1, 0n);
 
             // Phase 3: streaming NAV stress (limits should use virtual NAV, not raw balance)
             // Start a yield stream by advancing epoch and distributing yield
@@ -1375,7 +1446,7 @@ describe("Tranche", () => {
             await mzusd.connect(carol).approve(tranche.target, big);
             await expect(
                 tranche.connect(carol).deposit(big, carol.address)
-            ).to.be.revertedWithCustomError(tranche, "DepositLimitExceeded");
+            ).to.be.revertedWithCustomError(tranche, "ERC4626ExceededMaxDeposit");
 
             // A small enough deposit should pass even mid-stream
             const small = to18(1n);
@@ -1608,6 +1679,76 @@ describe("Tranche", () => {
                 tranche,
                 "NothingToFinalize"
             );
+        });
+
+        it("maxDeposit returns type(uint256).max when deposit limits are disabled", async () => {
+            expect(await tranche.depositLimitEnabled()).to.equal(false);
+            expect(await tranche.maxDeposit(alice.address)).to.equal(ethers.MaxUint256);
+        });
+
+        it("maxMint returns type(uint256).max when deposit limits are disabled", async () => {
+            expect(await tranche.depositLimitEnabled()).to.equal(false);
+            expect(await tranche.maxMint(alice.address)).to.equal(ethers.MaxUint256);
+        });
+
+        it("maxDeposit reflects the effective deposit limit", async () => {
+            await mintMZUSDFor(alice, to6(200n));
+
+            const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+            const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
+            await accessManager.setTargetFunctionRole(
+                tranche.target,
+                [setDepositLimitsSel, setDepositLimitEnabledSel],
+                ADMIN_ROLE
+            );
+
+            // Set cap = 100 MZUSD, tvlBps = 100%
+            const cap = to18(100n);
+            await tranche.connect(deployer).setDepositLimits(cap, 10_000n);
+            await tranche.connect(deployer).setDepositLimitEnabled(true);
+
+            // No deposits yet → full cap available
+            expect(await tranche.maxDeposit(alice.address)).to.equal(cap);
+
+            // Alice deposits 60 MZUSD → 40 remaining
+            const deposit1 = to18(60n);
+            await mzusd.connect(alice).approve(tranche.target, deposit1);
+            await tranche.connect(alice).deposit(deposit1, alice.address);
+
+            expect(await tranche.maxDeposit(alice.address)).to.equal(cap - deposit1);
+        });
+
+        it("maxMint converts the deposit limit to shares", async () => {
+            await mintMZUSDFor(alice, to6(200n));
+
+            const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
+            const setDepositLimitsSel = tranche.interface.getFunction("setDepositLimits").selector;
+            const setDepositLimitEnabledSel =
+                tranche.interface.getFunction("setDepositLimitEnabled").selector;
+            await accessManager.setTargetFunctionRole(
+                tranche.target,
+                [setDepositLimitsSel, setDepositLimitEnabledSel],
+                ADMIN_ROLE
+            );
+
+            const cap = to18(100n);
+            await tranche.connect(deployer).setDepositLimits(cap, 10_000n);
+            await tranche.connect(deployer).setDepositLimitEnabled(true);
+
+            const expectedShares = await tranche.previewDeposit(cap);
+            expect(await tranche.maxMint(alice.address)).to.equal(expectedShares);
+        });
+
+        it("maxDeposit returns 0 when deposits are paused", async () => {
+            await pauseManager.connect(deployer).pauseGlobal(PauseCategory.DEPOSITS);
+            expect(await tranche.maxDeposit(alice.address)).to.equal(0n);
+        });
+
+        it("maxMint returns 0 when deposits are paused", async () => {
+            await pauseManager.connect(deployer).pauseGlobal(PauseCategory.DEPOSITS);
+            expect(await tranche.maxMint(alice.address)).to.equal(0n);
         });
     });
 });

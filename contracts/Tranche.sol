@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IMZUSD.sol";
 
@@ -39,6 +40,7 @@ contract Tranche is
     // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BASIS_POINTS = 10_000;
     uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;
@@ -111,6 +113,7 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
+    error FullWithdrawNotAllowed();
 
     /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
@@ -193,7 +196,7 @@ contract Tranche is
         uint256 currentPrice = convertToAssets(10 ** decimals());
         // For repeat requests in the same target epoch keep weighted-average snapshot.
         // If snapshot is not initialized (possible after upgrade for old pending requests), initialize to current.
-        if (existingShares == 0 || userSnapshotPrice[msg.sender][targetEpoch] == 0) {
+        if (existingShares == 0) {
             userSnapshotPrice[msg.sender][targetEpoch] = currentPrice;
         } else {
             uint256 oldSnapshot = userSnapshotPrice[msg.sender][targetEpoch];
@@ -231,11 +234,7 @@ contract Tranche is
         uint256 userAssets = fullUserAssets;
 
         uint256 snapshotPrice = userSnapshotPrice[user][epochId];
-        if (
-            snapshotPrice != 0 &&
-            unstakeYieldReductionBps > 0 &&
-            finalizedData.finalizationPrice > snapshotPrice
-        ) {
+        if (unstakeYieldReductionBps > 0 && finalizedData.finalizationPrice > snapshotPrice) {
             uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
             uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
                 BASIS_POINTS /
@@ -261,7 +260,7 @@ contract Tranche is
     /// @param epochId The epoch to finalize.
     function finalizeEpoch(
         uint256 epochId
-    ) external whenDirectDisabled whenNotPaused(PauseCategory.PROTOCOL) {
+    ) external restricted whenDirectDisabled whenNotPaused(PauseCategory.PROTOCOL) {
         // aderyn-fp-next-line(reentrancy-state-change)
         uint256 currentVaultEpoch = IVault(vault).currentEpochId();
         if (currentVaultEpoch <= epochId) revert EpochNotPassed();
@@ -365,6 +364,22 @@ contract Tranche is
 
     // GETTERS
     // ERC4626 overrides (NAV with linear yield)
+
+    /// @notice Maximum assets that can be deposited, respecting deposit limits and pause state.
+    function maxDeposit(address) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.DEPOSITS)) return 0;
+        (uint256 limit, , ) = _computeDepositLimit();
+        return limit;
+    }
+
+    /// @notice Maximum shares that can be minted, respecting deposit limits and pause state.
+    function maxMint(address) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.DEPOSITS)) return 0;
+        (uint256 limit, , ) = _computeDepositLimit();
+        if (limit == type(uint256).max) return type(uint256).max;
+        return previewDeposit(limit);
+    }
+
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
     function totalAssets() public view override returns (uint256 totalAssets_) {
@@ -487,16 +502,37 @@ contract Tranche is
         uint256 assets,
         uint256 shares
     ) internal override whenDirectEnabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+        if (shares == totalSupply() - balanceOf(VIRTUAL_SHARES_RECEIVER) && _unaccruedYield() != 0)
+            revert FullWithdrawNotAllowed();
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 
-    /// @dev Overrides ERC20 _update to enforce pause.
-    function _update(
+    /// @dev Overrides ERC20 transfer to enforce pause on user transfers only.
+    /// Unlike _update, this does not block internal _mint/_burn used by deposit/withdraw.
+    function transfer(
+        address to,
+        uint256 value
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
+        return super.transfer(to, value);
+    }
+
+    /// @dev Overrides ERC20 transferFrom to enforce pause on user transfers only.
+    function transferFrom(
         address from,
         address to,
         uint256 value
-    ) internal override whenNotPaused(PauseCategory.TRANSFERS) {
-        super._update(from, to, value);
+    )
+        public
+        override(ERC20Upgradeable, IERC20)
+        whenNotPaused(PauseCategory.TRANSFERS)
+        returns (bool success)
+    {
+        return super.transferFrom(from, to, value);
     }
 
     /// @dev Overrides ERC20 approve to enforce pause.

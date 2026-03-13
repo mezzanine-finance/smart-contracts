@@ -31,6 +31,10 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     error ContractAlreadyPaused(address target, PauseCategory category);
     error ContractAlreadyUnpaused(address target, PauseCategory category);
 
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @param accessManager AccessManager address for pause authorization.
     function initialize(address accessManager) external initializer {
         if (accessManager == address(0)) revert ZeroAddress();

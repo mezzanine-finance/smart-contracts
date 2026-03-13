@@ -25,6 +25,7 @@ const DAY = 24 * 60 * 60;
 
 const BPS = 10_000n;
 const BURNER_ROLE = 5n;
+const FINALIZER_ROLE = 8n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -191,6 +192,10 @@ describe("Tranche unstake slashing", () => {
             ],
             ADMIN_ROLE
         );
+
+        const finalizeEpochSel = tranche.interface.getFunction("finalizeEpoch").selector;
+        await accessManager.setTargetFunctionRole(tranche, [finalizeEpochSel], FINALIZER_ROLE);
+        await accessManager.grantRole(FINALIZER_ROLE, deployer, 0);
 
         await mzusd.setVault(vault.target);
         await vault.setLossManager(lossManagerRef.target);

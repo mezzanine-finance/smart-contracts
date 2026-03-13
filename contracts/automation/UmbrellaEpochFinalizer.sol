@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {ITranche} from "../interfaces/ITranche.sol";
 import {IVault} from "../interfaces/IVault.sol";
@@ -9,7 +10,7 @@ import {IVault} from "../interfaces/IVault.sol";
 /// @notice Chainlink Automation helper that advances an epoch cursor and finalizes when needed.
 /// @dev By design this processes at most one epoch per upkeep tx. If there is a backlog,
 /// each missed epoch consumes one upkeep transaction until the cursor catches up.
-contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
+contract UmbrellaEpochFinalizer is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant MIN_EPOCH_ID = 1;
 
     /// @notice Tranche that this finalizer services.
@@ -27,7 +28,11 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
     /// @dev Start cursor selection is operationally sensitive:
     /// set it higher than the oldest unfinalized epoch only if intentional,
     /// otherwise older epochs can be skipped by this helper.
-    constructor(address tranche_, uint256 startEpoch_) {
+    constructor(
+        address initialAuthority_,
+        address tranche_,
+        uint256 startEpoch_
+    ) AccessManaged(initialAuthority_) {
         if (tranche_ == address(0)) revert ZeroAddress();
         if (startEpoch_ < MIN_EPOCH_ID) revert InvalidEpoch();
         tranche = ITranche(tranche_);
@@ -52,7 +57,7 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface {
     /// @notice Finalizes cursor epoch if needed, otherwise advances cursor by one epoch.
     /// @param performData Unused; kept only for Chainlink Automation compatibility.
     /// @dev Action is derived from on-chain state to avoid data manipulation via calldata.
-    function performUpkeep(bytes calldata performData) external {
+    function performUpkeep(bytes calldata performData) external restricted {
         performData;
         address vault = tranche.vault();
         uint256 current = IVault(vault).currentEpochId();

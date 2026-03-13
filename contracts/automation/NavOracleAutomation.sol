@@ -15,6 +15,20 @@ import {IVault} from "../interfaces/IVault.sol";
 ///      a role that can call IssuanceVault.distributeYield and LossManager.applyLoss. NAV is USDC (6d).
 /// @dev Trust model: submitted NAV is trusted oracle input. This contract does not validate NAV truthfulness,
 ///      it only enforces role-gated submission and optional veto delay before applying protocol accounting.
+/// @dev The oracle uses a multi-package oracle solution by Redstone to retrieve NAV and Total Supply simultaoneusly.
+/** @dev Description of the oracle solution:
+ * Related RedStone feeds can be bundled into a single multi-point package and are then treated as one atomic update unit.
+ *
+ * Mechanism:
+ * - On the node side, prices for both tokens are fetched separately.
+ * - They are then combined into a single multi-point package signed once as one payload.
+ * - Both the individual feeds and the combined package are broadcast to the Data Distribution Layer.
+ * - On the relayer side, an additional guard ensures that feeds belonging to the same package cannot be updated independently on-chain.
+ *
+ * Guarantee:
+ * - If two feeds are packaged together, either both are updated or neither is.
+ * - If any token is missing from the multi-point package for any reason, the relayer skips the update for all feeds in that package.
+ */
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
@@ -26,13 +40,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     AggregatorV3Interface public navOracle;
     AggregatorV3Interface public totalSupplyOracle;
 
-    // Packed storage:
-    // slot 0: pendingDeltaUSDC (16 bytes) + pendingReadyAt (8 bytes) + pendingIsYield (1 byte)
-    //         + vetoPeriod (4 bytes) + maxAnswerStaleness (4 bytes)
+    // Packed storage (31 bytes → 1 slot):
+    // pendingDeltaUSDC (16) + pendingReadyAt (6) + pendingIsYield (1)
+    // + vetoPeriod (4) + maxAnswerStaleness (4)
     // uint128 comfortably covers practical USDC (6d) deltas with wide headroom.
     uint128 public pendingDeltaUSDC;
-    // uint64 timestamp and uint32 durations match protocol style (IssuanceVault epoch config) and are ample.
-    uint64 public pendingReadyAt;
+    // uint48 timestamp is ample for ~8.9 million years; fits in one slot with surrounding fields.
+    uint48 public pendingReadyAt;
     // Direction is stored separately to avoid signed-int casts/abs math during upkeep execution.
     bool public pendingIsYield;
     uint32 public vetoPeriod;
@@ -95,20 +109,20 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (hasPendingNav()) revert PendingNavExists();
 
         (uint256 navUSDC, uint256 totalSupplyMZ) = _readFreshAnswer(navOracle, totalSupplyOracle);
-        if (block.timestamp > type(uint64).max) {
+        if (block.timestamp > type(uint48).max) {
             revert ValueTooLarge();
         }
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 
-        uint64 submittedAt = uint64(block.timestamp);
+        uint48 submittedAt = uint48(block.timestamp);
         uint256 readyAt = uint256(submittedAt) + uint256(vetoPeriod);
-        if (readyAt > type(uint64).max) revert ValueTooLarge();
+        if (readyAt > type(uint48).max) revert ValueTooLarge();
 
         if (deltaUSDC > type(uint128).max) revert ValueTooLarge();
         pendingDeltaUSDC = uint128(deltaUSDC);
         // Snapshot readiness for this pending NAV; changing vetoPeriod later
         // does not shift already submitted snapshots.
-        pendingReadyAt = uint64(readyAt);
+        pendingReadyAt = uint48(readyAt);
         pendingIsYield = isYield;
 
         emit NavSubmitted(navUSDC, totalSupplyMZ, isYield, deltaUSDC, submittedAt, readyAt);
@@ -118,7 +132,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         }
     }
 
-    /// @notice Rejects the pending NAV snapshot during the veto window.
+    /// @notice Rejects the pending NAV snapshot during the veto window or before NAV is applied.
     function rejectPendingNav() external restricted {
         if (!hasPendingNav()) revert NoPendingNav();
         emit NavRejected(pendingIsYield, pendingDeltaUSDC, pendingReadyAt);
@@ -150,9 +164,10 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         emit MaxAnswerStalenessUpdated(newMaxAnswerStaleness);
     }
 
-    /// @notice Chainlink Automation check: pending NAV exists and veto period elapsed.
+    /// @notice Chainlink Automation check: pending NAV exists, veto period elapsed,
+    ///         and downstream calls will not revert.
     /// @param checkData Unused; kept only for Chainlink Automation compatibility.
-    /// @return upkeepNeeded True when a pending NAV exists and veto delay elapsed.
+    /// @return upkeepNeeded True when a pending NAV is ready and can be applied without reverting.
     /// @return performData Empty; action is derived from on-chain state in performUpkeep.
     function checkUpkeep(
         bytes calldata checkData
@@ -160,13 +175,28 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         checkData;
         if (!hasPendingNav()) return (false, "");
         if (block.timestamp < pendingReadyAt) return (false, "");
+
+        // Both distributeYield and applyLoss advance the epoch, which reverts if
+        // the current epoch has not fully elapsed yet.
+        IVault v = IVault(vault);
+        if (block.timestamp < v.epochStart() + v.epochDuration()) return (false, "");
+
+        if (pendingIsYield) {
+            // distributeYield reverts when no tranches are registered.
+            if (v.getTrancheOrder().length == 0) return (false, "");
+        } else {
+            // applyLoss reverts when the loss exceeds the per-tx cap.
+            uint256 maxLoss = ILossManager(lossManager).maxLossPerTxUSDC();
+            if (maxLoss != 0 && pendingDeltaUSDC > maxLoss) return (false, "");
+        }
+
         return (true, "");
     }
 
     /// @notice Applies pending NAV after the veto period.
     /// @param performData Unused; kept only for Chainlink Automation compatibility.
     /// @dev Action is derived from on-chain state to avoid data manipulation via calldata.
-    function performUpkeep(bytes calldata performData) external {
+    function performUpkeep(bytes calldata performData) external restricted {
         performData;
         if (!hasPendingNav()) revert NoPendingNav();
         uint256 readyAt = pendingReadyAt;
@@ -235,7 +265,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (address(totalSupplyOracle_) == address(0)) revert ZeroAddress();
 
         (, int256 navAnswer, , uint256 navUpdatedAt, ) = navOracle_.latestRoundData();
-        if (navAnswer < 0) revert InvalidOracleAnswer(navAnswer);
+        if (navAnswer <= 0) revert InvalidOracleAnswer(navAnswer);
         if (navUpdatedAt == 0 || navUpdatedAt > block.timestamp) {
             revert InvalidOracleTimestamp(address(navOracle_), navUpdatedAt);
         }
@@ -250,7 +280,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         navUSDC = uint256(navAnswer);
 
         (, int256 supplyAnswer, , uint256 supplyUpdatedAt, ) = totalSupplyOracle_.latestRoundData();
-        if (supplyAnswer < 0) revert InvalidOracleAnswer(supplyAnswer);
+        if (supplyAnswer <= 0) revert InvalidOracleAnswer(supplyAnswer);
         if (supplyUpdatedAt == 0 || supplyUpdatedAt > block.timestamp) {
             revert InvalidOracleTimestamp(address(totalSupplyOracle_), supplyUpdatedAt);
         }

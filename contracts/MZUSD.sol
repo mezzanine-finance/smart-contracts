@@ -355,6 +355,7 @@ contract MZUSD is
             uint32 pending = nextRedemptionWindowDuration;
             if (pending != 0) {
                 redemptionWindowDuration = pending;
+                nextRedemptionWindowDuration = 0;
                 emit RedemptionWindowDurationUpdated(pending);
             }
         }

@@ -228,14 +228,15 @@ describe("IssuanceVault Yield Allocation Math", () => {
         await vault.registerTranche(junior.target);
         await vault.registerTranche(juniorPol.target);
 
-        // Default yield distribution: baseReward 40%, senior 20%, mezzanine 20%, junior 20%
+        // Default yield distribution: baseReward 40%, senior 20%, mezzanine 20%, junior 20%, juniorPol disabled
         await vault.setTrancheConfig(
             [
                 {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                 {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
                 {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
             ],
-            [false, false, false],
+            [false, false, false, false],
             4000
         );
 
@@ -315,8 +316,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: senior.target, riskPremiumBps: 0, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
                     {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [false, false, false],
+                [false, false, false, false],
                 7000
             );
 
@@ -630,8 +632,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: senior.target, riskPremiumBps: 0, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
                     {tranche: junior.target, riskPremiumBps: 3000, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [false, false, false],
+                [false, false, false, false],
                 7000
             );
 
@@ -756,8 +759,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: senior.target, riskPremiumBps: 0, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
                     {tranche: junior.target, riskPremiumBps: 2903, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [false, false, false],
+                [false, false, false, false],
                 7097
             );
 
@@ -874,19 +878,21 @@ describe("IssuanceVault Yield Allocation Math", () => {
     describe("setTrancheConfig", () => {
         it("should update baseRewardBps, per-tranche riskPremiumBps and enabled flags", async () => {
             // 3 tranches registered: senior=idx0, mezzanine=idx1, junior=idx2
+            // Disabled tranche must have riskPremiumBps = 0.
             await expect(
                 vault.setTrancheConfig(
                     [
                         {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
-                        {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: false},
+                        {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
                         {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [false, false, false],
-                    5000
+                    [false, false, false, false],
+                    7000
                 )
             ).to.emit(vault, "TrancheConfigUpdated");
 
-            expect(await vault.baseRewardBps()).to.equal(5000);
+            expect(await vault.baseRewardBps()).to.equal(7000);
 
             const t0 = await vault.tranches(0);
             const t1 = await vault.tranches(1);
@@ -895,7 +901,7 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(t0.riskPremiumBps).to.equal(1000);
             expect(t0.enabled).to.equal(true);
 
-            expect(t1.riskPremiumBps).to.equal(2000);
+            expect(t1.riskPremiumBps).to.equal(0);
             expect(t1.enabled).to.equal(false);
 
             expect(t2.riskPremiumBps).to.equal(2000);
@@ -909,36 +915,39 @@ describe("IssuanceVault Yield Allocation Math", () => {
                         {tranche: senior.target, riskPremiumBps: 2500, enabled: true},
                         {tranche: mezzanine.target, riskPremiumBps: 2500, enabled: true},
                         {tranche: junior.target, riskPremiumBps: 2500, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [false, false],
+                    [false, false, false],
                     2500
                 )
             ).to.be.revertedWithCustomError(vault, "LengthMismatch");
         });
 
         it("should revert when baseRewardBps + sum(riskPremiumsBps) != 10000", async () => {
-            // Total = 5000 + 1000 + 1000 + 1000 = 8000 (< 10000)
+            // Total = 5000 + 1000 + 1000 + 1000 + 0 = 8000 (< 10000)
             await expect(
                 vault.setTrancheConfig(
                     [
                         {tranche: senior.target, riskPremiumBps: 1000, enabled: true},
                         {tranche: mezzanine.target, riskPremiumBps: 1000, enabled: true},
                         {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [false, false, false],
+                    [false, false, false, false],
                     5000
                 )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
 
-            // Total = 5000 + 2000 + 2000 + 2000 = 11000 (> 10000)
+            // Total = 5000 + 2000 + 2000 + 2000 + 0 = 11000 (> 10000)
             await expect(
                 vault.setTrancheConfig(
                     [
                         {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                         {tranche: mezzanine.target, riskPremiumBps: 2000, enabled: true},
                         {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [false, false, false],
+                    [false, false, false, false],
                     5000
                 )
             ).to.be.revertedWithCustomError(vault, "InvalidYieldDistribution");
@@ -951,11 +960,44 @@ describe("IssuanceVault Yield Allocation Math", () => {
                         {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                         {tranche: mezzanine.target, riskPremiumBps: 1000, enabled: true},
                         {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [true, true, false],
+                    [true, true, false, false],
                     7000
                 )
             ).to.be.revertedWithCustomError(vault, "PairedTrancheRiskPremiumMustBeZero");
+        });
+
+        it("should revert when disabled tranche has non-zero riskPremiumBps", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 5000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 3000, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                    ],
+                    [false, false, false, false],
+                    0
+                )
+            )
+                .to.be.revertedWithCustomError(vault, "DisabledTrancheHasRiskPremium")
+                .withArgs(mezzanine.target);
+        });
+
+        it("should accept disabled tranche with zero riskPremiumBps", async () => {
+            await expect(
+                vault.setTrancheConfig(
+                    [
+                        {tranche: senior.target, riskPremiumBps: 5000, enabled: true},
+                        {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                        {tranche: junior.target, riskPremiumBps: 5000, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                    ],
+                    [false, false, false, false],
+                    0
+                )
+            ).to.emit(vault, "TrancheConfigUpdated");
         });
 
         it("should accept paired tranches when second has riskPremiumBps = 0", async () => {
@@ -965,8 +1007,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                         {tranche: senior.target, riskPremiumBps: 3000, enabled: true},
                         {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
                         {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                        {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                     ],
-                    [true, true, false],
+                    [true, true, false, false],
                     7000
                 )
             ).to.emit(vault, "TrancheConfigUpdated");
@@ -978,8 +1021,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: senior.target, riskPremiumBps: 3000, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
                     {tranche: junior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [true, true, false],
+                [true, true, false, false],
                 7000
             );
 
@@ -988,16 +1032,22 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
 
             const [orderBefore, flagsBefore] = await vault.getTrancheOrderAndPairs();
-            expect(orderBefore).to.deep.equal([senior.target, mezzanine.target, junior.target]);
-            expect(flagsBefore).to.deep.equal([true, true, false]);
+            expect(orderBefore).to.deep.equal([
+                senior.target,
+                mezzanine.target,
+                junior.target,
+                juniorPol.target,
+            ]);
+            expect(flagsBefore).to.deep.equal([true, true, false, false]);
 
             await vault.setTrancheConfig(
                 [
                     {tranche: junior.target, riskPremiumBps: 0, enabled: true},
                     {tranche: senior.target, riskPremiumBps: 0, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [false, false, false],
+                [false, false, false, false],
                 10000
             );
 
@@ -1006,8 +1056,13 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(await vault.tranchePairedTo(junior.target)).to.equal(ethers.ZeroAddress);
 
             const [orderAfter, flagsAfter] = await vault.getTrancheOrderAndPairs();
-            expect(orderAfter).to.deep.equal([junior.target, senior.target, mezzanine.target]);
-            expect(flagsAfter).to.deep.equal([false, false, false]);
+            expect(orderAfter).to.deep.equal([
+                junior.target,
+                senior.target,
+                mezzanine.target,
+                juniorPol.target,
+            ]);
+            expect(flagsAfter).to.deep.equal([false, false, false, false]);
         });
     });
 
@@ -1020,14 +1075,15 @@ describe("IssuanceVault Yield Allocation Math", () => {
 
             // senior + mezzanine paired, junior solo
             // riskPremium: senior=20% (pair premium), mezzanine=0% (required), junior=10%
-            // baseRewardBps = 10000 - (2000 + 0 + 1000) = 7000
+            // baseRewardBps = 10000 - (2000 + 0 + 1000 + 0) = 7000
             await vault.setTrancheConfig(
                 [
                     {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
                     {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [true, true, false],
+                [true, true, false, false],
                 7000
             );
 
@@ -1083,8 +1139,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
                     {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [true, true, false],
+                [true, true, false, false],
                 7000
             );
 
@@ -1136,8 +1193,9 @@ describe("IssuanceVault Yield Allocation Math", () => {
                     {tranche: junior.target, riskPremiumBps: 1000, enabled: true},
                     {tranche: senior.target, riskPremiumBps: 2000, enabled: true},
                     {tranche: mezzanine.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
                 ],
-                [false, true, true],
+                [false, true, true, false],
                 7000
             );
 

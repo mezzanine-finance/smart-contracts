@@ -110,6 +110,17 @@
                 "type": "address"
             }
         ],
+        "name": "DisabledTrancheHasRiskPremium",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tranche",
+                "type": "address"
+            }
+        ],
         "name": "DuplicateTranche",
         "type": "error"
     },
@@ -375,6 +386,22 @@
     {
         "inputs": [],
         "name": "TooManyTranches",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "provided",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "registered",
+                "type": "uint256"
+            }
+        ],
+        "name": "TrancheCountMismatch",
         "type": "error"
     },
     {
@@ -784,19 +811,6 @@
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "TRANCHE_WEIGHT_LIMIT",
-        "outputs": [
-            {
-                "internalType": "uint16",
-                "name": "",
-                "type": "uint16"
             }
         ],
         "stateMutability": "view",

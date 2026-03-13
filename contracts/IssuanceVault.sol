@@ -37,9 +37,6 @@ contract IssuanceVault is
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
-    // Max allowed tranche weight (relative, not bps).
-    // aderyn-ignore-next-line(large-numeric-literal)
-    uint16 public constant TRANCHE_WEIGHT_LIMIT = 10_000;
     uint256 public constant MZUSD_SCALE = 1e12;
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
@@ -131,6 +128,8 @@ contract IssuanceVault is
     error PairNotContiguous(uint256 index);
     error TrancheNotRegistered(address tranche);
     error PairedTrancheRiskPremiumMustBeZero();
+    error DisabledTrancheHasRiskPremium(address tranche);
+    error TrancheCountMismatch(uint256 provided, uint256 registered);
 
     modifier onlyMZUSD() {
         if (msg.sender != address(mzusd)) revert NotMZUSD();
@@ -351,15 +350,19 @@ contract IssuanceVault is
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         uint256 len = _tranches.length;
         if (len == 0) revert NoTranchesAdded();
+        if (len != tranches.length) revert TrancheCountMismatch(len, tranches.length);
         if (_isPairedWithNext.length != len) revert LengthMismatch();
 
-        // Validate registered, no duplicates, and sum yield to BPS.
+        // Validate registered, no duplicates, enabled↔premium consistency, and sum yield to BPS.
         uint256 total = _baseRewardBps;
         for (uint256 i; i < len; ++i) {
             address tranche = _tranches[i].tranche;
             if (!isTranche[tranche]) revert TrancheNotRegistered(tranche);
             for (uint256 j; j < i; ++j) {
                 if (_tranches[j].tranche == tranche) revert DuplicateTranche(tranche);
+            }
+            if (!_tranches[i].enabled && _tranches[i].riskPremiumBps != 0) {
+                revert DisabledTrancheHasRiskPremium(tranche);
             }
             total += _tranches[i].riskPremiumBps;
         }
