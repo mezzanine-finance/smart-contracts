@@ -392,6 +392,7 @@ contract VaultYieldFuzzTest is BaseProtocolFuzzTest {
 
     function _fundAndDeposit(address user, Tranche tranche, uint256 usdcAmount) internal {
         uint256 mzAmount = usdcAmount * SCALE;
+        _allowlistAccount(user);
 
         usdc.mint(user, usdcAmount);
         vm.startPrank(user);

@@ -12,8 +12,9 @@
         "BURNER_ROLE": 5,
         "ORACLE_ROLE": 6,
         "KEEPER_ROLE": 7,
-        "FINALIZER_ROLE": 8,
-        "CHAINLINK_AUTOMATION": 9
+        "ALLOWLISTER_ROLE": 8,
+        "FINALIZER_ROLE": 9,
+        "CHAINLINK_AUTOMATION": 10
     },
     "roles": {
         "admin": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
@@ -22,6 +23,7 @@
         "upgrader": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
         "reservoirWithdrawers": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
         "keepers": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
+        "allowlisters": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
         "oracles": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
         "roleDelays": {
             "unpauser": 0,
@@ -42,6 +44,9 @@
                 }
             ]
         }
+    },
+    "allowlist": {
+        "sanctionsList": ""
     },
     "mzusd": {
         "redemptionCapUSDC": "1000000",

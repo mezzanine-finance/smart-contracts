@@ -378,6 +378,7 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         uint256 usdcAmount
     ) internal returns (uint256 mintedShares) {
         uint256 mintedMZ = usdcAmount * SCALE;
+        _allowlistAccount(user);
 
         usdc.mint(user, usdcAmount);
         vm.startPrank(user);
@@ -455,6 +456,8 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         vm.assume(user != address(reservoir));
         vm.assume(user != address(accessManager));
         vm.assume(user != address(pauseManager));
+        vm.assume(user != address(allowlist));
+        vm.assume(user != address(sanctionsList));
         vm.assume(user != address(lossManager));
         vm.assume(user != address(junior));
         vm.assume(user != address(mezzanine));

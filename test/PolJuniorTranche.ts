@@ -96,10 +96,24 @@ describe("PolJuniorTranche", () => {
             }
         )) as unknown as ReservoirUSDC;
 
+        const SanctionsListFactory = await ethers.getContractFactory("MockSanctionsList", deployer);
+        const sanctionsList = await SanctionsListFactory.deploy();
+        const AllowlistFactory = await ethers.getContractFactory("Allowlist", deployer);
+        const allowlist = await upgrades.deployProxy(
+            AllowlistFactory,
+            [accessManager.target, sanctionsList.target],
+            {kind: "uups", initializer: "initialize"}
+        );
+        await allowlist.addBatch([
+            deployer.address,
+            alice.address,
+            ...users.slice(0, 8).map((u: any) => u.address),
+        ]);
+
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
         mzusd = (await upgrades.deployProxy(
             MZUSDFactory,
-            [accessManager.target, pauseManager.target, usdcTotalSupply],
+            [accessManager.target, pauseManager.target, allowlist.target, usdcTotalSupply],
             {
                 kind: "uups",
                 initializer: "initialize",

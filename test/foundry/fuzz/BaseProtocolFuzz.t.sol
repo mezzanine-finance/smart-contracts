@@ -9,7 +9,9 @@ import {PauseManager} from "contracts/pause/PauseManager.sol";
 import {ReservoirUSDC} from "contracts/ReservoirUSDC.sol";
 import {MZUSD} from "contracts/MZUSD.sol";
 import {IssuanceVault} from "contracts/IssuanceVault.sol";
+import {Allowlist} from "contracts/Allowlist.sol";
 import {MockUSDC} from "contracts/test/MockUSDC.sol";
+import {MockSanctionsList} from "contracts/test/MockSanctionsList.sol";
 
 abstract contract BaseProtocolFuzzTest is Test {
     uint256 internal constant BPS = 10_000;
@@ -22,6 +24,8 @@ abstract contract BaseProtocolFuzzTest is Test {
     ReservoirUSDC internal reservoir;
     MZUSD internal mzusd;
     IssuanceVault internal vault;
+    Allowlist internal allowlist;
+    MockSanctionsList internal sanctionsList;
 
     function setUp() public virtual {
         usdc = new MockUSDC();
@@ -46,13 +50,27 @@ abstract contract BaseProtocolFuzzTest is Test {
             )
         );
 
+        sanctionsList = new MockSanctionsList();
+        Allowlist allowlistImpl = new Allowlist();
+        allowlist = Allowlist(
+            _deployProxy(
+                address(allowlistImpl),
+                abi.encodeCall(Allowlist.initialize, (address(accessManager), sanctionsList))
+            )
+        );
+
         MZUSD mzusdImpl = new MZUSD(address(usdc));
         mzusd = MZUSD(
             _deployProxy(
                 address(mzusdImpl),
                 abi.encodeCall(
                     MZUSD.initialize,
-                    (address(accessManager), address(pauseManager), type(uint128).max)
+                    (
+                        address(accessManager),
+                        address(pauseManager),
+                        address(allowlist),
+                        type(uint128).max
+                    )
                 )
             )
         );
@@ -86,6 +104,12 @@ abstract contract BaseProtocolFuzzTest is Test {
 
         mzusd.setVault(address(vault));
         reservoir.setVault(address(vault));
+    }
+
+    function _allowlistAccount(address account) internal {
+        if (!allowlist.isAllowlisted(account)) {
+            allowlist.add(account);
+        }
     }
 
     function _deployProxy(

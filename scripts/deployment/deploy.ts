@@ -2,6 +2,7 @@ import {ethers, network, upgrades} from "hardhat";
 import {BaseContract} from "ethers";
 import type {
     AccessManager,
+    Allowlist,
     LossManager,
     MZUSD,
     MockUSDC,
@@ -255,6 +256,20 @@ async function main() {
         deployments
     );
 
+    const sanctionsListAddress = config.allowlist.sanctionsList;
+    const AllowlistFactory = await ethers.getContractFactory("Allowlist", deployer);
+    const allowlist = await ensureProxyDeployment<Allowlist>(
+        "Allowlist",
+        AllowlistFactory,
+        async () =>
+            upgrades.deployProxy(AllowlistFactory, [accessManager.address, sanctionsListAddress], {
+                kind: "uups",
+                initializer: "initialize",
+            }),
+        fresh,
+        deployments
+    );
+
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
     const mzusd = await ensureProxyDeployment<MZUSD>(
         "MZUSD",
@@ -265,6 +280,7 @@ async function main() {
                 [
                     accessManager.address,
                     pauseManager.address,
+                    allowlist.address,
                     parseUSDC(config.mzusd.redemptionCapUSDC),
                 ],
                 {
@@ -637,6 +653,11 @@ async function main() {
         }
 
         if (seedMzusdUsdc > 0n) {
+            const allowlistSeeder = allowlist.contract.connect(seedSigner);
+            if (!(await allowlist.contract.isAllowlisted(seedAddress))) {
+                await (await allowlistSeeder.add(seedAddress)).wait();
+                log.success(`Allowlist.add deployer for seeding`);
+            }
             await (await usdcSeeder.approve(mzusd.address, seedMzusdUsdc)).wait();
             await (await mzusdSeeder.deposit(seedMzusdUsdc)).wait();
             log.success(`MZUSD.deposit ${seed.mzusdDepositUSDC}`);
@@ -908,6 +929,7 @@ async function main() {
             mzusd.contract.interface.getFunction("setGlobalRedemptionCap").selector,
             mzusd.contract.interface.getFunction("setRedemptionWindowDuration").selector,
             mzusd.contract.interface.getFunction("setWithdrawalFeeBps").selector,
+            mzusd.contract.interface.getFunction("setAllowlist").selector,
         ],
         adminRole
     );
@@ -921,6 +943,24 @@ async function main() {
         accessManagerAdmin,
         mzusd.address,
         [mzusd.contract.interface.getFunction("upgradeToAndCall").selector],
+        roleIds.UPGRADER_ROLE
+    );
+
+    await ensureTargetRole(
+        accessManagerAdmin,
+        allowlist.address,
+        [
+            allowlist.contract.interface.getFunction("add").selector,
+            allowlist.contract.interface.getFunction("remove").selector,
+            allowlist.contract.interface.getFunction("addBatch").selector,
+            allowlist.contract.interface.getFunction("removeBatch").selector,
+        ],
+        roleIds.ALLOWLISTER_ROLE
+    );
+    await ensureTargetRole(
+        accessManagerAdmin,
+        allowlist.address,
+        [allowlist.contract.interface.getFunction("upgradeToAndCall").selector],
         roleIds.UPGRADER_ROLE
     );
 
@@ -1098,6 +1138,18 @@ async function main() {
         await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
     }
 
+    const allowlisterMembers = new Set<string>(config.roles.allowlisters ?? []);
+    if (grantDevRoles) {
+        allowlisterMembers.add(devDeployer);
+    }
+    for (const addr of allowlisterMembers) {
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.ALLOWLISTER_ROLE,
+            addr,
+            delays.allowlister ?? 0
+        );
+    }
     for (const fin of finalizers) {
         await ensureRoleMember(accessManagerAdmin, roleIds.FINALIZER_ROLE, fin.address, 0);
     }
@@ -1136,6 +1188,9 @@ async function main() {
     await verifyContract(accessManager.address, [devDeployer], shouldVerify);
     if (mockUsdc) {
         await verifyContract(mockUsdc.address, [], shouldVerify);
+    }
+    if (allowlist.implementation) {
+        await verifyContract(allowlist.implementation, [], shouldVerify);
     }
     if (pauseManager.implementation) {
         await verifyContract(pauseManager.implementation, [], shouldVerify);
@@ -1180,6 +1235,7 @@ async function main() {
     log.info(`AccessManager: ${accessManager.address}`);
     log.info(`PauseManager (proxy): ${pauseManager.address}`);
     log.info(`USDC: ${usdcAddress}`);
+    log.info(`Allowlist (proxy): ${allowlist.address}`);
     log.info(`ReservoirUSDC (proxy): ${reservoir.address}`);
     log.info(`IssuanceVault (proxy): ${vault.address}`);
     log.info(`MZUSD (proxy): ${mzusd.address}`);

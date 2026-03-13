@@ -54,19 +54,30 @@ Note (Phase 1 transfer safety):
 - For known protocol tokens (USDC + protocol ERC20s), code uses direct ERC20 `transfer`/`transferFrom`.
 - ERC4626 internal flows still rely on OpenZeppelin ERC4626 behavior for deposit/mint/withdraw/redeem transfers.
 
+### Allowlist (`contracts/Allowlist.sol`)
+
+- Manages per-account allowlisting for protocol access control.
+- `verifyAccount(account)` returns `true` only if the account is allowlisted AND not sanctioned by Chainalysis.
+- `add`, `remove`, `addBatch`, `removeBatch` are `restricted` (granted to `ALLOWLISTER_ROLE`).
+- Integrates with Chainalysis `ISanctionsList` for real-time sanctions screening.
+- Referenced by MZUSD to gate `deposit` and `requestWithdrawal`.
+
 ### MZUSD (`contracts/MZUSD.sol`)
 
 - ERC20 with 18 decimals, USDC-backed mint/redeem interface.
 - `deposit(amountUSDC)`:
+    - requires caller to pass `Allowlist.verifyAccount` (allowlisted and not sanctioned);
     - transfers USDC to IssuanceVault;
     - mints `amountUSDC * 1e12` MZUSD.
 - `requestWithdrawal(amountMZ)`:
+    - requires caller to pass `Allowlist.verifyAccount` (allowlisted and not sanctioned);
     - converts to USDC with floor rounding (`usdcOut = amountMZ / 1e12`);
     - burns only `usdcOut * 1e12`;
     - enforces redemption cap window (with same-tx deposit/withdraw netting);
     - calls `IssuanceVault.withdraw` for USDC payout.
 - `mint` is gated by `onlyVault`.
 - `burn` is `restricted` (typically granted to tranche contracts via `BURNER_ROLE`).
+- `setAllowlist` allows admin to update the allowlist address.
 
 ### ReservoirUSDC (`contracts/ReservoirUSDC.sol`)
 
@@ -94,6 +105,7 @@ Note (Phase 1 transfer safety):
 
 - `restricted` functions are governed by `AccessManager` target function roles.
 - Category-based pause checks use `PauseManager` + `whenNotPaused`.
+- MZUSD deposit/withdrawal additionally requires accounts to pass `Allowlist.verifyAccount` (allowlisted + not sanctioned).
 
 ## Units and scaling
 
@@ -107,13 +119,15 @@ Note (Phase 1 transfer safety):
 ### MZUSD mint
 
 1. User calls `MZUSD.deposit(amountUSDC)`.
-2. USDC is transferred to IssuanceVault.
-3. User receives `amountUSDC * 1e12` MZUSD.
+2. Allowlist verifies the caller (allowlisted and not sanctioned).
+3. USDC is transferred to IssuanceVault.
+4. User receives `amountUSDC * 1e12` MZUSD.
 
 ### MZUSD redemption
 
 1. User calls `MZUSD.requestWithdrawal(amountMZ)`.
-2. Amount is quantized to full USDC units (`floor(amountMZ / 1e12)`).
+2. Allowlist verifies the caller (allowlisted and not sanctioned).
+3. Amount is quantized to full USDC units (`floor(amountMZ / 1e12)`).
 3. Redemption cap window is checked after atomic netting.
 4. IssuanceVault pays USDC (pulling from Reservoir when needed).
 
