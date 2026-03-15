@@ -79,6 +79,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         uint256 currentTimestamp,
         uint256 maxAnswerStaleness
     );
+    error OraclesNotInSync();
     error ValueTooLarge();
     error ZeroAddress();
 
@@ -292,6 +293,8 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
                 maxAnswerStaleness
             );
         }
+        // Both oracles should always be updated in the same transaction
+        if (navUpdatedAt != supplyUpdatedAt) revert OraclesNotInSync();
         totalSupplyMZ = uint256(supplyAnswer);
     }
 }

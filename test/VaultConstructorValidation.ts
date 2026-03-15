@@ -26,6 +26,7 @@ describe("IssuanceVault constructor and initializer validation", () => {
         pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
+            unsafeAllow: ["constructor"],
         })) as unknown as PauseManager;
 
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
@@ -166,6 +167,7 @@ describe("IssuanceVault constructor and initializer validation", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }
         )) as unknown as PauseManager;
 
@@ -198,6 +200,7 @@ describe("IssuanceVault constructor and initializer validation", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }
         )) as unknown as PauseManager;
 

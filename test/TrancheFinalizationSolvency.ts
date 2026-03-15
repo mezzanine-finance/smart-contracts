@@ -70,6 +70,7 @@ describe("Tranche finalization solvency", () => {
         pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
+            unsafeAllow: ["constructor"],
         })) as unknown as PauseManager;
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();

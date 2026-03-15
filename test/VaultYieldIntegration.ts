@@ -79,6 +79,7 @@ describe("IssuanceVault Yield Integration", () => {
         pauseManager = (await upgrades.deployProxy(PauseManagerFactory, [accessManager.target], {
             kind: "uups",
             initializer: "initialize",
+            unsafeAllow: ["constructor"],
         })) as unknown as PauseManager;
 
         const ReservoirFactory = await ethers.getContractFactory("ReservoirUSDC", deployer);
