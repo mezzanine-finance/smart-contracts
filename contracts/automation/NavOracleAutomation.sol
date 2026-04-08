@@ -110,14 +110,11 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (hasPendingNav()) revert PendingNavExists();
 
         (uint256 navUSDC, uint256 totalSupplyMZ) = _readFreshAnswer(navOracle, totalSupplyOracle);
-        if (block.timestamp > type(uint48).max) {
-            revert ValueTooLarge();
-        }
+
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 
         uint48 submittedAt = uint48(block.timestamp);
         uint256 readyAt = uint256(submittedAt) + uint256(vetoPeriod);
-        if (readyAt > type(uint48).max) revert ValueTooLarge();
 
         if (deltaUSDC > type(uint128).max) revert ValueTooLarge();
         pendingDeltaUSDC = uint128(deltaUSDC);
