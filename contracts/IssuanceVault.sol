@@ -369,8 +369,7 @@ contract IssuanceVault is
         if (total != BPS) revert InvalidYieldDistribution();
 
         // Clear old pair mapping.
-        uint256 oldLen = tranches.length;
-        for (uint256 i; i < oldLen; ++i) {
+        for (uint256 i; i < len; ++i) {
             delete tranchePairedTo[tranches[i].tranche];
         }
 
