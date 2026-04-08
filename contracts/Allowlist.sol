@@ -32,7 +32,10 @@ contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
         address _accessManager,
         ISanctionsList _sanctionsList
     ) external initializer {
-        require(address(_sanctionsList) != address(0), ZeroAddress());
+        require(
+            address(_sanctionsList) != address(0) && _accessManager != address(0),
+            ZeroAddress()
+        );
         sanctionsList = _sanctionsList;
         __AccessManaged_init(_accessManager);
     }
