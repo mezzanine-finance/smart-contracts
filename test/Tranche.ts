@@ -97,7 +97,7 @@ describe("Tranche", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([deployer.address, alice.address, bob.address, carol.address]);
 

@@ -85,7 +85,7 @@ describe("IssuanceVault <-> Reservoir", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);

@@ -32,7 +32,7 @@ describe("Allowlist", () => {
         allowlist = (await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         )) as unknown as Allowlist;
 
         snapshot = await takeSnapshot();
@@ -49,6 +49,7 @@ describe("Allowlist", () => {
                 upgrades.deployProxy(AllowlistFactory, [accessManager.target, ethers.ZeroAddress], {
                     kind: "uups",
                     initializer: "initialize",
+                    unsafeAllow: ["constructor"],
                 })
             ).to.be.revertedWithCustomError(allowlist, "ZeroAddress");
         });

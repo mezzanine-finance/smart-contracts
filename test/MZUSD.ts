@@ -118,6 +118,7 @@ describe("MZUSD <-> USDC conversion", () => {
             {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }
         );
         await allowlist.addBatch([

@@ -22,6 +22,10 @@ contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
     error NotAllowlisted(address account);
     error ZeroAddress();
 
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @param _accessManager AccessManager address.
     /// @param _sanctionsList Sanctions list address.
     function initialize(
