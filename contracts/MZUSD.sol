@@ -120,7 +120,6 @@ contract MZUSD is
         _setGlobalRedemptionCap(_initialCapUSDC);
         windowStartTimestamp = uint40(block.timestamp);
         redemptionWindowDuration = 1 hours;
-        nextRedemptionWindowDuration = redemptionWindowDuration;
         allowlist = IAllowlist(allowlist_);
     }
 
