@@ -459,6 +459,19 @@
     },
     {
         "inputs": [],
+        "name": "pauseManager",
+        "outputs": [
+            {
+                "internalType": "contract IPauseManager",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "pendingDeltaUSDC",
         "outputs": [
             {

@@ -8,6 +8,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILossManager} from "../interfaces/ILossManager.sol";
 import {IMZUSD} from "../interfaces/IMZUSD.sol";
 import {IVault} from "../interfaces/IVault.sol";
+import {IPauseManager} from "../pause/IPauseManager.sol";
+import {PauseCategory} from "../pause/PauseCategory.sol";
 
 /// @title NAV oracle automation
 /// @notice Stores oracle NAV snapshots with a veto window, then applies yield or loss via Automation.
@@ -37,6 +39,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     IERC20 public immutable mzusd;
     address public immutable vault;
     address public immutable lossManager;
+    IPauseManager public immutable pauseManager;
     AggregatorV3Interface public navOracle;
     AggregatorV3Interface public totalSupplyOracle;
 
@@ -91,9 +94,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         address vault_ = manager.vault();
         address mzusd_ = manager.mzusd();
 
+        address pauseManager_ = IMZUSD(mzusd_).pauseManager();
+        if (pauseManager_ == address(0)) revert ZeroAddress();
+
         mzusd = IERC20(mzusd_);
         vault = vault_;
         lossManager = lossManager_;
+        pauseManager = IPauseManager(pauseManager_);
         _setVetoPeriod(vetoPeriod_);
         _setMaxAnswerStaleness(DEFAULT_MAX_ANSWER_STALENESS);
     }
@@ -179,10 +186,16 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         IVault v = IVault(vault);
         if (block.timestamp < v.epochStart() + v.epochDuration()) return (false, "");
 
+        // Both paths touch the vault (distributeYield directly, applyLoss via advanceEpoch),
+        // so a PROTOCOL pause on the vault blocks either action.
+        if (pauseManager.isPaused(vault, PauseCategory.PROTOCOL)) return (false, "");
+
         if (pendingIsYield) {
             // distributeYield reverts when no tranches are registered.
             if (v.getTrancheOrder().length == 0) return (false, "");
         } else {
+            // applyLoss checks PROTOCOL pause on the LossManager.
+            if (pauseManager.isPaused(lossManager, PauseCategory.PROTOCOL)) return (false, "");
             // applyLoss reverts when the loss exceeds the per-tx cap.
             uint256 maxLoss = ILossManager(lossManager).maxLossPerTxUSDC();
             if (maxLoss != 0 && pendingDeltaUSDC > maxLoss) return (false, "");

@@ -331,7 +331,7 @@ describe("NavOracleAutomation", () => {
         );
     });
 
-    it("performUpkeep reverts when protocol is paused", async () => {
+    it("checkUpkeep returns false when protocol is globally paused", async () => {
         await mintAndDepositIntoTranche(oracle, to6(10n));
 
         const totalSupplyMZ = await mzusd.totalSupply();
@@ -342,11 +342,50 @@ describe("NavOracleAutomation", () => {
         await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
 
+        // Upkeep is needed before pause
+        const [neededBefore] = await navAutomation.checkUpkeep("0x");
+        expect(neededBefore).to.equal(true);
+
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
 
-        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
-            .to.be.revertedWithCustomError(vault, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
+        // Upkeep is no longer needed while paused
+        const [neededAfter] = await navAutomation.checkUpkeep("0x");
+        expect(neededAfter).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when vault is paused for PROTOCOL (loss path)", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(120n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC - to6(20n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        // Pause PROTOCOL only on the vault — applyLoss calls advanceEpoch on vault
+        await pauseManager.pauseContract(vault.target, PauseCategory.PROTOCOL);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when lossManager is paused for PROTOCOL", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(120n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC - to6(20n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        await pauseManager.pauseContract(lossManager.target, PauseCategory.PROTOCOL);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
     });
 
     it("performUpkeep reverts with NotReady and returns pending readyAt", async () => {
