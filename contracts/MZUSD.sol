@@ -37,7 +37,7 @@ contract MZUSD is
 
     IVault public vault;
     /// @notice Start timestamp of current redemption window.
-    uint40 public windowStartTimestamp;
+    uint48 public windowStartTimestamp;
     /// @notice Duration of redemption window in seconds (e.g. 1 hours).
     uint32 public redemptionWindowDuration;
     /// @notice Global redemption cap in USDC (6 decimals); must be > 0.
@@ -121,7 +121,7 @@ contract MZUSD is
         __PauseManaged_init(pauseManager_);
 
         _setGlobalRedemptionCap(_initialCapUSDC);
-        windowStartTimestamp = uint40(block.timestamp);
+        windowStartTimestamp = uint48(block.timestamp);
         redemptionWindowDuration = 1 hours;
         allowlist = IAllowlist(allowlist_);
     }
@@ -333,14 +333,14 @@ contract MZUSD is
     function getRedemptionWindow()
         external
         view
-        returns (uint40 windowStart, uint40 windowEnd, uint32 duration)
+        returns (uint48 windowStart, uint48 windowEnd, uint32 duration)
     {
         duration = redemptionWindowDuration;
         if (_isWindowExpired()) {
             // Next withdrawal would reset — show projected window
             uint32 pending = nextRedemptionWindowDuration;
             if (pending != 0) duration = pending;
-            windowStart = uint40(block.timestamp);
+            windowStart = uint48(block.timestamp);
         } else {
             windowStart = windowStartTimestamp;
         }
@@ -378,7 +378,7 @@ contract MZUSD is
         uint32 duration = redemptionWindowDuration;
 
         if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
-            windowStartTimestamp = uint40(block.timestamp);
+            windowStartTimestamp = uint48(block.timestamp);
             windowUsedUSDC = 0;
 
             uint32 pending = nextRedemptionWindowDuration;

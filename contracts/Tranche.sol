@@ -62,10 +62,10 @@ contract Tranche is
     uint256 public yieldStreamingAmount;
 
     /// @notice Timestamp when current yield streaming started.
-    uint64 public yieldStreamStart;
+    uint48 public yieldStreamStart;
 
     /// @notice Timestamp when current yield streaming should finish (all yield accrued).
-    uint64 public yieldStreamEnd;
+    uint48 public yieldStreamEnd;
 
     /// @notice Assets reserved for finalized-but-unclaimed umbrella withdrawals.
     uint256 public reservedAssets;
@@ -310,8 +310,8 @@ contract Tranche is
         uint256 endTs = startTs + duration;
 
         yieldStreamingAmount = yieldAmount;
-        yieldStreamStart = SafeCast.toUint64(startTs);
-        yieldStreamEnd = SafeCast.toUint64(endTs);
+        yieldStreamStart = SafeCast.toUint48(startTs);
+        yieldStreamEnd = SafeCast.toUint48(endTs);
 
         emit YieldNotified(yieldAmount, yieldStreamStart, yieldStreamEnd);
     }

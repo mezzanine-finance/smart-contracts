@@ -58,7 +58,7 @@ contract IssuanceVault is
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
 
     // epochs + config
-    uint64 public epochStart; // start timestamp of current epoch
+    uint48 public epochStart; // start timestamp of current epoch
     uint64 public epochDuration; // duration of each epoch in seconds
     uint64 public currentEpochId; // current epoch ID for yield distribution
 
@@ -181,7 +181,7 @@ contract IssuanceVault is
         hysteresisBps = 500;
 
         currentEpochId = 1;
-        epochStart = uint64(block.timestamp);
+        epochStart = uint48(block.timestamp);
         epochDuration = 1 days;
     }
 
@@ -510,7 +510,7 @@ contract IssuanceVault is
     function getEpochConfig()
         external
         view
-        returns (uint64 epochId, uint64 start, uint64 duration)
+        returns (uint64 epochId, uint48 start, uint64 duration)
     {
         return (currentEpochId, epochStart, epochDuration);
     }
@@ -645,7 +645,7 @@ contract IssuanceVault is
     ///      If advancement is delayed, elapsed idle time is not backfilled into synthetic epochs.
     /// @return newEpochId New epoch ID after advancement.
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
-        uint64 ts = uint64(block.timestamp);
+        uint48 ts = uint48(block.timestamp);
         if (ts < epochStart + epochDuration) revert EpochTooSoon();
 
         epochStart = ts;

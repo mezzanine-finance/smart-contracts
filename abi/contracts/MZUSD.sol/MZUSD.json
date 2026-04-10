@@ -745,14 +745,14 @@
         "name": "getRedemptionWindow",
         "outputs": [
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "windowStart",
-                "type": "uint40"
+                "type": "uint48"
             },
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "windowEnd",
-                "type": "uint40"
+                "type": "uint48"
             },
             {
                 "internalType": "uint32",
@@ -1142,9 +1142,9 @@
         "name": "windowStartTimestamp",
         "outputs": [
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "",
-                "type": "uint40"
+                "type": "uint48"
             }
         ],
         "stateMutability": "view",
