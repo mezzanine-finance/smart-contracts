@@ -11,7 +11,7 @@ import "./interfaces/external/ISanctionsList.sol";
 /// @notice Account verification checks that account is in allowlist and is not sanctioned by Chainanalysis.
 contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
     /// @notice Address of Sanctions List by Chainanalysis.
-    ISanctionsList sanctionsList;
+    ISanctionsList public sanctionsList;
     /// @notice Validates if account is allowed.
     mapping(address => bool) public isAllowlisted;
 
@@ -26,8 +26,9 @@ contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
         _disableInitializers();
     }
 
-    /// @param _accessManager AccessManager address.
-    /// @param _sanctionsList Sanctions list address.
+    /// @notice Initialize the Allowlist.
+    /// @param _accessManager AccessManager address; must be non-zero.
+    /// @param _sanctionsList Chainalysis SanctionsList contract; must be non-zero.
     function initialize(
         address _accessManager,
         ISanctionsList _sanctionsList
@@ -43,18 +44,19 @@ contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
     // ALLOWLIST FUNCTIONS
 
     /// @notice Adds account to the allowlist.
-    /// @dev Account shouldn't already be in the allowlist.
+    /// @param account Address to add; must be non-zero and not already allowlisted.
     function add(address account) external restricted {
         _add(account);
     }
 
     /// @notice Removes the account from the allowlist.
-    /// @dev Account should already be in the allowlist.
+    /// @param account Address to remove; must be currently allowlisted.
     function remove(address account) external restricted {
         _remove(account);
     }
 
     /// @notice Same as `add` function, but for a batch of accounts.
+    /// @param accounts Array of addresses to add.
     function addBatch(address[] calldata accounts) external restricted {
         uint256 length = accounts.length;
         for (uint256 i; i < length; ++i) {
@@ -63,6 +65,7 @@ contract Allowlist is AccessManagedUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Same as `remove` function, but for a batch of accounts.
+    /// @param accounts Array of addresses to remove.
     function removeBatch(address[] calldata accounts) external restricted {
         uint256 length = accounts.length;
         for (uint256 i; i < length; ++i) {

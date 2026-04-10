@@ -10,9 +10,10 @@ import "./interfaces/IVault.sol";
 import "./interfaces/IAllowlist.sol";
 
 /// @title MZUSD stablecoin
-/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
-/// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
-/// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
+/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals). Withdrawals are quantized to full USDC units,
+///         subject to a configurable withdrawal fee (bps), and gated by a sliding-window redemption cap.
+/// @notice Atomic netting: same-tx withdrawals bypass the redemption cap for amounts deposited earlier in the tx.
+/// @notice Deposit and withdrawal access is gated by Allowlist (KYC + Chainalysis sanctions check).
 /// @dev Burn authorization is delegated to AccessManager (BURNER_ROLE), usually granted to tranche contracts.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
@@ -100,9 +101,11 @@ contract MZUSD is
         _;
     }
 
+    /// @notice Initialize the MZUSD token.
     /// @param accessManager AccessManager address.
     /// @param pauseManager_ PauseManager address for category-based pauses.
-    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals).
+    /// @param allowlist_ Allowlist contract address for KYC/sanctions gating on deposits and withdrawals.
+    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals); must be > 0.
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -184,6 +187,10 @@ contract MZUSD is
         emit Withdrawal(msg.sender, usdcOutNet);
     }
 
+    /// @notice Transfer MZUSD; paused when TRANSFERS category is active.
+    /// @param to Recipient address.
+    /// @param value Amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function transfer(
         address to,
         uint256 value
@@ -191,6 +198,10 @@ contract MZUSD is
         return super.transfer(to, value);
     }
 
+    /// @notice Approve spender; paused when TRANSFERS category is active.
+    /// @param spender Address to approve.
+    /// @param value Allowance amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function approve(
         address spender,
         uint256 value
@@ -198,6 +209,11 @@ contract MZUSD is
         return super.approve(spender, value);
     }
 
+    /// @notice Transfer MZUSD on behalf of `from`; paused when TRANSFERS category is active.
+    /// @param from Source address.
+    /// @param to Recipient address.
+    /// @param value Amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function transferFrom(
         address from,
         address to,
@@ -209,7 +225,9 @@ contract MZUSD is
     //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
 
     /// @notice Mint MZUSD to an address.
-    /// @dev Used by VAULT to mint MZUSD
+    /// @param to Recipient address.
+    /// @param amount Amount of MZUSD to mint (18 decimals).
+    /// @dev Used by VAULT to mint MZUSD.
     function mint(
         address to,
         uint256 amount
@@ -218,6 +236,7 @@ contract MZUSD is
     }
 
     /// @notice Burn MZUSD from caller balance.
+    /// @param amount Amount of MZUSD to burn (18 decimals).
     /// @dev AccessManager should grant burn permission only to approved tranche contracts.
     function burn(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _burn(msg.sender, amount);
@@ -269,6 +288,7 @@ contract MZUSD is
     }
 
     /// @notice Set IssuanceVault address (one-time).
+    /// @param _vault IssuanceVault proxy address; must be non-zero.
     /// @dev IssuanceVault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
@@ -277,7 +297,8 @@ contract MZUSD is
         emit VaultUpdated(_vault);
     }
 
-    /// @notice Set Allowlist.
+    /// @notice Set Allowlist contract for deposit/withdrawal gating.
+    /// @param _allowlist New Allowlist proxy address; must be non-zero.
     function setAllowlist(address _allowlist) external restricted {
         if (_allowlist == address(0)) revert ZeroAddress();
         allowlist = IAllowlist(_allowlist);
@@ -286,7 +307,10 @@ contract MZUSD is
 
     //GETTERS
 
-    /// @notice View redemption cap usage for the current (or next) window
+    /// @notice View redemption cap usage for the current (or next) window.
+    /// @return capUSDC Global redemption cap in USDC (6 decimals).
+    /// @return usedUSDC USDC redeemed so far in the current window (0 if window has expired).
+    /// @return remainingUSDC USDC still available for redemption in the current window.
     function getRemainingRedemptionCap()
         public
         view
@@ -301,7 +325,10 @@ contract MZUSD is
         remainingUSDC = usedUSDC >= capUSDC ? 0 : capUSDC - usedUSDC;
     }
 
-    /// @notice View the current redemption window timing
+    /// @notice View the current redemption window timing.
+    /// @return windowStart Start timestamp of the current (or projected) window.
+    /// @return windowEnd End timestamp of the current (or projected) window.
+    /// @return duration Window duration in seconds (may reflect a queued duration if window expired).
     function getRedemptionWindow()
         external
         view
@@ -319,6 +346,8 @@ contract MZUSD is
         windowEnd = windowStart + duration;
     }
 
+    /// @notice Returns token decimals (18).
+    /// @return MZUSD decimal precision.
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
     }

@@ -253,6 +253,8 @@ contract IssuanceVault is
 
     //SETTERS
     /// @notice Set LossManager address (one-time).
+    /// @param _lossManager LossManager proxy address. Must be non-zero, deployed, and wired to this vault and its MZUSD.
+    /// @dev Reverts if already set, if the address has no code, or if vault/MZUSD cross-references do not match.
     function setLossManager(
         address _lossManager
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -268,6 +270,8 @@ contract IssuanceVault is
     }
 
     /// @notice Update NAV oracle automation address.
+    /// @param _navOracle NavOracleAutomation address. Must be non-zero, deployed, and wired to this vault, its LossManager, and MZUSD.
+    /// @dev LossManager must be set before calling. Reverts if cross-references do not match.
     function setNavOracle(
         address _navOracle
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -309,6 +313,8 @@ contract IssuanceVault is
     }
 
     /// @notice Update fee receivers.
+    /// @param _performanceFeeReceiver Recipient of performance fees; must be non-zero.
+    /// @param _protocolFeeReceiver Recipient of protocol fees; must be non-zero. May equal _performanceFeeReceiver.
     function setFeeReceivers(
         address _performanceFeeReceiver,
         address _protocolFeeReceiver
@@ -324,6 +330,7 @@ contract IssuanceVault is
     }
 
     /// @notice Register a new tranche.
+    /// @param _tranche Tranche contract address to register; must be non-zero and not already registered.
     /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setTrancheConfig().
     function registerTranche(
         address _tranche
@@ -434,6 +441,7 @@ contract IssuanceVault is
 
     /// @notice Advances the epoch if enough time has passed.
     /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
+    /// @return newEpochId The new epoch ID after advancement.
     function advanceEpoch()
         external
         onlyLossManager
@@ -444,10 +452,15 @@ contract IssuanceVault is
     }
 
     //GETTERS
+
+    /// @notice Number of registered tranches.
+    /// @return length Count of registered tranches.
     function tranchesLength() external view returns (uint256 length) {
         length = tranches.length;
     }
 
+    /// @notice Current idle USDC balance held by this vault.
+    /// @return idleUSDC USDC amount (6 decimals).
     function currentIdleUSDC() external view returns (uint256 idleUSDC) {
         idleUSDC = usdc.balanceOf(address(this));
     }
@@ -501,6 +514,11 @@ contract IssuanceVault is
         return (currentEpochId, epochStart, epochDuration);
     }
 
+    /// @notice Returns idle buffer configuration and computed hysteresis bounds.
+    /// @return buffer Target idle USDC buffer (6 decimals).
+    /// @return hysteresis Hysteresis band in bps (500 = 5%).
+    /// @return low Lower hysteresis bound in USDC (6 decimals); rebalance pulls from reservoir below this.
+    /// @return high Upper hysteresis bound in USDC (6 decimals); rebalance sends to reservoir above this.
     function getBufferConfig()
         external
         view
@@ -511,6 +529,7 @@ contract IssuanceVault is
     }
 
     /// @notice Returns ordered tranche addresses (same order as `tranches[]`).
+    /// @return order Array of tranche addresses in configured loss/allocation order.
     function getTrancheOrder() external view returns (address[] memory order) {
         uint256 len = tranches.length;
         order = new address[](len);
@@ -520,6 +539,8 @@ contract IssuanceVault is
     }
 
     /// @notice Returns current tranche order and pair flags.
+    /// @return order Array of tranche addresses in configured order.
+    /// @return isPairedWithNext Boolean flags; `true,true` at indices `i` and `i+1` indicates a pair.
     /// @dev Pair is represented symmetrically as `true,true` at indices `i` and `i+1`.
     function getTrancheOrderAndPairs()
         external

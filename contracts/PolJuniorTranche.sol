@@ -42,6 +42,8 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         _disableInitializers();
     }
 
+    /// @notice Initialize the POL Junior Tranche.
+    /// @param polPayoutAddress Address that receives forwarded yield; must be non-zero.
     /// @dev MZUSD, AccessManager, and PauseManager are resolved from the IssuanceVault-linked MZUSD.
     function initialize(address polPayoutAddress) external initializer {
         (IMZUSD mzusdToken, address accessManager, address pauseManager_) = _resolveCoreContracts(
@@ -66,11 +68,14 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     }
 
     /// @notice Total MZUSD assets parked in this tranche.
+    /// @return MZUSD balance of this contract (18 decimals).
     function totalAssets() public view returns (uint256) {
         return mzusd.balanceOf(address(this));
     }
 
     /// @notice Withdraw MZUSD from the POL tranche.
+    /// @param assets Amount of MZUSD to withdraw (18 decimals); must be > 0.
+    /// @param receiver Address that receives the withdrawn MZUSD; must be non-zero.
     /// @dev Restricted admin flow: not a permissionless user exit path.
     function withdraw(
         uint256 assets,
@@ -83,6 +88,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     }
 
     /// @notice IssuanceVault calls this after transferring `yieldAmount` of MZUSD to this contract.
+    /// @param yieldAmount Amount of MZUSD yield to forward (18 decimals); must be > 0.
     /// @dev Forwards yield immediately to `polPayout`; POL tranche does not stream yield over epochs.
     function notifyYield(
         uint256 yieldAmount
@@ -93,6 +99,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).
+    /// @param amount Amount of MZUSD to burn (18 decimals).
     /// @dev Burns only this contract's own asset balance via MZUSD burn access controls.
     /// @dev For grouped loss application (with Junior tranche), the burned amount is this tranche's proportional share computed by LossManager.
     function burnMZUSD(
@@ -102,6 +109,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     }
 
     /// @notice Update POL yield payout address.
+    /// @param payout New payout address; must be non-zero.
     /// @dev Restricted admin operation.
     function setPolPayout(address payout) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (payout == address(0)) revert ZeroAddress();

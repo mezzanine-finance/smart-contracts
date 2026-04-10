@@ -334,6 +334,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "sanctionsList",
+        "outputs": [
+            {
+                "internalType": "contract ISanctionsList",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",

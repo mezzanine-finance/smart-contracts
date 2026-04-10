@@ -216,6 +216,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     }
 
     /// @notice Returns true when a NAV snapshot is currently pending.
+    /// @return True if a pending NAV exists (pendingReadyAt != 0).
     /// @dev Kept as an explicit getter for external integrations.
     function hasPendingNav() public view returns (bool) {
         return pendingReadyAt != 0;

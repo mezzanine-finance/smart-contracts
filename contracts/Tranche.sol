@@ -316,6 +316,7 @@ contract Tranche is
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).
+    /// @param amount Amount of MZUSD to burn (18 decimals).
     function burnMZUSD(
         uint256 amount
     ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
@@ -325,6 +326,7 @@ contract Tranche is
     // SETTERS
 
     /// @notice Update unstake delay in epochs.
+    /// @param epochsDelay New delay in epochs; must be > 0 when direct withdraw is disabled.
     function setUnstakeDelayEpochs(
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -333,6 +335,7 @@ contract Tranche is
     }
 
     /// @notice Set slashing on positive pending-withdrawal yield, in bps.
+    /// @param bps Reduction rate in basis points (must be < 10_000).
     function setUnstakeYieldReductionBps(
         uint256 bps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -355,6 +358,7 @@ contract Tranche is
     }
 
     /// @notice Enable/disable both deposit limits without changing cap and tvlBps values.
+    /// @param enabled True to enable deposit limits, false to disable.
     function setDepositLimitEnabled(
         bool enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
