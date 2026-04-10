@@ -117,6 +117,11 @@
         "type": "error"
     },
     {
+        "inputs": [],
+        "name": "SameValue",
+        "type": "error"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",

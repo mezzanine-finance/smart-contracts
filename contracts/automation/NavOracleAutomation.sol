@@ -85,6 +85,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error OraclesNotInSync();
     error ValueTooLarge();
     error ZeroAddress();
+    error SameValue();
 
     constructor(
         address lossManager_,
@@ -147,6 +148,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @notice Update the veto period for future submissions.
     /// @param newPeriod New veto period in seconds.
     function setVetoPeriod(uint256 newPeriod) external restricted {
+        if (uint256(vetoPeriod) == newPeriod) revert SameValue();
         _setVetoPeriod(newPeriod);
         emit VetoPeriodUpdated(newPeriod);
     }
@@ -165,6 +167,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @notice Set maximum accepted oracle answer age.
     /// @param newMaxAnswerStaleness Maximum staleness in seconds.
     function setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) external restricted {
+        if (maxAnswerStaleness == newMaxAnswerStaleness) revert SameValue();
         _setMaxAnswerStaleness(newMaxAnswerStaleness);
         emit MaxAnswerStalenessUpdated(newMaxAnswerStaleness);
     }

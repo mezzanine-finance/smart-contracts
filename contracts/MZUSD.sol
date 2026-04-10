@@ -301,6 +301,7 @@ contract MZUSD is
     /// @param _allowlist New Allowlist proxy address; must be non-zero.
     function setAllowlist(address _allowlist) external restricted {
         if (_allowlist == address(0)) revert ZeroAddress();
+        if (address(allowlist) == _allowlist) revert SameValue();
         allowlist = IAllowlist(_allowlist);
         emit AllowlistUpdated(_allowlist);
     }

@@ -34,6 +34,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     error ZeroYieldPassed();
     error NotVault();
     error NotLossManager();
+    error SameValue();
     error InvalidMZUSDAccessManager(address actual);
 
     constructor(address vaultAddress) {
@@ -113,6 +114,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     /// @dev Restricted admin operation.
     function setPolPayout(address payout) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (payout == address(0)) revert ZeroAddress();
+        if (polPayout == payout) revert SameValue();
         polPayout = payout;
         emit PolPayoutUpdated(payout);
     }

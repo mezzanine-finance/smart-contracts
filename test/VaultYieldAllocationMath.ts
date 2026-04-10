@@ -766,10 +766,6 @@ describe("IssuanceVault Yield Allocation Math", () => {
                 7097
             );
 
-            // No fees
-            // Default is already 0, 0 from initialization — set explicitly for clarity
-            await vault.setFeeRates(0, 0);
-
             // ── Seed TVL: 80% senior, 20% junior, 0% idle ─────
             await depositIntoTranches(TOTAL_USDC, [
                 {tranche: senior, user: alice, pct: 80},
@@ -1088,8 +1084,6 @@ describe("IssuanceVault Yield Allocation Math", () => {
                 7000
             );
 
-            await vault.setFeeRates(0, 0);
-
             // TVL: senior=400k, mezzanine=200k, junior=100k
             await depositIntoTranches(TOTAL_USDC, [
                 {tranche: senior, user: alice, pct: 40},
@@ -1146,8 +1140,6 @@ describe("IssuanceVault Yield Allocation Math", () => {
                 7000
             );
 
-            await vault.setFeeRates(0, 0);
-
             // Only deposit into senior (mezzanine has 0 TVL) and junior
             await depositIntoTranches(to6(500_000), [
                 {tranche: senior, user: alice, pct: 60},
@@ -1199,8 +1191,6 @@ describe("IssuanceVault Yield Allocation Math", () => {
                 [false, true, true, false],
                 7000
             );
-
-            await vault.setFeeRates(0, 0);
 
             // TVL: junior=100k, senior=300k, mezzanine=200k
             await depositIntoTranches(to6(600_000), [

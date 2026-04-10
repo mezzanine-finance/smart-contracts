@@ -134,6 +134,11 @@
     },
     {
         "inputs": [],
+        "name": "SameValue",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },

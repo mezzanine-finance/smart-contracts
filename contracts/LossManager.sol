@@ -57,6 +57,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error NotNavOracle();
     /// @notice Thrown when requested loss exceeds current MZUSD total supply scaled to USDC.
     error LossExceedsTotalSupply(uint256 usdcLoss, uint256 totalSupplyUSDC);
+    /// @notice Thrown when a setter is called with the same value as the current state.
+    error SameValue();
 
     /// @notice Disable initializer on implementation contract and set immutable vault.
     constructor(address vaultAddress) {
@@ -123,6 +125,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     function setMaxLossPerTxUSDC(
         uint256 maxLossValue
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (maxLossPerTxUSDC == maxLossValue) revert SameValue();
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
     }

@@ -435,6 +435,7 @@ contract IssuanceVault is
         ) {
             revert InvalidEpochDuration();
         }
+        if (pendingEpochDuration == _epochDuration) revert SameValue();
         pendingEpochDuration = _epochDuration;
         emit EpochDurationQueued(_epochDuration);
     }

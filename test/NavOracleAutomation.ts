@@ -539,7 +539,7 @@ describe("NavOracleAutomation", () => {
     });
 
     it("pins pending readyAt to submit-time veto period snapshot", async () => {
-        await navAutomation.connect(deployer).setVetoPeriod(DAY);
+        // vetoPeriod is already DAY from constructor, no need to set it again.
         await mintAndDepositIntoTranche(oracle, to6(70n));
 
         const totalSupplyMZ = await mzusd.totalSupply();

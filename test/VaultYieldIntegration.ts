@@ -354,12 +354,12 @@ describe("IssuanceVault Yield Integration", () => {
             // After setting fees, getter must reflect updates
             await (await vault.connect(deployer).setFeeRates(1111, 2222)).wait();
             await (
-                await vault.connect(deployer).setFeeReceivers(bob.address, carol.address)
+                await vault.connect(deployer).setFeeReceivers(alice.address, deployer.address)
             ).wait();
             expect(await vault.performanceFeeBps()).to.equal(1111n);
-            expect(await vault.performanceFeeReceiver()).to.equal(bob.address);
+            expect(await vault.performanceFeeReceiver()).to.equal(alice.address);
             expect(await vault.protocolFeeBps()).to.equal(2222n);
-            expect(await vault.protocolFeeReceiver()).to.equal(carol.address);
+            expect(await vault.protocolFeeReceiver()).to.equal(deployer.address);
 
             // Tranche info updates via setYieldDistribution
             // Disabled tranche must have riskPremiumBps = 0.
@@ -640,7 +640,6 @@ describe("IssuanceVault Yield Integration", () => {
         });
 
         it("Allocates rounding dust to the last non-zero tranche when a middle tranche is disabled", async () => {
-            await vault.setFeeRates(0, 0);
             await vault.setTrancheConfig(
                 [
                     {tranche: junior.target, riskPremiumBps: 0, enabled: true},
@@ -683,7 +682,6 @@ describe("IssuanceVault Yield Integration", () => {
         });
 
         it("Allocates rounding dust to the last non-zero tranche when the last tranche has zero TVL", async () => {
-            await vault.setFeeRates(0, 0);
             await vault.setTrancheConfig(
                 [
                     {tranche: junior.target, riskPremiumBps: 0, enabled: true},
@@ -732,9 +730,6 @@ describe("IssuanceVault Yield Integration", () => {
             const perfReceiver = bob.address;
             const perfBps = 5_000;
             await (await vault.connect(deployer).setFeeRates(perfBps, 0)).wait();
-            await (
-                await vault.connect(deployer).setFeeReceivers(perfReceiver, carol.address)
-            ).wait();
 
             const usdcReported = 77n; // 0.000077 USDC (still non-zero)
             const expectedGross = usdcReported * 1_000_000_000_000n; // * 1e12 -> 18d MZUSD

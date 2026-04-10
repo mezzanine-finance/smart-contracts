@@ -526,9 +526,8 @@ describe("Tranche unstake slashing", () => {
     });
 
     it("rounding dust: total claimed never exceeds finalized assets", async () => {
-        // Turn off slashing to isolate only floor-division effects in pro-rata claim math.
-        // We want this test to cover rounding behavior, not slash behavior.
-        await tranche.connect(deployer).setUnstakeYieldReductionBps(0n);
+        // Slashing is already off (unstakeYieldReductionBps defaults to 0) to isolate
+        // only floor-division effects in pro-rata claim math.
 
         // Build a 3-user pool with awkward sizes to avoid "too clean" divisibility.
         await mintAndDepositIntoTranche(alice, to6(111n));

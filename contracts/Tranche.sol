@@ -113,6 +113,7 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
+    error SameValue();
     error FullWithdrawNotAllowed();
 
     /// @param vaultAddress IssuanceVault address.
@@ -331,6 +332,7 @@ contract Tranche is
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (!directWithdrawEnabled && epochsDelay == 0) revert UnstakeDelayZero();
+        if (unstakeDelayEpochs == epochsDelay) revert SameValue();
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
@@ -340,6 +342,7 @@ contract Tranche is
         uint256 bps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (bps >= BASIS_POINTS) revert InvalidAmount();
+        if (unstakeYieldReductionBps == bps) revert SameValue();
         unstakeYieldReductionBps = bps;
         emit UnstakeYieldReductionBpsUpdated(bps);
     }
@@ -362,6 +365,7 @@ contract Tranche is
     function setDepositLimitEnabled(
         bool enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (depositLimitEnabled == enabled) revert SameValue();
         depositLimitEnabled = enabled;
         emit DepositLimitUpdated(enabled, maxDepositCap, maxDepositTvlBps);
     }
