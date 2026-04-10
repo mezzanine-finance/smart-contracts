@@ -38,7 +38,7 @@ contract Tranche is
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
-    uint256 public constant BASIS_POINTS = 10_000;
+    uint256 public constant BPS = 10_000;
     uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
     address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
@@ -238,7 +238,7 @@ contract Tranche is
         if (unstakeYieldReductionBps > 0 && finalizedData.finalizationPrice > snapshotPrice) {
             uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
             uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
-                BASIS_POINTS /
+                BPS /
                 (10 ** decimals());
             if (slashAmount > userAssets) {
                 slashAmount = userAssets;
@@ -341,7 +341,7 @@ contract Tranche is
     function setUnstakeYieldReductionBps(
         uint256 bps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (bps >= BASIS_POINTS) revert InvalidAmount();
+        if (bps >= BPS) revert InvalidAmount();
         if (unstakeYieldReductionBps == bps) revert SameValue();
         unstakeYieldReductionBps = bps;
         emit UnstakeYieldReductionBpsUpdated(bps);
@@ -354,7 +354,7 @@ contract Tranche is
         uint256 cap,
         uint256 tvlBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (tvlBps > BASIS_POINTS) revert InvalidAmount();
+        if (tvlBps > BPS) revert InvalidAmount();
         maxDepositCap = cap;
         maxDepositTvlBps = tvlBps;
         emit DepositLimitUpdated(depositLimitEnabled, cap, tvlBps);
@@ -452,7 +452,7 @@ contract Tranche is
             ) {
                 uint256 yieldPerShare = e.finalizationPrice - snapshotPrice;
                 uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * pendingShares) /
-                    BASIS_POINTS /
+                    BPS /
                     (10 ** decimals());
                 if (slashAmount > claimableAssets) {
                     slashAmount = claimableAssets;
@@ -616,7 +616,7 @@ contract Tranche is
 
         uint256 assetTotalSupply = IERC20(asset()).totalSupply();
         uint256 trancheAssets = totalAssets(); // virtual TVL with streaming
-        uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BASIS_POINTS;
+        uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BPS;
         if (maxTotalByTvl <= trancheAssets) {
             limitByTvl = 0;
         } else {

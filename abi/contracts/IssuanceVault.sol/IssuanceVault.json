@@ -805,7 +805,7 @@
     },
     {
         "inputs": [],
-        "name": "MZUSD_SCALE",
+        "name": "SCALE",
         "outputs": [
             {
                 "internalType": "uint256",

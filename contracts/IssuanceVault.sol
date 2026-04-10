@@ -37,7 +37,7 @@ contract IssuanceVault is
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
-    uint256 public constant MZUSD_SCALE = 1e12;
+    uint256 public constant SCALE = 1e12;
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
     uint16 public constant MAX_TRANCHES = 50;
@@ -233,7 +233,7 @@ contract IssuanceVault is
             return;
         }
 
-        uint256 mintedGross = usdcReported * MZUSD_SCALE;
+        uint256 mintedGross = usdcReported * SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _handleFees(mintedGross);
         emit FeesPaid(perfFee, protFee, newEpochId);

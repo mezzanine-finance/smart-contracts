@@ -775,7 +775,7 @@
     },
     {
         "inputs": [],
-        "name": "BASIS_POINTS",
+        "name": "BPS",
         "outputs": [
             {
                 "internalType": "uint256",
