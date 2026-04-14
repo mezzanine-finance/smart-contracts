@@ -392,6 +392,19 @@
                 "type": "uint256"
             }
         ],
+        "name": "GlobalRedemptionCapQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newCapUSDC",
+                "type": "uint256"
+            }
+        ],
         "name": "GlobalRedemptionCapUpdated",
         "type": "event"
     },
@@ -866,6 +879,19 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "nextGlobalRedemptionCapUSDC",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",

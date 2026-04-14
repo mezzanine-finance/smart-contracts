@@ -173,10 +173,6 @@ describe("MZUSD <-> USDC conversion", () => {
         await accessManager.grantRole(BURNER_ROLE, deployer.address, 0);
         await mzusd.setVault(vault.target);
 
-        await expect(mzusd.setGlobalRedemptionCap(to6(1_000_000n)))
-            .to.emit(mzusd, "GlobalRedemptionCapUpdated")
-            .withArgs(to6(1_000_000n)); // 1 million USDC per hour
-
         snapshot = await takeSnapshot();
     });
 
@@ -523,6 +519,8 @@ describe("MZUSD <-> USDC conversion", () => {
 
             await mzusd.setWithdrawalFeeBps(feeBps);
             await mzusd.setGlobalRedemptionCap(capUSDC);
+            // Advance past the initial 1h window so the next withdrawal rolls it and applies the queued cap.
+            await time.increase(3601);
             await fundAndDepositForAlice(depositAmountUSDC);
 
             await mzusd.connect(alice).requestWithdrawal(to18(100n));
@@ -557,22 +555,23 @@ describe("MZUSD <-> USDC conversion", () => {
     });
 
     describe("Redemption cap", () => {
-        it("Should cap global redemption at USDC total supply", async () => {
-            await expect(mzusd.setGlobalRedemptionCap(usdcTotalSupply))
-                .to.emit(mzusd, "GlobalRedemptionCapUpdated")
-                .withArgs(usdcTotalSupply);
-
+        it("Should queue global redemption caps above USDC total supply", async () => {
+            // Initial cap (from initialize) is usdcTotalSupply; queue an even larger value.
             const overSupply = usdcTotalSupply + 1n;
             await expect(mzusd.setGlobalRedemptionCap(overSupply))
-                .to.emit(mzusd, "GlobalRedemptionCapUpdated")
+                .to.emit(mzusd, "GlobalRedemptionCapQueued")
                 .withArgs(overSupply);
-            expect(await mzusd.globalRedemptionCapUSDC()).to.equal(overSupply);
+            expect(await mzusd.nextGlobalRedemptionCapUSDC()).to.equal(overSupply);
+            // Pending is not yet active; the live cap is still the initial value.
+            expect(await mzusd.globalRedemptionCapUSDC()).to.equal(usdcTotalSupply);
         });
 
         it("Should enforce the global redemption cap", async () => {
-            // Set a small cap: 150 USDC
+            // Queue a small cap: 150 USDC
             const capUSDC = to6(150n);
             await mzusd.setGlobalRedemptionCap(capUSDC);
+            // Expire current window so the next withdrawal rolls it and applies the queued cap.
+            await time.increase(3601);
 
             const depositAmountUSDC = to6(200n);
 
@@ -611,9 +610,10 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Should handle complex flows with multiple users and helper netting patterns", async () => {
-            // Redemption cap: 500 USDC
+            // Redemption cap: 500 USDC — queued, applied on the first post-expiry withdrawal.
             const capUSDC = to6(500n);
             await mzusd.setGlobalRedemptionCap(capUSDC);
+            await time.increase(3601);
 
             // Fund Alice, Bob and helper with USDC
             const aliceUSDC = to6(400n);
@@ -767,20 +767,18 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Should correctly compute remaining global redemption cap and preview functions", async () => {
-            // 1) cap = USDC total supply -> max allowed
-            await mzusd.setGlobalRedemptionCap(usdcTotalSupply);
-
+            // 1) Initial cap = USDC total supply (set in initialize)
             let [cap, used, remaining] = await mzusd.getRemainingRedemptionCap();
-            const storedWindowStart = await mzusd.windowStartTimestamp();
 
             expect(cap).to.equal(usdcTotalSupply);
             expect(used).to.equal(0n);
             expect(remaining).to.equal(usdcTotalSupply);
-            expect(storedWindowStart).to.equal(await mzusd.windowStartTimestamp());
 
-            // 2) cap > 0, window is active, usage < cap and = cap
+            // 2) Queue a finite cap and expire the current window so the next
+            //    withdrawal rolls it over and activates the new cap.
             const capUSDC = to6(150n);
             await mzusd.setGlobalRedemptionCap(capUSDC);
+            await time.increase(3601);
 
             const depositAmountUSDC = to6(200n);
 
@@ -820,9 +818,6 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Should allow deposits and withdrawals when redemption cap is effectively unlimited", async () => {
-            // Effectively disable cap by setting it to total supply (no practical limit)
-            await mzusd.setGlobalRedemptionCap(usdcTotalSupply);
-
             const depositAmountUSDC = to6(300n); // 300 USDC
 
             // Fund Alice and deposit into MZUSD
@@ -897,12 +892,13 @@ describe("MZUSD <-> USDC conversion", () => {
             // Set a finite cap to observe remaining/used values
             const capUSDC = to6(200n);
             await mzusd.setGlobalRedemptionCap(capUSDC);
+            await time.increase(3601);
 
             // Alice deposits 200 USDC -> 200 MZUSD
             const depositAmountUSDC = to6(200n);
             await fundAndDepositForAlice(depositAmountUSDC);
 
-            // Alice withdraws 80 USDC -> consumes part of the cap
+            // Alice withdraws 80 USDC -> rolls window, applies queued cap, consumes part
             const withdrawMZ = to18(80n);
             await mzusd.connect(alice).requestWithdrawal(withdrawMZ);
 
@@ -953,6 +949,46 @@ describe("MZUSD <-> USDC conversion", () => {
 
             expect(usedAfter).to.equal(to6(10n));
             expect(remainingAfter).to.equal(capUSDC - to6(10n));
+        });
+
+        it("Should apply queued redemption cap on next window", async () => {
+            const initialCap = await mzusd.globalRedemptionCapUSDC();
+            const newCapUSDC = to6(500n);
+
+            await expect(mzusd.setGlobalRedemptionCap(newCapUSDC))
+                .to.emit(mzusd, "GlobalRedemptionCapQueued")
+                .withArgs(newCapUSDC);
+
+            expect(await mzusd.globalRedemptionCapUSDC()).to.equal(initialCap);
+            expect(await mzusd.nextGlobalRedemptionCapUSDC()).to.equal(newCapUSDC);
+
+            // Deposit and withdraw before rollover: still enforces the initial cap.
+            const depositAmountUSDC = to6(600n);
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            const earlyWithdrawMZ = to18(50n);
+            await mzusd.connect(alice).requestWithdrawal(earlyWithdrawMZ);
+
+            expect(await mzusd.globalRedemptionCapUSDC()).to.equal(initialCap);
+            expect(await mzusd.nextGlobalRedemptionCapUSDC()).to.equal(newCapUSDC);
+            expect(await mzusd.windowUsedUSDC()).to.equal(to6(50n));
+
+            // Expire the current window; next withdrawal rolls it and applies the new cap.
+            await time.increase(3601);
+
+            const rolloverWithdrawMZ = to18(30n);
+            await expect(mzusd.connect(alice).requestWithdrawal(rolloverWithdrawMZ))
+                .to.emit(mzusd, "GlobalRedemptionCapUpdated")
+                .withArgs(newCapUSDC);
+
+            expect(await mzusd.globalRedemptionCapUSDC()).to.equal(newCapUSDC);
+            expect(await mzusd.nextGlobalRedemptionCapUSDC()).to.equal(0);
+            expect(await mzusd.windowUsedUSDC()).to.equal(to6(30n));
+
+            const [cap, used, remaining] = await mzusd.getRemainingRedemptionCap();
+            expect(cap).to.equal(newCapUSDC);
+            expect(used).to.equal(to6(30n));
+            expect(remaining).to.equal(newCapUSDC - to6(30n));
         });
 
         it("getRedemptionWindow reflects pending duration after window expiry", async () => {

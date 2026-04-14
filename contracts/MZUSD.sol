@@ -56,9 +56,13 @@ contract MZUSD is
     /// @notice Address of allowlist for accounts validation.
     IAllowlist public allowlist;
 
+    /// @notice Next global redemption cap (USDC, 6 decimals) to apply when the window rolls.
+    uint256 public nextGlobalRedemptionCapUSDC;
+
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
     event WithdrawalFeeUpdated(uint256 newFeeBps);
+    event GlobalRedemptionCapQueued(uint256 newCapUSDC);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
@@ -244,13 +248,22 @@ contract MZUSD is
 
     //SETTERS
 
-    /// @notice Set global redemption cap in USDC (6 decimals).
+    /// @notice Queue a new global redemption cap in USDC (6 decimals).
     /// @param newCapUSDC New cap value; must be > 0.
+    /// @dev The new cap takes effect on the next window rollover.
     function setGlobalRedemptionCap(
         uint256 newCapUSDC
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
-        _setGlobalRedemptionCap(newCapUSDC);
+        if (newCapUSDC == 0) revert ZeroCap();
+
+        uint256 pending = nextGlobalRedemptionCapUSDC;
+        if (pending == 0) {
+            pending = globalRedemptionCapUSDC;
+        }
+        if (pending == newCapUSDC) revert SameValue();
+
+        nextGlobalRedemptionCapUSDC = newCapUSDC;
+        emit GlobalRedemptionCapQueued(newCapUSDC);
     }
 
     /// @notice Set the duration of the redemption window (how long a window lasts).
@@ -320,6 +333,8 @@ contract MZUSD is
         capUSDC = globalRedemptionCapUSDC;
         if (_isWindowExpired()) {
             // Next withdrawal resets the window — full cap available
+            uint256 pendingCap = nextGlobalRedemptionCapUSDC;
+            if (pendingCap != 0) capUSDC = pendingCap;
             return (capUSDC, 0, capUSDC);
         }
         usedUSDC = windowUsedUSDC;
@@ -374,21 +389,28 @@ contract MZUSD is
     /// @notice Consume from the global redemption cap for the current window.
     /// @dev Rolls the window forward and applies a queued duration if needed.
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
-        uint256 cap = globalRedemptionCapUSDC;
         uint32 duration = redemptionWindowDuration;
 
         if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
             windowStartTimestamp = uint48(block.timestamp);
             windowUsedUSDC = 0;
 
-            uint32 pending = nextRedemptionWindowDuration;
-            if (pending != 0) {
-                redemptionWindowDuration = pending;
+            uint32 pendingDuration = nextRedemptionWindowDuration;
+            if (pendingDuration != 0) {
+                redemptionWindowDuration = pendingDuration;
                 nextRedemptionWindowDuration = 0;
-                emit RedemptionWindowDurationUpdated(pending);
+                emit RedemptionWindowDurationUpdated(pendingDuration);
+            }
+
+            uint256 pendingCap = nextGlobalRedemptionCapUSDC;
+            if (pendingCap != 0) {
+                globalRedemptionCapUSDC = pendingCap;
+                nextGlobalRedemptionCapUSDC = 0;
+                emit GlobalRedemptionCapUpdated(pendingCap);
             }
         }
 
+        uint256 cap = globalRedemptionCapUSDC;
         uint256 newTotal = windowUsedUSDC + usdcAmount;
         if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, newTotal, usdcAmount);
 
