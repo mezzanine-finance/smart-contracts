@@ -1231,5 +1231,56 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(await mezzanine.yieldStreamingAmount()).to.equal(expectedMezzYield);
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
+
+        it("Skips tranche paused in PROTOCOL category from yield distribution", async () => {
+            const YIELD_USDC = to6(90_000);
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                ],
+                [false, false, false, false],
+                7000
+            );
+            await vault.setFeeRates(0, 0);
+
+            await depositIntoTranches(to6(600_000), [
+                {tranche: senior, user: alice, pct: 50}, // 300k
+                {tranche: mezzanine, user: bob, pct: 50}, // 300k
+                {tranche: junior, user: carol, pct: 50}, // 300k (independent 50% of 600k)
+            ]);
+
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+
+            // Pause mezzanine PROTOCOL category: notifyYield must be skipped.
+            await pauseManager.pauseContract(mezzanine.target, PauseCategory.PROTOCOL);
+
+            const allocatable = to18(90_000);
+            // totalTvl excludes the paused mezzanine tranche.
+            const totalTvl = seniorTVL + juniorTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Senior: base share only (riskPremiumBps = 0)
+            const expectedSeniorYield = (basePool * seniorTVL) / totalTvl;
+            // Junior is the last non-zero tranche → dust catch-all.
+            const expectedJuniorYield = allocatable - expectedSeniorYield;
+
+            const mezzMzBefore = await mzusd.balanceOf(mezzanine.target);
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            // Paused mezzanine received no extra MZUSD beyond its user-deposit balance.
+            expect(await mzusd.balanceOf(mezzanine.target)).to.equal(mezzMzBefore);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+        });
     });
 });

@@ -306,6 +306,7 @@ async function main() {
                     config.vault.performanceFeeReceiver,
                     config.vault.protocolFeeBps,
                     config.vault.protocolFeeReceiver,
+                    config.vault.epochDurationSec,
                 ],
                 {
                     kind: "uups",
@@ -804,16 +805,6 @@ async function main() {
             }
             await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
             log.success("IssuanceVault.setBuffer");
-        }
-    }
-
-    if (config.vault.epochDurationSec !== undefined) {
-        const current = await vault.contract.epochDuration();
-        const pending = await vault.contract.pendingEpochDuration();
-        const desired = config.vault.epochDurationSec;
-        if (current !== BigInt(desired) && pending !== BigInt(desired)) {
-            await (await vaultAdmin.setEpochConfig(desired)).wait();
-            log.success("IssuanceVault.setEpochConfig queued");
         }
     }
 

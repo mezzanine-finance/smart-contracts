@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import "./interfaces/IMZUSD.sol";
 import "./interfaces/IReservoir.sol";
 import "./interfaces/ITranche.sol";
@@ -719,13 +720,19 @@ contract IssuanceVault is
         uint256 totalTvl;
         uint256 lastNonZeroIndex;
 
+        IPauseManager pauseManagerCached = IPauseManager(pauseManager());
+
         TrancheInfo memory t;
         uint256 trancheTvl;
 
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
             trancheTvl = ITranche(t.tranche).totalAssets();
-            if (!t.enabled || trancheTvl == 0) continue;
+            if (
+                !t.enabled ||
+                trancheTvl == 0 ||
+                pauseManagerCached.isPaused(t.tranche, PauseCategory.PROTOCOL)
+            ) continue;
             trancheTvls[i] = trancheTvl;
             totalTvl += trancheTvl;
             // Track the last tranche that actually participates in allocation.
