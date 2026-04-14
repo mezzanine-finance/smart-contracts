@@ -571,6 +571,19 @@
     },
     {
         "inputs": [],
+        "name": "MAX_WITHDRAWAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "MIN_REDEMPTION_WINDOW_DURATION",
         "outputs": [
             {

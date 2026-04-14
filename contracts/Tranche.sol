@@ -337,11 +337,11 @@ contract Tranche is
     }
 
     /// @notice Set slashing on positive pending-withdrawal yield, in bps.
-    /// @param bps Reduction rate in basis points (must be < 10_000).
+    /// @param bps Reduction rate in basis points (must be <= 10_000).
     function setUnstakeYieldReductionBps(
         uint256 bps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (bps >= BPS) revert InvalidAmount();
+        if (bps > BPS) revert InvalidAmount();
         if (unstakeYieldReductionBps == bps) revert SameValue();
         unstakeYieldReductionBps = bps;
         emit UnstakeYieldReductionBpsUpdated(bps);

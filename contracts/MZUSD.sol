@@ -30,6 +30,7 @@ contract MZUSD is
     /// @notice Basis points denominator used across fee math.
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
+    uint16 public constant MAX_WITHDRAWAL_FEE_BPS = 1_000;
     /// @notice Decimal conversion scale between USDC (6d) and MZUSD (18d): 1 USDC = 1e12 MZUSD units.
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
@@ -290,11 +291,11 @@ contract MZUSD is
     }
 
     /// @notice Set withdrawal fee in bps (charged on USDC output).
-    /// @param newFeeBps New fee rate in bps (10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @param newFeeBps New fee rate in bps, capped at MAX_WITHDRAWAL_FEE_BPS (10%).
     function setWithdrawalFeeBps(
         uint16 newFeeBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (newFeeBps >= BPS) revert TooBigBps();
+        if (newFeeBps > MAX_WITHDRAWAL_FEE_BPS) revert TooBigBps();
         if (withdrawalFeeBps == newFeeBps) revert SameValue();
         withdrawalFeeBps = newFeeBps;
         emit WithdrawalFeeUpdated(newFeeBps);

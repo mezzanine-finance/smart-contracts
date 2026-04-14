@@ -513,7 +513,7 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Counts gross withdrawal against cap even when fee is enabled", async () => {
-            const feeBps = 5000; // 50%
+            const feeBps = 1000; // 10% (max)
             const capUSDC = to6(100n);
             const depositAmountUSDC = to6(200n);
 
@@ -535,19 +535,21 @@ describe("MZUSD <-> USDC conversion", () => {
         });
 
         it("Validates withdrawal fee bps bounds and same-value updates", async () => {
+            const maxFeeBps = await mzusd.MAX_WITHDRAWAL_FEE_BPS();
+            expect(maxFeeBps).to.equal(1_000);
+
+            await expect(
+                mzusd.setWithdrawalFeeBps(Number(maxFeeBps) + 1)
+            ).to.be.revertedWithCustomError(mzusd, "TooBigBps");
             await expect(mzusd.setWithdrawalFeeBps(10_000)).to.be.revertedWithCustomError(
                 mzusd,
                 "TooBigBps"
             );
-            await expect(mzusd.setWithdrawalFeeBps(10_001)).to.be.revertedWithCustomError(
-                mzusd,
-                "TooBigBps"
-            );
 
-            await expect(mzusd.setWithdrawalFeeBps(9_999))
+            await expect(mzusd.setWithdrawalFeeBps(maxFeeBps))
                 .to.emit(mzusd, "WithdrawalFeeUpdated")
-                .withArgs(9_999);
-            await expect(mzusd.setWithdrawalFeeBps(9_999)).to.be.revertedWithCustomError(
+                .withArgs(maxFeeBps);
+            await expect(mzusd.setWithdrawalFeeBps(maxFeeBps)).to.be.revertedWithCustomError(
                 mzusd,
                 "SameValue"
             );

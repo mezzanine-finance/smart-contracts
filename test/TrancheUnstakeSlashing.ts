@@ -276,14 +276,14 @@ describe("Tranche unstake slashing", () => {
         expect(drift).to.be.lte(5_000_000_000_000n);
     });
 
-    it("reverts when slashing bps are >= 10_000", async () => {
-        await expect(
-            tranche.connect(deployer).setUnstakeYieldReductionBps(BPS)
-        ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
-
+    it("allows 100% slashing and reverts above 10_000 bps", async () => {
         await expect(
             tranche.connect(deployer).setUnstakeYieldReductionBps(BPS + 1n)
         ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
+
+        await expect(tranche.connect(deployer).setUnstakeYieldReductionBps(BPS))
+            .to.emit(tranche, "UnstakeYieldReductionBpsUpdated")
+            .withArgs(BPS);
     });
 
     it("reverts when non-admin tries to set slashing params", async () => {
