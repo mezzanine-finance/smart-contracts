@@ -170,7 +170,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
                 // or proportionally by TVL when pair TVL exceeds remaining loss.
                 if (pairTVL != 0) {
                     uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
-                    (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, tvl1, pairTVL);
+                    (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, pairTVL);
 
                     if (burn0 != 0) {
                         ITranche(t0).burnMZUSD(burn0);
@@ -208,33 +208,22 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @notice Split `lossForPair` proportionally by TVL between two paired tranches.
     /// @param lossForPair Loss amount allocated to the pair.
     /// @param tvl0 TVL of first tranche.
-    /// @param tvl1 TVL of second tranche.
-    /// @param pairTVL Combined TVL of the pair.
+    /// @param pairTVL Combined TVL of the pair (`tvl0 + tvl1`).
     /// @return burn0 Burn amount for first tranche.
     /// @return burn1 Burn amount for second tranche.
-    /// @dev Uses floor division, then assigns rounding remainder to tranche 0 first
-    ///      and tranche 1 second, while preserving per-tranche TVL caps.
+    /// @dev Computes tranche 0 via floor division and derives tranche 1 by
+    ///      subtraction. Callers must ensure `lossForPair <= pairTVL`; under
+    ///      that invariant `burn1 <= tvl1` holds because
+    ///      `floor(loss*tvl0/pairTVL) >= loss - tvl1`, so no cap-overflow
+    ///      handling is required. The 1-wei floor-rounding residue lands on
+    ///      tranche 1.
     function _splitPair(
         uint256 lossForPair,
         uint256 tvl0,
-        uint256 tvl1,
         uint256 pairTVL
     ) internal pure returns (uint256 burn0, uint256 burn1) {
-        // Proportional split with floor rounding.
         burn0 = (lossForPair * tvl0) / pairTVL;
-        burn1 = (lossForPair * tvl1) / pairTVL;
-
-        // Allocate rounding remainder: tranche 0 first, then tranche 1.
-        uint256 rem = lossForPair - (burn0 + burn1);
-        if (rem == 0) return (burn0, burn1);
-
-        uint256 cap0 = tvl0 - burn0;
-        if (rem > cap0) {
-            burn0 += cap0;
-            burn1 += (rem - cap0);
-        } else {
-            burn0 += rem;
-        }
+        burn1 = lossForPair - burn0;
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function,
