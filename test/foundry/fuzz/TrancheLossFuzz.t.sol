@@ -49,11 +49,13 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         navOracle = address(navRef);
         vault.setNavOracle(navOracle);
 
-        // Register all tranches in Vault
+        // Register the two tranches used by the default config; mezzanine is
+        // registered on-demand by `_setOrderAndPairs3`, and directTranche does
+        // not need vault registration for the ERC-4626 direct-withdraw test.
+        // `setTrancheConfig` reverts with `TrancheCountMismatch` if the number
+        // of configured tranches diverges from the number registered.
         vault.registerTranche(address(junior));
-        vault.registerTranche(address(mezzanine));
         vault.registerTranche(address(senior));
-        vault.registerTranche(address(directTranche));
 
         // Configure default order: [junior, senior] with equal yield
         {
@@ -232,6 +234,85 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         }
     }
 
+    /// @notice Locks the `_splitPair` invariants that justify removing the unreachable
+    ///         `if (rem > cap0)` branch:
+    ///           1. per-leg burn never exceeds the leg's TVL,
+    ///           2. burns sum exactly to `lossForPair` (no truncation),
+    ///           3. floor-rounding residue `rem` is always in `{0, 1}`,
+    ///           4. residue is assigned to leg 0; leg 1 stays at its floor share.
+    /// @dev Loss is bounded to `pairTVL` so the test exercises `_splitPair` only — no
+    ///      spillover to subsequent tranches and no truncation by the total-supply
+    ///      check. Holds for both the current implementation and the simplified
+    ///      `burn0 = floor(...); burn1 = lossForPair - burn0;` variant proposed in
+    ///      the ChainSecurity follow-up.
+    function testFuzz_SplitPairBurnsBoundedByTvlWithLeg1Residue(
+        uint96 juniorUsdcSeed,
+        uint96 seniorUsdcSeed,
+        uint96 outsideUsdcSeed,
+        uint96 lossUsdcSeed,
+        address juniorDepositor,
+        address seniorDepositor
+    ) public {
+        _assumeValidUser(juniorDepositor);
+        _assumeValidUser(seniorDepositor);
+
+        uint256 juniorUSDC = bound(uint256(juniorUsdcSeed), 1, 3_000_000e6);
+        uint256 seniorUSDC = bound(uint256(seniorUsdcSeed), 1, 3_000_000e6);
+        uint256 outsideUSDC = bound(uint256(outsideUsdcSeed), 0, 3_000_000e6);
+
+        _fundAndDepositToTranche(juniorDepositor, junior, juniorUSDC);
+        _fundAndDepositToTranche(seniorDepositor, senior, seniorUSDC);
+
+        _setOrderAndPairs2(address(junior), address(senior), true);
+
+        if (outsideUSDC != 0) {
+            vm.prank(address(vault));
+            mzusd.mint(address(0xCAFE), outsideUSDC * SCALE);
+        }
+
+        // Snapshot pre-burn state. Leg-0 = junior, leg-1 = senior in the configured pair.
+        uint256 juniorBefore = mzusd.balanceOf(address(junior));
+        uint256 seniorBefore = mzusd.balanceOf(address(senior));
+        uint256 pairTVL = juniorBefore + seniorBefore;
+        uint256 supplyBefore = mzusd.totalSupply();
+
+        // Bound loss strictly inside the pair so this test exercises `_splitPair` only.
+        // pairTVL is always a whole multiple of SCALE here because every deposit is
+        // derived from integer-USDC amounts, so pairTVL / SCALE is the largest USDC
+        // loss that fits inside the pair.
+        uint256 lossUSDC = bound(uint256(lossUsdcSeed), 1, pairTVL / SCALE);
+        uint256 lossForPair = lossUSDC * SCALE;
+
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(navOracle);
+        lossManager.applyLoss(lossUSDC);
+
+        uint256 burnedJunior = juniorBefore - mzusd.balanceOf(address(junior));
+        uint256 burnedSenior = seniorBefore - mzusd.balanceOf(address(senior));
+
+        // === (1) Per-leg burn never exceeds the leg's TVL at call time ===
+        assertLe(burnedJunior, juniorBefore, "junior burn exceeds tvl");
+        assertLe(burnedSenior, seniorBefore, "senior burn exceeds tvl");
+
+        // === (2) Loss fits in the pair, so cuts sum to lossForPair, nothing uncovered ===
+        assertEq(burnedJunior + burnedSenior, lossForPair, "cuts mismatch lossForPair");
+        assertEq(supplyBefore - mzusd.totalSupply(), lossForPair, "supply delta mismatch");
+        assertEq(lossManager.lastUncoveredLossMZ(), 0, "unexpected uncovered remainder");
+
+        // Reproduce the proportional floor split off-chain. These are the inputs
+        // _splitPair sees and the only quantities it can derive deterministically.
+        uint256 idealJ = (lossForPair * juniorBefore) / pairTVL;
+        uint256 idealS = (lossForPair * seniorBefore) / pairTVL;
+        uint256 rem = lossForPair - idealJ - idealS;
+
+        // === (3) The floor-rounding residue is always 0 or 1 ===
+        assertLe(rem, 1, "rem>1: split bound");
+
+        // === (4) Residue is assigned to leg 1; leg 0 stays at its floor share ===
+        assertEq(burnedJunior, idealJ, "leg-0 not at floor share");
+        assertEq(burnedSenior, idealS + rem, "leg-1 residue assignment broken");
+    }
+
     function testFuzz_ApplyLossSequentialAcrossThreeTranchesMatchesExpected(
         uint96 juniorUsdcSeed,
         uint96 mezzanineUsdcSeed,
@@ -396,28 +477,14 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
     function _splitPairExpected(
         uint256 lossForPair,
         uint256 tvl0,
-        uint256 tvl1,
+        uint256 /* tvl1 */,
         uint256 pairTVL
     ) internal pure returns (uint256 burn0, uint256 burn1) {
         if (lossForPair == 0 || pairTVL == 0) {
             return (0, 0);
         }
-
         burn0 = (lossForPair * tvl0) / pairTVL;
-        burn1 = (lossForPair * tvl1) / pairTVL;
-
-        uint256 rem = lossForPair - burn0 - burn1;
-        if (rem == 0) {
-            return (burn0, burn1);
-        }
-
-        uint256 cap0 = tvl0 - burn0;
-        if (rem > cap0) {
-            burn0 += cap0;
-            burn1 += rem - cap0;
-        } else {
-            burn0 += rem;
-        }
+        burn1 = lossForPair - burn0;
     }
 
     function _setOrderAndPairs2(address t0, address t1, bool paired) internal {
