@@ -165,7 +165,8 @@ contract IssuanceVault is
         uint16 _performanceFeeBps,
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
-        address _protocolFeeReceiver
+        address _protocolFeeReceiver,
+        uint64 _epochDuration
     ) external initializer {
         (address accessManager, address pauseManager_) = _resolveAndValidateCoreManagers();
 
@@ -182,7 +183,7 @@ contract IssuanceVault is
 
         currentEpochId = 1;
         epochStart = uint48(block.timestamp);
-        epochDuration = 1 days;
+        epochDuration = _epochDuration;
     }
 
     /// @notice Withdraw USDC to a recipient (used for MZUSD redemptions).

@@ -1096,6 +1096,11 @@
                 "internalType": "address",
                 "name": "_protocolFeeReceiver",
                 "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "_epochDuration",
+                "type": "uint64"
             }
         ],
         "name": "initialize",
