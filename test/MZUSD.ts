@@ -147,12 +147,16 @@ describe("MZUSD <-> USDC conversion", () => {
         );
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, charlie.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        });
+        vault = await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, charlie.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        );
 
         const NettingHelperFactory = await ethers.getContractFactory(
             "MZUSDNettingHelper",

@@ -122,12 +122,16 @@ describe("IssuanceVault Yield Integration", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, carol.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
 
         // 3 tranches
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -273,7 +277,7 @@ describe("IssuanceVault Yield Integration", () => {
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         const isolatedVault = (await upgrades.deployProxy(
             VaultFactory,
-            [0, bob.address, 0, carol.address],
+            [0, bob.address, 0, carol.address, 86400],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -485,22 +489,30 @@ describe("IssuanceVault Yield Integration", () => {
             const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
 
             await expect(
-                upgrades.deployProxy(VaultFactory, [0, ethers.ZeroAddress, 0, carol.address], {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [mzusd.target, reservoir.target],
-                })
+                upgrades.deployProxy(
+                    VaultFactory,
+                    [0, ethers.ZeroAddress, 0, carol.address, 86400],
+                    {
+                        kind: "uups",
+                        initializer: "initialize",
+                        unsafeAllow: ["constructor", "state-variable-immutable"],
+                        constructorArgs: [mzusd.target, reservoir.target],
+                    }
+                )
             ).to.be.revertedWithCustomError(VaultFactory, "ZeroAddress");
 
             const overMax = (await vault.MAX_TOTAL_FEE_BPS()) + 1n;
             await expect(
-                upgrades.deployProxy(VaultFactory, [overMax, bob.address, 0, carol.address], {
-                    kind: "uups",
-                    initializer: "initialize",
-                    unsafeAllow: ["constructor", "state-variable-immutable"],
-                    constructorArgs: [mzusd.target, reservoir.target],
-                })
+                upgrades.deployProxy(
+                    VaultFactory,
+                    [overMax, bob.address, 0, carol.address, 86400],
+                    {
+                        kind: "uups",
+                        initializer: "initialize",
+                        unsafeAllow: ["constructor", "state-variable-immutable"],
+                        constructorArgs: [mzusd.target, reservoir.target],
+                    }
+                )
             ).to.be.revertedWithCustomError(VaultFactory, "TooBigBps");
 
             await expect(

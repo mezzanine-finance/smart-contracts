@@ -127,12 +127,16 @@ describe("NavOracleAutomation", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, oracle.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, oracle.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -771,7 +775,7 @@ describe("NavOracleAutomation", () => {
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         const vaultNoTranches = (await upgrades.deployProxy(
             VaultFactory,
-            [0, bob.address, 0, oracle.address],
+            [0, bob.address, 0, oracle.address, 86400],
             {
                 kind: "uups",
                 initializer: "initialize",

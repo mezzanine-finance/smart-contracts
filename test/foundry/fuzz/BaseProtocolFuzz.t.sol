@@ -79,7 +79,10 @@ abstract contract BaseProtocolFuzzTest is Test {
         vault = IssuanceVault(
             _deployProxy(
                 address(vaultImpl),
-                abi.encodeCall(IssuanceVault.initialize, (0, address(this), 0, address(this)))
+                abi.encodeCall(
+                    IssuanceVault.initialize,
+                    (0, address(this), 0, address(this), 1 days)
+                )
             )
         );
 

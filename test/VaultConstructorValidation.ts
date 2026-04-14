@@ -63,7 +63,7 @@ describe("IssuanceVault constructor and initializer validation", () => {
 
     async function deployVaultWithConstructor(mzusdAddr: string, reservoirAddr: string) {
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        return (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
+        return (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address, 86400], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],

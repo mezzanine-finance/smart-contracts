@@ -134,12 +134,16 @@ describe("LossManager", () => {
         mzusdAddr = await mzusd.getAddress();
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, carol.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusdAddr, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -512,7 +516,7 @@ describe("LossManager", () => {
 
                 await setOrderAndPairs(order, new Array(order.length).fill(false));
 
-                await time.increase(DAY);
+                await time.increase(DAY + 1);
                 const {parsed, cuts} = await applyLossAndCapture(order, to6(1n));
 
                 // expected burn only from first tranche (they all have enough TVL)

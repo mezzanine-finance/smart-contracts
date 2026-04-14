@@ -125,12 +125,16 @@ describe("PolJuniorTranche", () => {
         mzusdAddr = await mzusd.getAddress();
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, alice.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusdAddr, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         // Deploy POL tranche
