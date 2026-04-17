@@ -30,6 +30,7 @@ import {
     parseUSDC,
     requireAddress,
 } from "./lib/helpers";
+import {GasTracker} from "./lib/gas-tracker";
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
 
@@ -135,7 +136,7 @@ async function ensureProxyDeployment<T extends BaseContract>(
 }
 
 async function main() {
-    const configPath = getArg("--config");
+    const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
     const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
     const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
     const forceRenounce = hasFlag("--renounce") || isEnvFlagEnabled("DEPLOY_RENOUNCE");
@@ -144,7 +145,9 @@ async function main() {
     const config = loadConfig(network.name, configPath);
     upgrades.silenceWarnings();
 
+    const gasTracker = new GasTracker();
     const [deployer] = await ethers.getSigners();
+    gasTracker.wrapSigner(deployer);
     const deployerAddress = await deployer.getAddress();
     const devDeployer = config.dev.deployer;
 
@@ -174,6 +177,7 @@ async function main() {
                 params: [devDeployer],
             });
             adminSigner = await ethers.getSigner(devDeployer);
+            gasTracker.wrapSigner(adminSigner);
         } else {
             throw new Error(
                 `Deployer must be dev.deployer. Config dev=${devDeployer}, deployer=${deployerAddress}`
@@ -265,6 +269,7 @@ async function main() {
             upgrades.deployProxy(AllowlistFactory, [accessManager.address, sanctionsListAddress], {
                 kind: "uups",
                 initializer: "initialize",
+                unsafeAllow: ["constructor"],
             }),
         fresh,
         deployments
@@ -1238,6 +1243,8 @@ async function main() {
     for (const finalizer of finalizers) {
         log.info(`UmbrellaEpochFinalizer: ${finalizer.address}`);
     }
+
+    await gasTracker.printSummary();
 
     const renounceConfig = config.postDeploy?.renounceDeployerRoles ?? false;
     const shouldRenounce = (forceRenounce || renounceConfig) && !skipRenounce;

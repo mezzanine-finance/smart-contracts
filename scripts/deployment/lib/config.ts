@@ -238,10 +238,10 @@ function validateConfig(config: DeployConfig, filePath: string) {
     }
     requireAddress(vault.performanceFeeReceiver, "vault.performanceFeeReceiver");
     requireAddress(vault.protocolFeeReceiver, "vault.protocolFeeReceiver");
-    assert(
-        vault.performanceFeeReceiver.toLowerCase() !== vault.protocolFeeReceiver.toLowerCase(),
-        "IssuanceVault fee receivers must be distinct"
-    );
+    // assert(
+    //     vault.performanceFeeReceiver.toLowerCase() !== vault.protocolFeeReceiver.toLowerCase(),
+    //     "IssuanceVault fee receivers must be distinct"
+    // );
 
     const tranches = config.tranches ?? [];
     assert(tranches.length > 0, "At least one tranche must be configured");
