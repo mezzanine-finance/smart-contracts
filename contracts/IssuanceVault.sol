@@ -173,6 +173,11 @@ contract IssuanceVault is
         address _protocolFeeReceiver,
         uint64 _epochDuration
     ) external initializer {
+        if (
+            _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
+        ) {
+            revert InvalidEpochDuration();
+        }
         (address accessManager, address pauseManager_) = _resolveAndValidateCoreManagers();
 
         __AccessManaged_init(accessManager);
