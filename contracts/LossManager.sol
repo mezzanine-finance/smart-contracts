@@ -6,6 +6,7 @@ import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PauseManagedUpgradeable} from "./pause/PauseManagedUpgradeable.sol";
 import {PauseCategory} from "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import {IMZUSD} from "./interfaces/IMZUSD.sol";
 import {ITranche} from "./interfaces/ITranche.sol";
 import {IVault} from "./interfaces/IVault.sol";
@@ -144,58 +145,42 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @return burnedMZ Total amount actually burned in MZUSD 18 decimals.
     /// @return uncoveredMZ Uncovered remainder in MZUSD 18 decimals.
     /// @dev Applies proportional split inside configured pairs and sequential burn for solo tranches.
+    ///      Tranches paused under `PauseCategory.PROTOCOL` are treated as zero TVL:
+    ///      solo paused tranches are skipped; in pair mode the unpaused side absorbs the full pair loss.
     function _applyLossAcrossOrder(
         uint256 requestedMZ
     ) internal returns (uint256 burnedMZ, uint256 uncoveredMZ) {
         IVault vaultRef = IVault(vault);
         address[] memory order = vaultRef.getTrancheOrder();
         uint256 orderLen = order.length;
+        IPauseManager pauseMgr = IPauseManager(pauseManager());
 
         // Remaining amount is progressively reduced as cuts are applied by order.
         uint256 remainingMZ = requestedMZ;
 
         for (uint256 i; remainingMZ != 0 && i < orderLen; ) {
-            // Current tranche and its optional paired tranche.
             address t0 = order[i];
             address t1 = vaultRef.tranchePairedTo(t0);
 
             // Process pair only at the left side to keep a single linear pass
             // and avoid re-processing the second tranche.
             if (i + 1 < orderLen && t1 != address(0) && order[i + 1] == t1) {
-                uint256 tvl0 = ITranche(t0).totalAssets();
-                uint256 tvl1 = ITranche(t1).totalAssets();
-                uint256 pairTVL = tvl0 + tvl1;
-
-                // Paired tranches split loss either by full pair TVL coverage
-                // or proportionally by TVL when pair TVL exceeds remaining loss.
-                if (pairTVL != 0) {
-                    uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
-                    (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, pairTVL);
-
-                    if (burn0 != 0) {
-                        ITranche(t0).burnMZUSD(burn0);
-                        burnedMZ += burn0;
-                    }
-
-                    if (burn1 != 0) {
-                        ITranche(t1).burnMZUSD(burn1);
-                        burnedMZ += burn1;
-                    }
-
-                    remainingMZ -= (burn0 + burn1);
-                }
-
+                uint256 burnedPair = _applyLossToPair(pauseMgr, t0, t1, remainingMZ);
+                burnedMZ += burnedPair;
+                remainingMZ -= burnedPair;
                 i += 2;
                 continue;
             }
 
-            // Solo tranche consumes as much loss as possible from its own TVL.
-            uint256 tvl = ITranche(t0).totalAssets();
-            if (tvl != 0) {
-                uint256 burnAmount = tvl < remainingMZ ? tvl : remainingMZ;
-                ITranche(t0).burnMZUSD(burnAmount);
-                burnedMZ += burnAmount;
-                remainingMZ -= burnAmount;
+            // Solo tranche: skip if paused; otherwise consume as much as possible from its TVL.
+            if (!pauseMgr.isPaused(t0, PauseCategory.PROTOCOL)) {
+                uint256 tvl = ITranche(t0).totalAssets();
+                if (tvl != 0) {
+                    uint256 burnAmount = tvl < remainingMZ ? tvl : remainingMZ;
+                    ITranche(t0).burnMZUSD(burnAmount);
+                    burnedMZ += burnAmount;
+                    remainingMZ -= burnAmount;
+                }
             }
 
             ++i;
@@ -203,6 +188,37 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
         // Any remainder is intentionally preserved as uncovered loss.
         uncoveredMZ = remainingMZ;
+    }
+
+    /// @notice Apply loss to a paired tranche slot; paused sides are treated as zero TVL.
+    /// @param pauseMgr Pause manager used to query per-tranche PROTOCOL pause state.
+    /// @param t0 First tranche in the pair.
+    /// @param t1 Second tranche in the pair.
+    /// @param remainingMZ Remaining loss budget in MZUSD 18 decimals.
+    /// @return burnedPair Total burned across the pair in MZUSD 18 decimals.
+    function _applyLossToPair(
+        IPauseManager pauseMgr,
+        address t0,
+        address t1,
+        uint256 remainingMZ
+    ) internal returns (uint256 burnedPair) {
+        // Paused side is treated as zero TVL so the unpaused side absorbs the full pair loss.
+        uint256 tvl0 = pauseMgr.isPaused(t0, PauseCategory.PROTOCOL)
+            ? 0
+            : ITranche(t0).totalAssets();
+        uint256 tvl1 = pauseMgr.isPaused(t1, PauseCategory.PROTOCOL)
+            ? 0
+            : ITranche(t1).totalAssets();
+        uint256 pairTVL = tvl0 + tvl1;
+        if (pairTVL == 0) return 0;
+
+        uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
+        (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, pairTVL);
+
+        if (burn0 != 0) ITranche(t0).burnMZUSD(burn0);
+        if (burn1 != 0) ITranche(t1).burnMZUSD(burn1);
+
+        burnedPair = burn0 + burn1;
     }
 
     /// @notice Split `lossForPair` proportionally by TVL between two paired tranches.
