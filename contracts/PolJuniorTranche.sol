@@ -37,6 +37,8 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     error SameValue();
     error InvalidMZUSDAccessManager(address actual);
 
+    /// @notice Disable initializer on implementation contract and set immutable vault reference.
+    /// @param vaultAddress IssuanceVault address; must be non-zero.
     constructor(address vaultAddress) {
         if (vaultAddress == address(0)) revert ZeroAddress();
         vault = vaultAddress;

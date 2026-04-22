@@ -87,6 +87,9 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error ZeroAddress();
     error SameValue();
 
+    /// @notice Wire NAV oracle automation to the LossManager and set the initial veto period.
+    /// @param lossManager_ LossManager address; its MZUSD/vault/authority references are inherited.
+    /// @param vetoPeriod_ Initial veto period in seconds applied to pending NAV submissions.
     constructor(
         address lossManager_,
         uint256 vetoPeriod_

@@ -32,6 +32,8 @@ contract ReservoirUSDC is AccessManagedUpgradeable, UUPSUpgradeable, PauseManage
     error ZeroAddress();
     error VaultAlreadySet();
 
+    /// @notice Disable initializer on implementation contract and set immutable USDC token reference.
+    /// @param _usdc USDC token address; must be non-zero.
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
         usdc = IERC20(_usdc);

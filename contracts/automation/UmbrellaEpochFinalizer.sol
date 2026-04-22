@@ -23,6 +23,8 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface, AccessManaged 
     error ZeroAddress();
     error InvalidEpoch();
 
+    /// @notice Set the AccessManager authority and bind the finalizer to a tranche and starting epoch.
+    /// @param initialAuthority_ AccessManager address used as authority for `restricted` functions.
     /// @param tranche_ Tranche served by this automation helper.
     /// @param startEpoch_ Initial cursor epoch.
     /// @dev Start cursor selection is operationally sensitive:

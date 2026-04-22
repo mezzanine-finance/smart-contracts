@@ -147,6 +147,9 @@ contract IssuanceVault is
         _;
     }
 
+    /// @notice Disable initializer on implementation contract and set immutable MZUSD, USDC, and Reservoir references.
+    /// @param _mzusd MZUSD token address; must be non-zero.
+    /// @param _reservoir ReservoirUSDC address; must be non-zero.
     constructor(address _mzusd, address _reservoir) {
         (IMZUSD token, address tokenUSDC) = _validateConstructorParams(_mzusd, _reservoir);
 
@@ -161,6 +164,7 @@ contract IssuanceVault is
     /// @param _performanceFeeReceiver Recipient of performance fees.
     /// @param _protocolFeeBps Protocol fee in bps (0 allowed; 500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
+    /// @param _epochDuration Epoch duration in seconds; must be within [MIN_EPOCH_DURATION, MAX_EPOCH_DURATION].
     /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
     function initialize(
         uint16 _performanceFeeBps,

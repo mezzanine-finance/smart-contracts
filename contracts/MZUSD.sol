@@ -84,6 +84,8 @@ contract MZUSD is
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error AccountNotAllowed(address account);
 
+    /// @notice Disable initializer on implementation contract and set immutable USDC token reference.
+    /// @param _usdc USDC token address; must be non-zero and expose 6 decimals.
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
 

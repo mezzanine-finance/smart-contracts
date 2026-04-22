@@ -62,6 +62,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error SameValue();
 
     /// @notice Disable initializer on implementation contract and set immutable vault.
+    /// @param vaultAddress IssuanceVault address; must be non-zero.
     constructor(address vaultAddress) {
         if (vaultAddress == address(0)) revert ZeroAddress();
         vault = vaultAddress;
