@@ -310,10 +310,18 @@ contract IssuanceVault is
     /// @param _performanceFeeBps Performance fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _protocolFeeBps Protocol fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS.
+    /// @dev A non-zero fee requires a non-zero matching receiver, otherwise the fee would be
+    ///      silently dropped by `_mintFee` instead of accruing to anyone.
     function setFeeRates(
         uint16 _performanceFeeBps,
         uint16 _protocolFeeBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_performanceFeeBps != 0 && performanceFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
+        if (_protocolFeeBps != 0 && protocolFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
         _setFeeRates(_performanceFeeBps, _protocolFeeBps);
 
         emit FeesUpdated(
