@@ -264,7 +264,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         uint256 navUSDC,
         uint256 totalSupplyMZ
     ) internal pure returns (bool isYield, uint256 deltaUSDC) {
-        uint256 totalSupplyUSDC = totalSupplyMZ / SCALE;
+        uint256 totalSupplyUSDC = (totalSupplyMZ + SCALE - 1) / SCALE;
         if (navUSDC >= totalSupplyUSDC) {
             isYield = true;
             deltaUSDC = navUSDC - totalSupplyUSDC;
