@@ -76,6 +76,18 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         return mzusd.balanceOf(address(this));
     }
 
+    /// @notice Explicit totalSupply function necessary for skipping supply validation in IssuanceVault.
+    /// @return Constant `1`. PolJuniorTranche has no per-user shares; ownership is admin-managed.
+    function totalSupply() external pure returns (uint256) {
+        return 1;
+    }
+
+    /// @notice Explicit balanceOf function necessary for skipping supply validation in IssuanceVault.
+    /// @return Constant `0` for any address.
+    function balanceOf(address) external pure returns (uint256) {
+        return 0;
+    }
+
     /// @notice Withdraw MZUSD from the POL tranche.
     /// @param assets Amount of MZUSD to withdraw (18 decimals); must be > 0.
     /// @param receiver Address that receives the withdrawn MZUSD; must be non-zero.

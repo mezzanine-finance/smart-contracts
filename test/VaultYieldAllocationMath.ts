@@ -1282,5 +1282,110 @@ describe("IssuanceVault Yield Allocation Math", () => {
             expect(await mzusd.balanceOf(mezzanine.target)).to.equal(mezzMzBefore);
             expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
         });
+
+        it("Skips tranche with totalAssets > 0 but no real shareholders (donation only)", async () => {
+            const YIELD_USDC = to6(90_000);
+            const DONATION = to18(50);
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                ],
+                [false, false, false, false],
+                7000
+            );
+            await vault.setFeeRates(0, 0);
+
+            // Senior + junior get real shareholders; mezzanine is left empty.
+            await depositIntoTranches(to6(600_000), [
+                {tranche: senior, user: alice, pct: 50}, // 300k
+                {tranche: junior, user: carol, pct: 50}, // 300k
+            ]);
+
+            // Donate MZUSD directly to mezzanine: totalAssets > 0 but totalSupply == 0.
+            await mintMZUSDFor(bob, to6(100));
+            await mzusd.connect(bob).transfer(mezzanine.target, DONATION);
+            expect(await mezzanine.totalSupply()).to.equal(0n);
+            expect(await mezzanine.totalAssets()).to.equal(DONATION);
+
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+
+            const allocatable = to18(90_000);
+            // totalTvl excludes the mezzanine donation since the tranche has no shareholders.
+            const totalTvl = seniorTVL + juniorTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            // Senior: base share only (riskPremiumBps = 0)
+            const expectedSeniorYield = (basePool * seniorTVL) / totalTvl;
+            // Junior is the last non-zero tranche → dust catch-all (absorbs mezzanine's risk premium too).
+            const expectedJuniorYield = allocatable - expectedSeniorYield;
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            // Donation stays untouched: no yield was credited to virtual shareholders.
+            expect(await mzusd.balanceOf(mezzanine.target)).to.equal(DONATION);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+        });
+
+        it("Skips tranche where all shares are held by VIRTUAL_SHARES_RECEIVER", async () => {
+            const YIELD_USDC = to6(90_000);
+            const DEAD = "0x000000000000000000000000000000000000dEaD";
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 1200, enabled: true},
+                    {tranche: junior.target, riskPremiumBps: 1800, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                ],
+                [false, false, false, false],
+                7000
+            );
+            await vault.setFeeRates(0, 0);
+
+            await depositIntoTranches(to6(600_000), [
+                {tranche: senior, user: alice, pct: 50}, // 300k
+                {tranche: mezzanine, user: bob, pct: 50}, // 300k
+                {tranche: junior, user: carol, pct: 50}, // 300k
+            ]);
+
+            // Bob sends every mezzanine share to dEaD — totalSupply now equals balanceOf(dEaD)
+            // but totalAssets() is still positive, so the old `trancheTvl == 0` guard doesn't catch it.
+            const bobShares = await mezzanine.balanceOf(bob.address);
+            await mezzanine.connect(bob).transfer(DEAD, bobShares);
+            expect(await mezzanine.totalSupply()).to.equal(await mezzanine.balanceOf(DEAD));
+            expect(await mezzanine.totalAssets()).to.be.gt(0n);
+
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+
+            const allocatable = to18(90_000);
+            const totalTvl = seniorTVL + juniorTVL;
+            const basePool = (allocatable * 7000n) / BPS;
+
+            const expectedSeniorYield = (basePool * seniorTVL) / totalTvl;
+            const expectedJuniorYield = allocatable - expectedSeniorYield;
+
+            const mezzMzBefore = await mzusd.balanceOf(mezzanine.target);
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(expectedSeniorYield);
+            expect(await mezzanine.yieldStreamingAmount()).to.equal(0n);
+            expect(await junior.yieldStreamingAmount()).to.equal(expectedJuniorYield);
+            expect(await mzusd.balanceOf(mezzanine.target)).to.equal(mezzMzBefore);
+            expect(await mzusd.balanceOf(vault.target)).to.equal(0n);
+        });
     });
 });

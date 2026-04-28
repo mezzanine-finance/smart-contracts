@@ -486,7 +486,7 @@ describe("Tranche", () => {
     });
 
     describe("Direct mode", () => {
-        it.only("Pauses withdrawals in direct mode", async () => {
+        it("Pauses withdrawals in direct mode", async () => {
             const directTranche = await deployDirectTranche();
 
             const mintedMZ = await mintMZUSDFor(alice, to6(100n));

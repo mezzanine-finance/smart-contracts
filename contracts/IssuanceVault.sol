@@ -42,6 +42,7 @@ contract IssuanceVault is
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
     uint16 public constant MAX_TRANCHES = 50;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     TrancheInfo[] public tranches;
     // check if address is registered tranche
@@ -740,6 +741,8 @@ contract IssuanceVault is
             if (
                 !t.enabled ||
                 trancheTvl == 0 ||
+                IERC20(t.tranche).totalSupply() ==
+                    IERC20(t.tranche).balanceOf(VIRTUAL_SHARES_RECEIVER) ||
                 pauseManagerCached.isPaused(t.tranche, PauseCategory.PROTOCOL)
             ) continue;
             trancheTvls[i] = trancheTvl;
