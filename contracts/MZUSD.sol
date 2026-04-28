@@ -184,7 +184,7 @@ contract MZUSD is
         if (address(vault) == address(0)) revert VaultNotSet();
         uint256 usdcOutNet = usdcOutGross;
         if (withdrawalFeeBps != 0) {
-            uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps) / BPS;
+            uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps + BPS - 1) / BPS;
             usdcOutNet -= feeUSDC;
         }
         if (usdcOutNet != 0) {
