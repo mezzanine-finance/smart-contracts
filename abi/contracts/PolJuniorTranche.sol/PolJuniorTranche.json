@@ -129,6 +129,11 @@
     },
     {
         "inputs": [],
+        "name": "PayoutIsSelf",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "SameValue",
         "type": "error"
     },

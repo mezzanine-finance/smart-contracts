@@ -35,6 +35,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     error NotVault();
     error NotLossManager();
     error SameValue();
+    error PayoutIsSelf();
     error InvalidMZUSDAccessManager(address actual);
 
     /// @notice Disable initializer on implementation contract and set immutable vault reference.
@@ -124,10 +125,11 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
     }
 
     /// @notice Update POL yield payout address.
-    /// @param payout New payout address; must be non-zero.
+    /// @param payout New payout address; must be non-zero and not this contract.
     /// @dev Restricted admin operation.
     function setPolPayout(address payout) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (payout == address(0)) revert ZeroAddress();
+        if (payout == address(this)) revert PayoutIsSelf();
         if (polPayout == payout) revert SameValue();
         polPayout = payout;
         emit PolPayoutUpdated(payout);
@@ -137,6 +139,7 @@ contract PolJuniorTranche is AccessManagedUpgradeable, UUPSUpgradeable, PauseMan
         address polPayoutAddress
     ) internal view returns (IMZUSD mzusdToken, address accessManager, address pauseManager_) {
         if (polPayoutAddress == address(0)) revert ZeroAddress();
+        if (polPayoutAddress == address(this)) revert PayoutIsSelf();
 
         mzusdToken = IMZUSD(IVault(vault).mzusd());
 

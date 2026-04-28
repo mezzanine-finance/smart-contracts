@@ -306,6 +306,13 @@ describe("PolJuniorTranche", () => {
                 .to.emit(pol, "PolPayoutUpdated")
                 .withArgs(alice.address);
         });
+
+        it("setPolPayout rejects address(this) to prevent self-forwarding loop", async () => {
+            await expect(pol.connect(deployer).setPolPayout(polAddr)).to.be.revertedWithCustomError(
+                pol,
+                "PayoutIsSelf"
+            );
+        });
     });
 
     describe("Multi-user flows", () => {
