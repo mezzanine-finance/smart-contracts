@@ -7,6 +7,7 @@ import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManage
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILossManager} from "../interfaces/ILossManager.sol";
 import {IMZUSD} from "../interfaces/IMZUSD.sol";
+import {ITranche} from "../interfaces/ITranche.sol";
 import {IVault} from "../interfaces/IVault.sol";
 import {IPauseManager} from "../pause/IPauseManager.sol";
 import {PauseCategory} from "../pause/PauseCategory.sol";
@@ -35,6 +36,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
     uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 1 hours;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     IERC20 public immutable mzusd;
     address public immutable vault;
@@ -197,8 +199,21 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (pauseManager.isPaused(vault, PauseCategory.PROTOCOL)) return (false, "");
 
         if (pendingIsYield) {
-            // distributeYield reverts when no tranches are registered.
-            if (v.getTrancheOrder().length == 0) return (false, "");
+            // distributeYield reverts when no tranches are registered, and the allocation step
+            // reverts with TVLZero when no tranche contributes eligible TVL. Mirror the same
+            // skip filter that IssuanceVault._allocateYieldToTranches applies: a tranche must
+            // have non-zero totalAssets and at least one share held outside VIRTUAL_SHARES_RECEIVER.
+            address[] memory order = v.getTrancheOrder();
+            uint256 trancheCount = order.length;
+            if (trancheCount == 0) return (false, "");
+            uint256 totalTvl;
+            for (uint256 i; i < trancheCount; ++i) {
+                address tr = order[i];
+                if (IERC20(tr).totalSupply() == IERC20(tr).balanceOf(VIRTUAL_SHARES_RECEIVER))
+                    continue;
+                totalTvl += ITranche(tr).totalAssets();
+            }
+            if (totalTvl == 0) return (false, "");
         } else {
             // applyLoss checks PROTOCOL pause on the LossManager.
             if (pauseManager.isPaused(lossManager, PauseCategory.PROTOCOL)) return (false, "");

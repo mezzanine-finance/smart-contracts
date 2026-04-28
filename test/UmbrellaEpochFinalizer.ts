@@ -334,6 +334,26 @@ describe("UmbrellaEpochFinalizer", () => {
             .withArgs(PauseCategory.PROTOCOL);
     });
 
+    it("checkUpkeep returns false when PROTOCOL is paused on the tranche", async () => {
+        const {candidate} = await preparePendingEpoch(alice);
+
+        const finalizer = await deployFinalizer(candidate);
+
+        // Per-contract pause: only the tranche is gated.
+        await pauseManager.pauseContract(tranche.target, PauseCategory.PROTOCOL);
+        const [neededAfterContractPause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterContractPause).to.equal(false);
+
+        await pauseManager.unpauseContract(tranche.target, PauseCategory.PROTOCOL);
+        const [neededAfterUnpause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterUnpause).to.equal(true);
+
+        // Global pause: same outcome via the shared global flag.
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        const [neededAfterGlobalPause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterGlobalPause).to.equal(false);
+    });
+
     it("finalizes an eligible epoch when work exists", async () => {
         const {shares, candidate} = await preparePendingEpoch(alice);
 

@@ -824,6 +824,41 @@ describe("NavOracleAutomation", () => {
         expect(upkeepNeeded).to.equal(false);
     });
 
+    it("checkUpkeep returns false when registered tranches have zero TVL (yield)", async () => {
+        // No deposits made: tranche.totalAssets() == 0 across all registered tranches.
+        // Yield-path: navUSDC > totalSupplyUSDC ⇒ isYield=true.
+        await pushOracleAnswers(to6(100n), to18(50n));
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        expect(await tranche.totalAssets()).to.equal(0n);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when all tranche shares are held by VIRTUAL_SHARES_RECEIVER (yield)", async () => {
+        const DEAD = "0x000000000000000000000000000000000000dEaD";
+
+        // Real deposit so the tranche has assets, then sink all shares to dEaD.
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+        const oracleShares = await tranche.balanceOf(oracle.address);
+        await tranche.connect(oracle).transfer(DEAD, oracleShares);
+        expect(await tranche.totalSupply()).to.equal(await tranche.balanceOf(DEAD));
+        expect(await tranche.totalAssets()).to.be.gt(0n);
+
+        // Yield path
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(10n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
     it("checkUpkeep returns false when loss exceeds maxLossPerTxUSDC", async () => {
         await mintAndDepositIntoTranche(oracle, to6(100n));
 

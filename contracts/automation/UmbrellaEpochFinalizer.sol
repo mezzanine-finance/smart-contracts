@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {ITranche} from "../interfaces/ITranche.sol";
 import {IVault} from "../interfaces/IVault.sol";
+import {IPauseManager} from "../pause/IPauseManager.sol";
+import {PauseCategory} from "../pause/PauseCategory.sol";
 
 /// @title Umbrella epoch finalizer
 /// @notice Chainlink Automation helper that advances an epoch cursor and finalizes when needed.
@@ -15,6 +17,8 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface, AccessManaged 
 
     /// @notice Tranche that this finalizer services.
     ITranche public immutable tranche;
+    /// @notice PauseManager for the tranche; used by checkUpkeep to gate work behind PROTOCOL pause.
+    IPauseManager public immutable pauseManager;
     /// @notice Next epoch id that keeper scan starts from.
     uint256 public nextEpochId;
 
@@ -39,12 +43,17 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface, AccessManaged 
         if (startEpoch_ < MIN_EPOCH_ID) revert InvalidEpoch();
         tranche = ITranche(tranche_);
         nextEpochId = startEpoch_;
+
+        address pm = ITranche(tranche_).pauseManager();
+        if (pm == address(0)) revert ZeroAddress();
+        pauseManager = IPauseManager(pm);
     }
 
     /// @notice Checks whether upkeep should process the current cursor epoch.
     /// @param checkData Unused; kept only for Chainlink Automation compatibility.
     /// @return upkeepNeeded True when cursor is behind current epoch (either finalize or advance step is needed).
     /// @return performData Empty; action is derived from on-chain state in performUpkeep.
+    /// @dev Returns false when PROTOCOL is paused on the tranche, since `finalizeEpoch` would revert.
     function checkUpkeep(
         bytes calldata checkData
     ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -53,6 +62,7 @@ contract UmbrellaEpochFinalizer is AutomationCompatibleInterface, AccessManaged 
         uint256 current = IVault(vault).currentEpochId();
         if (current <= 1) return (false, "");
         if (nextEpochId >= current) return (false, "");
+        if (pauseManager.isPaused(address(tranche), PauseCategory.PROTOCOL)) return (false, "");
         return (true, "");
     }
 
