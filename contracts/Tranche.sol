@@ -388,6 +388,26 @@ contract Tranche is
         return previewDeposit(limit);
     }
 
+    /// @notice Maximum assets that can be withdrawn.
+    /// @dev Direct mode: full owner balance. Non-direct mode: 0.
+    function maxWithdraw(address owner) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.WITHDRAWALS))
+            return 0;
+        uint256 ownerAssets = convertToAssets(balanceOf(owner));
+        if (directWithdrawEnabled) return ownerAssets;
+        return 0;
+    }
+
+    /// @notice Maximum shares that can be redeemed.
+    /// @dev Direct mode: full owner balance. Non-direct mode: 0.
+    function maxRedeem(address owner) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.WITHDRAWALS))
+            return 0;
+        uint256 ownerShares = balanceOf(owner);
+        if (directWithdrawEnabled) return ownerShares;
+        return 0;
+    }
+
     /// @notice Virtual total assets backing tranche shares.
     /// @dev Real balance minus not-yet-accrued yield. This is what drives pricePerShare.
     function totalAssets() public view override returns (uint256 totalAssets_) {
@@ -509,7 +529,7 @@ contract Tranche is
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal override whenDirectEnabled whenNotPaused(PauseCategory.WITHDRAWALS) {
+    ) internal override whenDirectEnabled {
         if (shares == totalSupply() - balanceOf(VIRTUAL_SHARES_RECEIVER) && _unaccruedYield() != 0)
             revert FullWithdrawNotAllowed();
         super._withdraw(caller, receiver, owner, assets, shares);

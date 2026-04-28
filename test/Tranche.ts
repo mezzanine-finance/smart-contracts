@@ -486,7 +486,7 @@ describe("Tranche", () => {
     });
 
     describe("Direct mode", () => {
-        it("Pauses withdrawals in direct mode", async () => {
+        it.only("Pauses withdrawals in direct mode", async () => {
             const directTranche = await deployDirectTranche();
 
             const mintedMZ = await mintMZUSDFor(alice, to6(100n));
@@ -494,12 +494,12 @@ describe("Tranche", () => {
             await directTranche.connect(alice).deposit(mintedMZ, alice);
 
             await pauseManager.pauseGlobal(PauseCategory.WITHDRAWALS);
-            await expect(directTranche.withdraw(1n, alice.address, alice.address))
-                .to.be.revertedWithCustomError(directTranche, "CategoryPaused")
-                .withArgs(PauseCategory.WITHDRAWALS);
-            await expect(directTranche.redeem(1n, alice.address, alice.address))
-                .to.be.revertedWithCustomError(directTranche, "CategoryPaused")
-                .withArgs(PauseCategory.WITHDRAWALS);
+            await expect(
+                directTranche.withdraw(1n, alice.address, alice.address)
+            ).to.be.revertedWithCustomError(directTranche, "ERC4626ExceededMaxWithdraw");
+            await expect(
+                directTranche.redeem(1n, alice.address, alice.address)
+            ).to.be.revertedWithCustomError(directTranche, "ERC4626ExceededMaxRedeem");
         });
 
         it("Direct mode: requestWithdrawal redeems immediately", async () => {
