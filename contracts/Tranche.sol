@@ -114,7 +114,6 @@ contract Tranche is
     error NotVault();
     error NotLossManager();
     error SameValue();
-    error FullWithdrawNotAllowed();
 
     /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
@@ -530,8 +529,6 @@ contract Tranche is
         uint256 assets,
         uint256 shares
     ) internal override whenDirectEnabled {
-        if (shares == totalSupply() - balanceOf(VIRTUAL_SHARES_RECEIVER) && _unaccruedYield() != 0)
-            revert FullWithdrawNotAllowed();
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 

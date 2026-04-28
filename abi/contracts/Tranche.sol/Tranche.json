@@ -299,11 +299,6 @@
     },
     {
         "inputs": [],
-        "name": "FullWithdrawNotAllowed",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "InvalidAmount",
         "type": "error"
     },
