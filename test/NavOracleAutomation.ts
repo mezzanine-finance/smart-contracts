@@ -668,6 +668,43 @@ describe("NavOracleAutomation", () => {
         ).to.be.revertedWithCustomError(navAutomation, "InvalidVetoPeriod");
     });
 
+    it("rejects setMaxAnswerStaleness >= max(vetoPeriod, epochDuration)", async () => {
+        // Drop the veto so the bound collapses to epochDuration (= 1 day in this fixture).
+        await navAutomation.connect(deployer).setVetoPeriod(0);
+        const epochDuration = await vault.epochDuration();
+
+        await expect(
+            navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration))
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        await expect(
+            navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration) + 1)
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        // Just under the bound is accepted.
+        await navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration) - 1);
+        expect(await navAutomation.maxAnswerStaleness()).to.equal(Number(epochDuration) - 1);
+    });
+
+    it("rejects setVetoPeriod that breaks the staleness bound", async () => {
+        // Push veto above epochDuration, then push staleness above epochDuration. With both >
+        // epochDuration, the bound is veto, so we can configure staleness up to (veto - 1).
+        const epochDuration = Number(await vault.epochDuration());
+        const wideVeto = epochDuration * 2;
+        await navAutomation.connect(deployer).setVetoPeriod(wideVeto);
+        await navAutomation.connect(deployer).setMaxAnswerStaleness(epochDuration + 5);
+
+        // Trying to drop veto to 0 would make max(veto, epochDur) = epochDur, which the current
+        // staleness exceeds — must revert.
+        await expect(
+            navAutomation.connect(deployer).setVetoPeriod(0)
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        // Lowering veto to a value that still keeps maxStaleness < max(veto, epochDur) is fine.
+        await navAutomation.connect(deployer).setVetoPeriod(epochDuration + 10);
+        expect(await navAutomation.vetoPeriod()).to.equal(epochDuration + 10);
+    });
+
     it("rotates nav oracle end-to-end (old submits, switch, new submits, old revoked)", async () => {
         await mintAndDepositIntoTranche(oracle, to6(100n));
 

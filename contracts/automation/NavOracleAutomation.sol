@@ -35,7 +35,7 @@ import {PauseCategory} from "../pause/PauseCategory.sol";
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
-    uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 1 hours;
+    uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 30 minutes;
     address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     IERC20 public immutable mzusd;
@@ -282,12 +282,22 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
 
     function _setVetoPeriod(uint256 newPeriod) internal {
         if (newPeriod > MAX_VETO_PERIOD) revert InvalidVetoPeriod();
+        _assertStalenessBound(maxAnswerStaleness, newPeriod);
         vetoPeriod = uint32(newPeriod);
     }
 
     function _setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) internal {
         if (newMaxAnswerStaleness == 0) revert InvalidAnswerStaleness();
+        _assertStalenessBound(newMaxAnswerStaleness, vetoPeriod);
         maxAnswerStaleness = newMaxAnswerStaleness;
+    }
+
+    /// @dev Enforces `staleness < max(veto, epochDuration)` so that same report
+    ///      can't be applied in different epochs.
+    function _assertStalenessBound(uint256 staleness, uint256 veto) internal view {
+        uint256 epochDur = IVault(vault).epochDuration();
+        uint256 bound = veto > epochDur ? veto : epochDur;
+        if (staleness >= bound) revert InvalidAnswerStaleness();
     }
 
     function _readFreshAnswer(
