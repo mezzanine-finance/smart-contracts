@@ -717,7 +717,6 @@ describe("LossManager", () => {
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(41n))).wait();
 
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(1n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(1n));
 
             const balBefore = await mzusd.balanceOf(alice.address);
             await junior.connect(alice).claim(alice.address, epochAtRequest);
@@ -741,12 +740,10 @@ describe("LossManager", () => {
             await time.increase(DAY);
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(41n))).wait();
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(1n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(1n));
 
             await time.increase(DAY);
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(20n))).wait();
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(20n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(21n));
         });
 
         it("Burns all available across all tranches, then accumulates more debt when TVL is zero", async () => {
@@ -783,7 +780,6 @@ describe("LossManager", () => {
             expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n)]);
             expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
             // After first burn, only reserved balances remain => no liquid TVL.
             expect(await junior.totalAssets()).to.equal(0n);
@@ -799,7 +795,6 @@ describe("LossManager", () => {
             expect(parsed2.args.burnedMZ).to.equal(0n);
             expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
 
         it("Production order pair drains all tranches and next loss accumulates pure debt", async () => {
@@ -832,7 +827,6 @@ describe("LossManager", () => {
             expect(parsed1.args.burnedMZ).to.equal(to18(40n));
             expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
             // All tranches fully drained.
             expect(await pol.totalAssets()).to.equal(0n);
@@ -850,7 +844,6 @@ describe("LossManager", () => {
             expect(parsed2.args.burnedMZ).to.equal(0n);
             expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
 
         it("Reverts when loss exceeds total supply sanity bound", async () => {

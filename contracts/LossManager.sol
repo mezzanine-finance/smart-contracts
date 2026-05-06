@@ -28,22 +28,13 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Uncovered loss from the latest `applyLoss` call (MZUSD 18d).
     uint256 public lastUncoveredLossMZ;
-    /// @notice Total uncovered loss accumulated across all `applyLoss` calls (MZUSD 18d).
-    uint256 public totalUncoveredLossMZ;
 
     /// @notice Emitted after each loss application.
     /// @param usdcLoss Requested loss in USDC 6d.
     /// @param requestedMZ Requested loss in MZUSD 18d.
     /// @param burnedMZ Burned amount in MZUSD 18d.
     /// @param uncoveredMZ Uncovered amount for this call in MZUSD 18d.
-    /// @param totalUncoveredMZ Accumulated uncovered amount in MZUSD 18d.
-    event LossApplied(
-        uint256 usdcLoss,
-        uint256 requestedMZ,
-        uint256 burnedMZ,
-        uint256 uncoveredMZ,
-        uint256 totalUncoveredMZ
-    );
+    event LossApplied(uint256 usdcLoss, uint256 requestedMZ, uint256 burnedMZ, uint256 uncoveredMZ);
     /// @notice Emitted when max loss per transaction is updated.
     /// @param newLimitUSDC New max loss value in USDC 6 decimals.
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
@@ -113,11 +104,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         (uint256 burnedMZ, uint256 uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss));
 
         lastUncoveredLossMZ = uncoveredMZ;
-        if (uncoveredMZ != 0) {
-            totalUncoveredLossMZ += uncoveredMZ;
-        }
 
-        emit LossApplied(usdcLoss, _toMZ(usdcLoss), burnedMZ, uncoveredMZ, totalUncoveredLossMZ);
+        emit LossApplied(usdcLoss, _toMZ(usdcLoss), burnedMZ, uncoveredMZ);
     }
 
     // SETTERS

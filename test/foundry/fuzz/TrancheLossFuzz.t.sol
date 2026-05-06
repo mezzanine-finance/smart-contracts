@@ -173,7 +173,6 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         assertEq(mzusd.balanceOf(address(senior)), seniorBefore - burnSenior);
         assertEq(supplyBefore - mzusd.totalSupply(), expectedBurn);
         assertEq(lossManager.lastUncoveredLossMZ(), expectedUncovered);
-        assertEq(lossManager.totalUncoveredLossMZ(), expectedUncovered);
     }
 
     function testFuzz_ApplyLossPairModeSplitsProportionallyAndTracksUncovered(
@@ -435,7 +434,6 @@ contract TrancheLossFuzzTest is BaseProtocolFuzzTest {
         assertEq(mzusd.balanceOf(address(senior)), seniorBefore - burnSenior);
         assertEq(supplyBefore - mzusd.totalSupply(), expectedBurn);
         assertEq(lossManager.lastUncoveredLossMZ(), expectedUncovered);
-        assertEq(lossManager.totalUncoveredLossMZ(), expectedUncovered);
     }
 
     function _deployTranche(
