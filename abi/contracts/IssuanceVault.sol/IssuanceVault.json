@@ -805,7 +805,7 @@
     },
     {
         "inputs": [],
-        "name": "MZUSD_SCALE",
+        "name": "SCALE",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -925,9 +925,9 @@
         "name": "epochStart",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "uint48",
                 "name": "",
-                "type": "uint64"
+                "type": "uint48"
             }
         ],
         "stateMutability": "view",
@@ -971,9 +971,9 @@
                 "type": "uint64"
             },
             {
-                "internalType": "uint64",
+                "internalType": "uint48",
                 "name": "start",
-                "type": "uint64"
+                "type": "uint48"
             },
             {
                 "internalType": "uint64",
@@ -1096,6 +1096,11 @@
                 "internalType": "address",
                 "name": "_protocolFeeReceiver",
                 "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "_epochDuration",
+                "type": "uint64"
             }
         ],
         "name": "initialize",

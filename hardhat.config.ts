@@ -57,6 +57,7 @@ const config: HardhatUserConfig = {
                 url: envs.FORKING_URL ?? "",
                 enabled: enableForking,
             },
+            initialBaseFeePerGas: 0, // prevents forked-block baseFee from exceeding signer maxFeePerGas
         },
         mainnet: {
             url: envs.MAINNET_RPC ?? envs.FORKING_URL ?? "",

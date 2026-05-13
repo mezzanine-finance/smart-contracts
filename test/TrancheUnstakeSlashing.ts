@@ -115,7 +115,7 @@ describe("Tranche unstake slashing", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([alice.address, bob.address, carol.address]);
 
@@ -132,7 +132,7 @@ describe("Tranche unstake slashing", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address, 86400], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],
@@ -276,14 +276,14 @@ describe("Tranche unstake slashing", () => {
         expect(drift).to.be.lte(5_000_000_000_000n);
     });
 
-    it("reverts when slashing bps are >= 10_000", async () => {
-        await expect(
-            tranche.connect(deployer).setUnstakeYieldReductionBps(BPS)
-        ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
-
+    it("allows 100% slashing and reverts above 10_000 bps", async () => {
         await expect(
             tranche.connect(deployer).setUnstakeYieldReductionBps(BPS + 1n)
         ).to.be.revertedWithCustomError(tranche, "InvalidAmount");
+
+        await expect(tranche.connect(deployer).setUnstakeYieldReductionBps(BPS))
+            .to.emit(tranche, "UnstakeYieldReductionBpsUpdated")
+            .withArgs(BPS);
     });
 
     it("reverts when non-admin tries to set slashing params", async () => {
@@ -526,9 +526,8 @@ describe("Tranche unstake slashing", () => {
     });
 
     it("rounding dust: total claimed never exceeds finalized assets", async () => {
-        // Turn off slashing to isolate only floor-division effects in pro-rata claim math.
-        // We want this test to cover rounding behavior, not slash behavior.
-        await tranche.connect(deployer).setUnstakeYieldReductionBps(0n);
+        // Slashing is already off (unstakeYieldReductionBps defaults to 0) to isolate
+        // only floor-division effects in pro-rata claim math.
 
         // Build a 3-user pool with awkward sizes to avoid "too clean" divisibility.
         await mintAndDepositIntoTranche(alice, to6(111n));

@@ -105,7 +105,7 @@ describe("NavOracleAutomation", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([deployer.address, oracle.address, bob.address]);
 
@@ -127,12 +127,16 @@ describe("NavOracleAutomation", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, oracle.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, oracle.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -331,7 +335,7 @@ describe("NavOracleAutomation", () => {
         );
     });
 
-    it("performUpkeep reverts when protocol is paused", async () => {
+    it("checkUpkeep returns false when protocol is globally paused", async () => {
         await mintAndDepositIntoTranche(oracle, to6(10n));
 
         const totalSupplyMZ = await mzusd.totalSupply();
@@ -342,11 +346,50 @@ describe("NavOracleAutomation", () => {
         await navAutomation.connect(oracle).submitNav();
         await time.increase(DAY);
 
+        // Upkeep is needed before pause
+        const [neededBefore] = await navAutomation.checkUpkeep("0x");
+        expect(neededBefore).to.equal(true);
+
         await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
 
-        await expect(navAutomation.connect(chainlinkAutomation).performUpkeep("0x"))
-            .to.be.revertedWithCustomError(vault, "CategoryPaused")
-            .withArgs(PauseCategory.PROTOCOL);
+        // Upkeep is no longer needed while paused
+        const [neededAfter] = await navAutomation.checkUpkeep("0x");
+        expect(neededAfter).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when vault is paused for PROTOCOL (loss path)", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(120n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC - to6(20n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        // Pause PROTOCOL only on the vault — applyLoss calls advanceEpoch on vault
+        await pauseManager.pauseContract(vault.target, PauseCategory.PROTOCOL);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when lossManager is paused for PROTOCOL", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(120n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC - to6(20n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        await pauseManager.pauseContract(lossManager.target, PauseCategory.PROTOCOL);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
     });
 
     it("performUpkeep reverts with NotReady and returns pending readyAt", async () => {
@@ -500,7 +543,7 @@ describe("NavOracleAutomation", () => {
     });
 
     it("pins pending readyAt to submit-time veto period snapshot", async () => {
-        await navAutomation.connect(deployer).setVetoPeriod(DAY);
+        // vetoPeriod is already DAY from constructor, no need to set it again.
         await mintAndDepositIntoTranche(oracle, to6(70n));
 
         const totalSupplyMZ = await mzusd.totalSupply();
@@ -625,6 +668,43 @@ describe("NavOracleAutomation", () => {
         ).to.be.revertedWithCustomError(navAutomation, "InvalidVetoPeriod");
     });
 
+    it("rejects setMaxAnswerStaleness >= max(vetoPeriod, epochDuration)", async () => {
+        // Drop the veto so the bound collapses to epochDuration (= 1 day in this fixture).
+        await navAutomation.connect(deployer).setVetoPeriod(0);
+        const epochDuration = await vault.epochDuration();
+
+        await expect(
+            navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration))
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        await expect(
+            navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration) + 1)
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        // Just under the bound is accepted.
+        await navAutomation.connect(deployer).setMaxAnswerStaleness(Number(epochDuration) - 1);
+        expect(await navAutomation.maxAnswerStaleness()).to.equal(Number(epochDuration) - 1);
+    });
+
+    it("rejects setVetoPeriod that breaks the staleness bound", async () => {
+        // Push veto above epochDuration, then push staleness above epochDuration. With both >
+        // epochDuration, the bound is veto, so we can configure staleness up to (veto - 1).
+        const epochDuration = Number(await vault.epochDuration());
+        const wideVeto = epochDuration * 2;
+        await navAutomation.connect(deployer).setVetoPeriod(wideVeto);
+        await navAutomation.connect(deployer).setMaxAnswerStaleness(epochDuration + 5);
+
+        // Trying to drop veto to 0 would make max(veto, epochDur) = epochDur, which the current
+        // staleness exceeds — must revert.
+        await expect(
+            navAutomation.connect(deployer).setVetoPeriod(0)
+        ).to.be.revertedWithCustomError(navAutomation, "InvalidAnswerStaleness");
+
+        // Lowering veto to a value that still keeps maxStaleness < max(veto, epochDur) is fine.
+        await navAutomation.connect(deployer).setVetoPeriod(epochDuration + 10);
+        expect(await navAutomation.vetoPeriod()).to.equal(epochDuration + 10);
+    });
+
     it("rotates nav oracle end-to-end (old submits, switch, new submits, old revoked)", async () => {
         await mintAndDepositIntoTranche(oracle, to6(100n));
 
@@ -732,7 +812,7 @@ describe("NavOracleAutomation", () => {
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
         const vaultNoTranches = (await upgrades.deployProxy(
             VaultFactory,
-            [0, bob.address, 0, oracle.address],
+            [0, bob.address, 0, oracle.address, 86400],
             {
                 kind: "uups",
                 initializer: "initialize",
@@ -778,6 +858,41 @@ describe("NavOracleAutomation", () => {
         await time.increase(DAY);
 
         const [upkeepNeeded] = await navAuto2.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when registered tranches have zero TVL (yield)", async () => {
+        // No deposits made: tranche.totalAssets() == 0 across all registered tranches.
+        // Yield-path: navUSDC > totalSupplyUSDC ⇒ isYield=true.
+        await pushOracleAnswers(to6(100n), to18(50n));
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        expect(await tranche.totalAssets()).to.equal(0n);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when all tranche shares are held by VIRTUAL_SHARES_RECEIVER (yield)", async () => {
+        const DEAD = "0x000000000000000000000000000000000000dEaD";
+
+        // Real deposit so the tranche has assets, then sink all shares to dEaD.
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+        const oracleShares = await tranche.balanceOf(oracle.address);
+        await tranche.connect(oracle).transfer(DEAD, oracleShares);
+        expect(await tranche.totalSupply()).to.equal(await tranche.balanceOf(DEAD));
+        expect(await tranche.totalAssets()).to.be.gt(0n);
+
+        // Yield path
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(10n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
         expect(upkeepNeeded).to.equal(false);
     });
 

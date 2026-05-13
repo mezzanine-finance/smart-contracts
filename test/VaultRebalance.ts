@@ -85,7 +85,7 @@ describe("IssuanceVault <-> Reservoir", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
 
         const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
@@ -106,12 +106,16 @@ describe("IssuanceVault <-> Reservoir", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, deployer.address, 0, alice.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, deployer.address, 0, alice.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
 
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
         await grantPausePermissions(accessManager, pauseManager, ADMIN_ROLE);

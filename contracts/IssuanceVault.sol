@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "./pause/PauseManagedUpgradeable.sol";
 import "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import "./interfaces/IMZUSD.sol";
 import "./interfaces/IReservoir.sol";
 import "./interfaces/ITranche.sol";
@@ -37,10 +38,11 @@ contract IssuanceVault is
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_TOTAL_FEE_BPS = 5_000;
-    uint256 public constant MZUSD_SCALE = 1e12;
+    uint256 public constant SCALE = 1e12;
     uint64 public constant MIN_EPOCH_DURATION_LIMIT = 1 hours;
     uint64 public constant MAX_EPOCH_DURATION_LIMIT = 30 days;
     uint16 public constant MAX_TRANCHES = 50;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     TrancheInfo[] public tranches;
     // check if address is registered tranche
@@ -58,7 +60,7 @@ contract IssuanceVault is
     uint256 public idleBufferUSDC; // target idle USDC buffer in vault
 
     // epochs + config
-    uint64 public epochStart; // start timestamp of current epoch
+    uint48 public epochStart; // start timestamp of current epoch
     uint64 public epochDuration; // duration of each epoch in seconds
     uint64 public currentEpochId; // current epoch ID for yield distribution
 
@@ -146,6 +148,9 @@ contract IssuanceVault is
         _;
     }
 
+    /// @notice Disable initializer on implementation contract and set immutable MZUSD, USDC, and Reservoir references.
+    /// @param _mzusd MZUSD token address; must be non-zero.
+    /// @param _reservoir ReservoirUSDC address; must be non-zero.
     constructor(address _mzusd, address _reservoir) {
         (IMZUSD token, address tokenUSDC) = _validateConstructorParams(_mzusd, _reservoir);
 
@@ -160,13 +165,20 @@ contract IssuanceVault is
     /// @param _performanceFeeReceiver Recipient of performance fees.
     /// @param _protocolFeeBps Protocol fee in bps (0 allowed; 500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _protocolFeeReceiver Recipient of protocol fees.
+    /// @param _epochDuration Epoch duration in seconds; must be within [MIN_EPOCH_DURATION, MAX_EPOCH_DURATION].
     /// @dev _protocolFeeReceiver and _performanceFeeReceiver could be same addresses.
     function initialize(
         uint16 _performanceFeeBps,
         address _performanceFeeReceiver,
         uint16 _protocolFeeBps,
-        address _protocolFeeReceiver
+        address _protocolFeeReceiver,
+        uint64 _epochDuration
     ) external initializer {
+        if (
+            _epochDuration < MIN_EPOCH_DURATION_LIMIT || _epochDuration > MAX_EPOCH_DURATION_LIMIT
+        ) {
+            revert InvalidEpochDuration();
+        }
         (address accessManager, address pauseManager_) = _resolveAndValidateCoreManagers();
 
         __AccessManaged_init(accessManager);
@@ -181,8 +193,8 @@ contract IssuanceVault is
         hysteresisBps = 500;
 
         currentEpochId = 1;
-        epochStart = uint64(block.timestamp);
-        epochDuration = 1 days;
+        epochStart = uint48(block.timestamp);
+        epochDuration = _epochDuration;
     }
 
     /// @notice Withdraw USDC to a recipient (used for MZUSD redemptions).
@@ -233,7 +245,7 @@ contract IssuanceVault is
             return;
         }
 
-        uint256 mintedGross = usdcReported * MZUSD_SCALE;
+        uint256 mintedGross = usdcReported * SCALE;
 
         (uint256 allocatableMZUSD, uint256 perfFee, uint256 protFee) = _handleFees(mintedGross);
         emit FeesPaid(perfFee, protFee, newEpochId);
@@ -253,6 +265,8 @@ contract IssuanceVault is
 
     //SETTERS
     /// @notice Set LossManager address (one-time).
+    /// @param _lossManager LossManager proxy address. Must be non-zero, deployed, and wired to this vault and its MZUSD.
+    /// @dev Reverts if already set, if the address has no code, or if vault/MZUSD cross-references do not match.
     function setLossManager(
         address _lossManager
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -268,6 +282,8 @@ contract IssuanceVault is
     }
 
     /// @notice Update NAV oracle automation address.
+    /// @param _navOracle NavOracleAutomation address. Must be non-zero, deployed, and wired to this vault, its LossManager, and MZUSD.
+    /// @dev LossManager must be set before calling. Reverts if cross-references do not match.
     function setNavOracle(
         address _navOracle
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
@@ -294,10 +310,17 @@ contract IssuanceVault is
     /// @param _performanceFeeBps Performance fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @param _protocolFeeBps Protocol fee in bps (500 = 5%, 50 = 0.5%, 5 = 0.05%).
     /// @dev Sum of performanceFeeBps and protocolFeeBps must not exceed MAX_TOTAL_FEE_BPS.
+    /// @dev A non-zero fee requires a non-zero matching receiver.
     function setFeeRates(
         uint16 _performanceFeeBps,
         uint16 _protocolFeeBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (_performanceFeeBps != 0 && performanceFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
+        if (_protocolFeeBps != 0 && protocolFeeReceiver == address(0)) {
+            revert ZeroAddress();
+        }
         _setFeeRates(_performanceFeeBps, _protocolFeeBps);
 
         emit FeesUpdated(
@@ -309,6 +332,8 @@ contract IssuanceVault is
     }
 
     /// @notice Update fee receivers.
+    /// @param _performanceFeeReceiver Recipient of performance fees; must be non-zero.
+    /// @param _protocolFeeReceiver Recipient of protocol fees; must be non-zero. May equal _performanceFeeReceiver.
     function setFeeReceivers(
         address _performanceFeeReceiver,
         address _protocolFeeReceiver
@@ -324,6 +349,7 @@ contract IssuanceVault is
     }
 
     /// @notice Register a new tranche.
+    /// @param _tranche Tranche contract address to register; must be non-zero and not already registered.
     /// @dev Tranche is disabled by default as adding of new tranche requires to reset yield distribution via setTrancheConfig().
     function registerTranche(
         address _tranche
@@ -369,8 +395,7 @@ contract IssuanceVault is
         if (total != BPS) revert InvalidYieldDistribution();
 
         // Clear old pair mapping.
-        uint256 oldLen = tranches.length;
-        for (uint256 i; i < oldLen; ++i) {
+        for (uint256 i; i < len; ++i) {
             delete tranchePairedTo[tranches[i].tranche];
         }
 
@@ -429,12 +454,14 @@ contract IssuanceVault is
         ) {
             revert InvalidEpochDuration();
         }
+        if (pendingEpochDuration == _epochDuration) revert SameValue();
         pendingEpochDuration = _epochDuration;
         emit EpochDurationQueued(_epochDuration);
     }
 
     /// @notice Advances the epoch if enough time has passed.
     /// @dev Heartbeat for periods with zero yield, so other epoch-based flows can progress.
+    /// @return newEpochId The new epoch ID after advancement.
     function advanceEpoch()
         external
         onlyLossManager
@@ -445,10 +472,15 @@ contract IssuanceVault is
     }
 
     //GETTERS
+
+    /// @notice Number of registered tranches.
+    /// @return length Count of registered tranches.
     function tranchesLength() external view returns (uint256 length) {
         length = tranches.length;
     }
 
+    /// @notice Current idle USDC balance held by this vault.
+    /// @return idleUSDC USDC amount (6 decimals).
     function currentIdleUSDC() external view returns (uint256 idleUSDC) {
         idleUSDC = usdc.balanceOf(address(this));
     }
@@ -497,11 +529,16 @@ contract IssuanceVault is
     function getEpochConfig()
         external
         view
-        returns (uint64 epochId, uint64 start, uint64 duration)
+        returns (uint64 epochId, uint48 start, uint64 duration)
     {
         return (currentEpochId, epochStart, epochDuration);
     }
 
+    /// @notice Returns idle buffer configuration and computed hysteresis bounds.
+    /// @return buffer Target idle USDC buffer (6 decimals).
+    /// @return hysteresis Hysteresis band in bps (500 = 5%).
+    /// @return low Lower hysteresis bound in USDC (6 decimals); rebalance pulls from reservoir below this.
+    /// @return high Upper hysteresis bound in USDC (6 decimals); rebalance sends to reservoir above this.
     function getBufferConfig()
         external
         view
@@ -512,6 +549,7 @@ contract IssuanceVault is
     }
 
     /// @notice Returns ordered tranche addresses (same order as `tranches[]`).
+    /// @return order Array of tranche addresses in configured loss/allocation order.
     function getTrancheOrder() external view returns (address[] memory order) {
         uint256 len = tranches.length;
         order = new address[](len);
@@ -521,6 +559,8 @@ contract IssuanceVault is
     }
 
     /// @notice Returns current tranche order and pair flags.
+    /// @return order Array of tranche addresses in configured order.
+    /// @return isPairedWithNext Boolean flags; `true,true` at indices `i` and `i+1` indicates a pair.
     /// @dev Pair is represented symmetrically as `true,true` at indices `i` and `i+1`.
     function getTrancheOrderAndPairs()
         external
@@ -624,7 +664,7 @@ contract IssuanceVault is
     ///      If advancement is delayed, elapsed idle time is not backfilled into synthetic epochs.
     /// @return newEpochId New epoch ID after advancement.
     function _advanceEpochAndValidate() internal returns (uint256 newEpochId) {
-        uint64 ts = uint64(block.timestamp);
+        uint48 ts = uint48(block.timestamp);
         if (ts < epochStart + epochDuration) revert EpochTooSoon();
 
         epochStart = ts;
@@ -697,13 +737,21 @@ contract IssuanceVault is
         uint256 totalTvl;
         uint256 lastNonZeroIndex;
 
+        IPauseManager pauseManagerCached = IPauseManager(pauseManager());
+
         TrancheInfo memory t;
         uint256 trancheTvl;
 
         for (uint256 i; i < trancheCount; ++i) {
             t = tranches[i];
             trancheTvl = ITranche(t.tranche).totalAssets();
-            if (!t.enabled || trancheTvl == 0) continue;
+            if (
+                !t.enabled ||
+                trancheTvl == 0 ||
+                IERC20(t.tranche).totalSupply() ==
+                    IERC20(t.tranche).balanceOf(VIRTUAL_SHARES_RECEIVER) ||
+                pauseManagerCached.isPaused(t.tranche, PauseCategory.PROTOCOL)
+            ) continue;
             trancheTvls[i] = trancheTvl;
             totalTvl += trancheTvl;
             // Track the last tranche that actually participates in allocation.

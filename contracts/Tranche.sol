@@ -38,7 +38,7 @@ contract Tranche is
     }
 
     // aderyn-ignore-next-line(large-numeric-literal)
-    uint256 public constant BASIS_POINTS = 10_000;
+    uint256 public constant BPS = 10_000;
     uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
     address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
@@ -62,10 +62,10 @@ contract Tranche is
     uint256 public yieldStreamingAmount;
 
     /// @notice Timestamp when current yield streaming started.
-    uint64 public yieldStreamStart;
+    uint48 public yieldStreamStart;
 
     /// @notice Timestamp when current yield streaming should finish (all yield accrued).
-    uint64 public yieldStreamEnd;
+    uint48 public yieldStreamEnd;
 
     /// @notice Assets reserved for finalized-but-unclaimed umbrella withdrawals.
     uint256 public reservedAssets;
@@ -113,7 +113,7 @@ contract Tranche is
     error UnstakeDelayTooLarge(uint256 requested, uint256 maxAllowed);
     error NotVault();
     error NotLossManager();
-    error FullWithdrawNotAllowed();
+    error SameValue();
 
     /// @param vaultAddress IssuanceVault address.
     /// @param _directWithdrawEnabled Enable direct withdraw/redeem; disables umbrella flow.
@@ -237,7 +237,7 @@ contract Tranche is
         if (unstakeYieldReductionBps > 0 && finalizedData.finalizationPrice > snapshotPrice) {
             uint256 yieldPerShare = finalizedData.finalizationPrice - snapshotPrice;
             uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * userShares) /
-                BASIS_POINTS /
+                BPS /
                 (10 ** decimals());
             if (slashAmount > userAssets) {
                 slashAmount = userAssets;
@@ -309,13 +309,14 @@ contract Tranche is
         uint256 endTs = startTs + duration;
 
         yieldStreamingAmount = yieldAmount;
-        yieldStreamStart = SafeCast.toUint64(startTs);
-        yieldStreamEnd = SafeCast.toUint64(endTs);
+        yieldStreamStart = SafeCast.toUint48(startTs);
+        yieldStreamEnd = SafeCast.toUint48(endTs);
 
         emit YieldNotified(yieldAmount, yieldStreamStart, yieldStreamEnd);
     }
 
     /// @notice Burn MZUSD from this tranche (used by LossManager).
+    /// @param amount Amount of MZUSD to burn (18 decimals).
     function burnMZUSD(
         uint256 amount
     ) external onlyLossManager whenNotPaused(PauseCategory.PROTOCOL) {
@@ -325,18 +326,22 @@ contract Tranche is
     // SETTERS
 
     /// @notice Update unstake delay in epochs.
+    /// @param epochsDelay New delay in epochs; must be > 0 when direct withdraw is disabled.
     function setUnstakeDelayEpochs(
         uint256 epochsDelay
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
         if (!directWithdrawEnabled && epochsDelay == 0) revert UnstakeDelayZero();
+        if (unstakeDelayEpochs == epochsDelay) revert SameValue();
         _setUnstakeDelayEpochs(epochsDelay);
     }
 
     /// @notice Set slashing on positive pending-withdrawal yield, in bps.
+    /// @param bps Reduction rate in basis points (must be <= 10_000).
     function setUnstakeYieldReductionBps(
         uint256 bps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (bps >= BASIS_POINTS) revert InvalidAmount();
+        if (bps > BPS) revert InvalidAmount();
+        if (unstakeYieldReductionBps == bps) revert SameValue();
         unstakeYieldReductionBps = bps;
         emit UnstakeYieldReductionBpsUpdated(bps);
     }
@@ -348,16 +353,18 @@ contract Tranche is
         uint256 cap,
         uint256 tvlBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (tvlBps > BASIS_POINTS) revert InvalidAmount();
+        if (tvlBps > BPS) revert InvalidAmount();
         maxDepositCap = cap;
         maxDepositTvlBps = tvlBps;
         emit DepositLimitUpdated(depositLimitEnabled, cap, tvlBps);
     }
 
     /// @notice Enable/disable both deposit limits without changing cap and tvlBps values.
+    /// @param enabled True to enable deposit limits, false to disable.
     function setDepositLimitEnabled(
         bool enabled
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (depositLimitEnabled == enabled) revert SameValue();
         depositLimitEnabled = enabled;
         emit DepositLimitUpdated(enabled, maxDepositCap, maxDepositTvlBps);
     }
@@ -378,6 +385,26 @@ contract Tranche is
         (uint256 limit, , ) = _computeDepositLimit();
         if (limit == type(uint256).max) return type(uint256).max;
         return previewDeposit(limit);
+    }
+
+    /// @notice Maximum assets that can be withdrawn.
+    /// @dev Direct mode: full owner balance. Non-direct mode: 0.
+    function maxWithdraw(address owner) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.WITHDRAWALS))
+            return 0;
+        uint256 ownerAssets = convertToAssets(balanceOf(owner));
+        if (directWithdrawEnabled) return ownerAssets;
+        return 0;
+    }
+
+    /// @notice Maximum shares that can be redeemed.
+    /// @dev Direct mode: full owner balance. Non-direct mode: 0.
+    function maxRedeem(address owner) public view override returns (uint256) {
+        if (IPauseManager(pauseManager()).isPaused(address(this), PauseCategory.WITHDRAWALS))
+            return 0;
+        uint256 ownerShares = balanceOf(owner);
+        if (directWithdrawEnabled) return ownerShares;
+        return 0;
     }
 
     /// @notice Virtual total assets backing tranche shares.
@@ -444,7 +471,7 @@ contract Tranche is
             ) {
                 uint256 yieldPerShare = e.finalizationPrice - snapshotPrice;
                 uint256 slashAmount = (yieldPerShare * unstakeYieldReductionBps * pendingShares) /
-                    BASIS_POINTS /
+                    BPS /
                     (10 ** decimals());
                 if (slashAmount > claimableAssets) {
                     slashAmount = claimableAssets;
@@ -501,9 +528,7 @@ contract Tranche is
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal override whenDirectEnabled whenNotPaused(PauseCategory.WITHDRAWALS) {
-        if (shares == totalSupply() - balanceOf(VIRTUAL_SHARES_RECEIVER) && _unaccruedYield() != 0)
-            revert FullWithdrawNotAllowed();
+    ) internal override whenDirectEnabled {
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 
@@ -608,7 +633,7 @@ contract Tranche is
 
         uint256 assetTotalSupply = IERC20(asset()).totalSupply();
         uint256 trancheAssets = totalAssets(); // virtual TVL with streaming
-        uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BASIS_POINTS;
+        uint256 maxTotalByTvl = (assetTotalSupply * maxDepositTvlBps) / BPS;
         if (maxTotalByTvl <= trancheAssets) {
             limitByTvl = 0;
         } else {

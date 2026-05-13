@@ -6,6 +6,7 @@ interface ITranche {
     function notifyYield(uint256 amount) external;
     function burnMZUSD(uint256 amount) external;
     function vault() external view returns (address vaultAddress);
+    function pauseManager() external view returns (address pauseManagerAddress);
     function umbrellaSharesByEpoch(uint256) external view returns (uint256 shares);
     function finalizedEpochs(
         uint256

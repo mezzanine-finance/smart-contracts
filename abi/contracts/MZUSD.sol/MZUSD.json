@@ -392,6 +392,19 @@
                 "type": "uint256"
             }
         ],
+        "name": "GlobalRedemptionCapQueued",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newCapUSDC",
+                "type": "uint256"
+            }
+        ],
         "name": "GlobalRedemptionCapUpdated",
         "type": "event"
     },
@@ -551,6 +564,19 @@
                 "internalType": "uint32",
                 "name": "",
                 "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "MAX_WITHDRAWAL_FEE_BPS",
+        "outputs": [
+            {
+                "internalType": "uint16",
+                "name": "",
+                "type": "uint16"
             }
         ],
         "stateMutability": "view",
@@ -745,14 +771,14 @@
         "name": "getRedemptionWindow",
         "outputs": [
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "windowStart",
-                "type": "uint40"
+                "type": "uint48"
             },
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "windowEnd",
-                "type": "uint40"
+                "type": "uint48"
             },
             {
                 "internalType": "uint32",
@@ -866,6 +892,19 @@
                 "internalType": "string",
                 "name": "",
                 "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "nextGlobalRedemptionCapUSDC",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -1142,9 +1181,9 @@
         "name": "windowStartTimestamp",
         "outputs": [
             {
-                "internalType": "uint40",
+                "internalType": "uint48",
                 "name": "",
-                "type": "uint40"
+                "type": "uint48"
             }
         ],
         "stateMutability": "view",

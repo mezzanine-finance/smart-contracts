@@ -109,6 +109,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
         vm.prank(address(vault));
         mzusd.mint(address(helper), excessWithdrawalUSDC * SCALE);
         mzusd.setGlobalRedemptionCap(capUSDC);
+        vm.warp(block.timestamp + 1 hours + 1);
         usdc.mint(address(helper), depositUSDC);
         usdc.mint(address(reservoir), excessWithdrawalUSDC);
 
@@ -228,6 +229,7 @@ contract MZUSDFuzzTest is BaseProtocolFuzzTest {
             capUSDC = bound(uint256(capSeed), minCapUSDC, expectedUsedUSDC);
         }
         mzusd.setGlobalRedemptionCap(capUSDC);
+        vm.warp(block.timestamp + 1 hours + 1);
 
         if (extraMintUSDC != 0) {
             vm.prank(address(vault));

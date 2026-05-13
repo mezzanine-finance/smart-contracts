@@ -134,6 +134,11 @@
     },
     {
         "inputs": [],
+        "name": "SameValue",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "UUPSUnauthorizedCallContext",
         "type": "error"
     },
@@ -209,12 +214,6 @@
                 "indexed": false,
                 "internalType": "uint256",
                 "name": "uncoveredMZ",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "totalUncoveredMZ",
                 "type": "uint256"
             }
         ],
@@ -427,19 +426,6 @@
         "name": "setMaxLossPerTxUSDC",
         "outputs": [],
         "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "totalUncoveredLossMZ",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
         "type": "function"
     },
     {

@@ -7,7 +7,10 @@ import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManage
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILossManager} from "../interfaces/ILossManager.sol";
 import {IMZUSD} from "../interfaces/IMZUSD.sol";
+import {ITranche} from "../interfaces/ITranche.sol";
 import {IVault} from "../interfaces/IVault.sol";
+import {IPauseManager} from "../pause/IPauseManager.sol";
+import {PauseCategory} from "../pause/PauseCategory.sol";
 
 /// @title NAV oracle automation
 /// @notice Stores oracle NAV snapshots with a veto window, then applies yield or loss via Automation.
@@ -32,11 +35,13 @@ import {IVault} from "../interfaces/IVault.sol";
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
     uint256 public constant MAX_VETO_PERIOD = 5 days;
-    uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 1 hours;
+    uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 30 minutes;
+    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     IERC20 public immutable mzusd;
     address public immutable vault;
     address public immutable lossManager;
+    IPauseManager public immutable pauseManager;
     AggregatorV3Interface public navOracle;
     AggregatorV3Interface public totalSupplyOracle;
 
@@ -82,7 +87,11 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     error OraclesNotInSync();
     error ValueTooLarge();
     error ZeroAddress();
+    error SameValue();
 
+    /// @notice Wire NAV oracle automation to the LossManager and set the initial veto period.
+    /// @param lossManager_ LossManager address; its MZUSD/vault/authority references are inherited.
+    /// @param vetoPeriod_ Initial veto period in seconds applied to pending NAV submissions.
     constructor(
         address lossManager_,
         uint256 vetoPeriod_
@@ -91,9 +100,13 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         address vault_ = manager.vault();
         address mzusd_ = manager.mzusd();
 
+        address pauseManager_ = IMZUSD(mzusd_).pauseManager();
+        if (pauseManager_ == address(0)) revert ZeroAddress();
+
         mzusd = IERC20(mzusd_);
         vault = vault_;
         lossManager = lossManager_;
+        pauseManager = IPauseManager(pauseManager_);
         _setVetoPeriod(vetoPeriod_);
         _setMaxAnswerStaleness(DEFAULT_MAX_ANSWER_STALENESS);
     }
@@ -110,14 +123,11 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         if (hasPendingNav()) revert PendingNavExists();
 
         (uint256 navUSDC, uint256 totalSupplyMZ) = _readFreshAnswer(navOracle, totalSupplyOracle);
-        if (block.timestamp > type(uint48).max) {
-            revert ValueTooLarge();
-        }
+
         (bool isYield, uint256 deltaUSDC) = _deltaUSDC(navUSDC, totalSupplyMZ);
 
         uint48 submittedAt = uint48(block.timestamp);
         uint256 readyAt = uint256(submittedAt) + uint256(vetoPeriod);
-        if (readyAt > type(uint48).max) revert ValueTooLarge();
 
         if (deltaUSDC > type(uint128).max) revert ValueTooLarge();
         pendingDeltaUSDC = uint128(deltaUSDC);
@@ -143,6 +153,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @notice Update the veto period for future submissions.
     /// @param newPeriod New veto period in seconds.
     function setVetoPeriod(uint256 newPeriod) external restricted {
+        if (uint256(vetoPeriod) == newPeriod) revert SameValue();
         _setVetoPeriod(newPeriod);
         emit VetoPeriodUpdated(newPeriod);
     }
@@ -161,6 +172,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     /// @notice Set maximum accepted oracle answer age.
     /// @param newMaxAnswerStaleness Maximum staleness in seconds.
     function setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) external restricted {
+        if (maxAnswerStaleness == newMaxAnswerStaleness) revert SameValue();
         _setMaxAnswerStaleness(newMaxAnswerStaleness);
         emit MaxAnswerStalenessUpdated(newMaxAnswerStaleness);
     }
@@ -182,10 +194,29 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         IVault v = IVault(vault);
         if (block.timestamp < v.epochStart() + v.epochDuration()) return (false, "");
 
+        // Both paths touch the vault (distributeYield directly, applyLoss via advanceEpoch),
+        // so a PROTOCOL pause on the vault blocks either action.
+        if (pauseManager.isPaused(vault, PauseCategory.PROTOCOL)) return (false, "");
+
         if (pendingIsYield) {
-            // distributeYield reverts when no tranches are registered.
-            if (v.getTrancheOrder().length == 0) return (false, "");
+            // distributeYield reverts when no tranches are registered, and the allocation step
+            // reverts with TVLZero when no tranche contributes eligible TVL. Mirror the same
+            // skip filter that IssuanceVault._allocateYieldToTranches applies: a tranche must
+            // have non-zero totalAssets and at least one share held outside VIRTUAL_SHARES_RECEIVER.
+            address[] memory order = v.getTrancheOrder();
+            uint256 trancheCount = order.length;
+            if (trancheCount == 0) return (false, "");
+            uint256 totalTvl;
+            for (uint256 i; i < trancheCount; ++i) {
+                address tr = order[i];
+                if (IERC20(tr).totalSupply() == IERC20(tr).balanceOf(VIRTUAL_SHARES_RECEIVER))
+                    continue;
+                totalTvl += ITranche(tr).totalAssets();
+            }
+            if (totalTvl == 0) return (false, "");
         } else {
+            // applyLoss checks PROTOCOL pause on the LossManager.
+            if (pauseManager.isPaused(lossManager, PauseCategory.PROTOCOL)) return (false, "");
             // applyLoss reverts when the loss exceeds the per-tx cap.
             uint256 maxLoss = ILossManager(lossManager).maxLossPerTxUSDC();
             if (maxLoss != 0 && pendingDeltaUSDC > maxLoss) return (false, "");
@@ -206,6 +237,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
     }
 
     /// @notice Returns true when a NAV snapshot is currently pending.
+    /// @return True if a pending NAV exists (pendingReadyAt != 0).
     /// @dev Kept as an explicit getter for external integrations.
     function hasPendingNav() public view returns (bool) {
         return pendingReadyAt != 0;
@@ -232,7 +264,7 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         uint256 navUSDC,
         uint256 totalSupplyMZ
     ) internal pure returns (bool isYield, uint256 deltaUSDC) {
-        uint256 totalSupplyUSDC = totalSupplyMZ / SCALE;
+        uint256 totalSupplyUSDC = (totalSupplyMZ + SCALE - 1) / SCALE;
         if (navUSDC >= totalSupplyUSDC) {
             isYield = true;
             deltaUSDC = navUSDC - totalSupplyUSDC;
@@ -250,12 +282,22 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
 
     function _setVetoPeriod(uint256 newPeriod) internal {
         if (newPeriod > MAX_VETO_PERIOD) revert InvalidVetoPeriod();
+        _assertStalenessBound(maxAnswerStaleness, newPeriod);
         vetoPeriod = uint32(newPeriod);
     }
 
     function _setMaxAnswerStaleness(uint32 newMaxAnswerStaleness) internal {
         if (newMaxAnswerStaleness == 0) revert InvalidAnswerStaleness();
+        _assertStalenessBound(newMaxAnswerStaleness, vetoPeriod);
         maxAnswerStaleness = newMaxAnswerStaleness;
+    }
+
+    /// @dev Enforces `staleness < max(veto, epochDuration)` so that same report
+    ///      can't be applied in different epochs.
+    function _assertStalenessBound(uint256 staleness, uint256 veto) internal view {
+        uint256 epochDur = IVault(vault).epochDuration();
+        uint256 bound = veto > epochDur ? veto : epochDur;
+        if (staleness >= bound) revert InvalidAnswerStaleness();
     }
 
     function _readFreshAnswer(

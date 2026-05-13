@@ -10,9 +10,10 @@ import "./interfaces/IVault.sol";
 import "./interfaces/IAllowlist.sol";
 
 /// @title MZUSD stablecoin
-/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals).
-/// @notice Supports atomic netting of deposits vs withdrawals within the same tx.
-/// @notice Supports a global redemption cap in USDC (6 decimals), enforced per window.
+/// @notice 1 USDC (6 decimals) = 1 MZUSD (18 decimals). Withdrawals are quantized to full USDC units,
+///         subject to a configurable withdrawal fee (bps), and gated by a sliding-window redemption cap.
+/// @notice Atomic netting: same-tx withdrawals bypass the redemption cap for amounts deposited earlier in the tx.
+/// @notice Deposit and withdrawal access is gated by Allowlist (KYC + Chainalysis sanctions check).
 /// @dev Burn authorization is delegated to AccessManager (BURNER_ROLE), usually granted to tranche contracts.
 // @dev This disables false positive by aderyn static analysis tool, it sees payable in upgradeToAndCall and raises an error about locking ether.
 // aderyn-fp-next-line(contract-locks-ether)
@@ -29,6 +30,7 @@ contract MZUSD is
     /// @notice Basis points denominator used across fee math.
     /// @dev Examples: 10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%.
     uint16 public constant BPS = 10_000;
+    uint16 public constant MAX_WITHDRAWAL_FEE_BPS = 1_000;
     /// @notice Decimal conversion scale between USDC (6d) and MZUSD (18d): 1 USDC = 1e12 MZUSD units.
     uint256 private constant SCALE = 10 ** (MZ_DECIMALS - USDC_DECIMALS);
     uint32 public constant MIN_REDEMPTION_WINDOW_DURATION = 1 hours;
@@ -36,7 +38,7 @@ contract MZUSD is
 
     IVault public vault;
     /// @notice Start timestamp of current redemption window.
-    uint40 public windowStartTimestamp;
+    uint48 public windowStartTimestamp;
     /// @notice Duration of redemption window in seconds (e.g. 1 hours).
     uint32 public redemptionWindowDuration;
     /// @notice Global redemption cap in USDC (6 decimals); must be > 0.
@@ -55,9 +57,13 @@ contract MZUSD is
     /// @notice Address of allowlist for accounts validation.
     IAllowlist public allowlist;
 
+    /// @notice Next global redemption cap (USDC, 6 decimals) to apply when the window rolls.
+    uint256 public nextGlobalRedemptionCapUSDC;
+
     event Deposit(address indexed user, uint256 usdcAmount);
     event Withdrawal(address indexed user, uint256 usdcOut);
     event WithdrawalFeeUpdated(uint256 newFeeBps);
+    event GlobalRedemptionCapQueued(uint256 newCapUSDC);
     event GlobalRedemptionCapUpdated(uint256 newCapUSDC);
     event RedemptionWindowDurationQueued(uint32 newDuration);
     event RedemptionWindowDurationUpdated(uint32 newDuration);
@@ -78,6 +84,8 @@ contract MZUSD is
     error InvalidUSDCDecimals(uint8 actualDecimals);
     error AccountNotAllowed(address account);
 
+    /// @notice Disable initializer on implementation contract and set immutable USDC token reference.
+    /// @param _usdc USDC token address; must be non-zero and expose 6 decimals.
     constructor(address _usdc) {
         if (_usdc == address(0)) revert ZeroAddress();
 
@@ -100,9 +108,11 @@ contract MZUSD is
         _;
     }
 
+    /// @notice Initialize the MZUSD token.
     /// @param accessManager AccessManager address.
     /// @param pauseManager_ PauseManager address for category-based pauses.
-    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals).
+    /// @param allowlist_ Allowlist contract address for KYC/sanctions gating on deposits and withdrawals.
+    /// @param _initialCapUSDC Initial global redemption cap in USDC (6 decimals); must be > 0.
     function initialize(
         address accessManager,
         address pauseManager_,
@@ -118,9 +128,8 @@ contract MZUSD is
         __PauseManaged_init(pauseManager_);
 
         _setGlobalRedemptionCap(_initialCapUSDC);
-        windowStartTimestamp = uint40(block.timestamp);
+        windowStartTimestamp = uint48(block.timestamp);
         redemptionWindowDuration = 1 hours;
-        nextRedemptionWindowDuration = redemptionWindowDuration;
         allowlist = IAllowlist(allowlist_);
     }
 
@@ -175,7 +184,7 @@ contract MZUSD is
         if (address(vault) == address(0)) revert VaultNotSet();
         uint256 usdcOutNet = usdcOutGross;
         if (withdrawalFeeBps != 0) {
-            uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps) / BPS;
+            uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps + BPS - 1) / BPS;
             usdcOutNet -= feeUSDC;
         }
         if (usdcOutNet != 0) {
@@ -185,6 +194,10 @@ contract MZUSD is
         emit Withdrawal(msg.sender, usdcOutNet);
     }
 
+    /// @notice Transfer MZUSD; paused when TRANSFERS category is active.
+    /// @param to Recipient address.
+    /// @param value Amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function transfer(
         address to,
         uint256 value
@@ -192,6 +205,10 @@ contract MZUSD is
         return super.transfer(to, value);
     }
 
+    /// @notice Approve spender; paused when TRANSFERS category is active.
+    /// @param spender Address to approve.
+    /// @param value Allowance amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function approve(
         address spender,
         uint256 value
@@ -199,6 +216,11 @@ contract MZUSD is
         return super.approve(spender, value);
     }
 
+    /// @notice Transfer MZUSD on behalf of `from`; paused when TRANSFERS category is active.
+    /// @param from Source address.
+    /// @param to Recipient address.
+    /// @param value Amount of MZUSD (18 decimals).
+    /// @return success True on success.
     function transferFrom(
         address from,
         address to,
@@ -210,7 +232,9 @@ contract MZUSD is
     //MINT/BURN for authorized contracts (fees, yield distribution, burn losses)
 
     /// @notice Mint MZUSD to an address.
-    /// @dev Used by VAULT to mint MZUSD
+    /// @param to Recipient address.
+    /// @param amount Amount of MZUSD to mint (18 decimals).
+    /// @dev Used by VAULT to mint MZUSD.
     function mint(
         address to,
         uint256 amount
@@ -219,6 +243,7 @@ contract MZUSD is
     }
 
     /// @notice Burn MZUSD from caller balance.
+    /// @param amount Amount of MZUSD to burn (18 decimals).
     /// @dev AccessManager should grant burn permission only to approved tranche contracts.
     function burn(uint256 amount) external restricted whenNotPaused(PauseCategory.PROTOCOL) {
         _burn(msg.sender, amount);
@@ -226,13 +251,22 @@ contract MZUSD is
 
     //SETTERS
 
-    /// @notice Set global redemption cap in USDC (6 decimals).
+    /// @notice Queue a new global redemption cap in USDC (6 decimals).
     /// @param newCapUSDC New cap value; must be > 0.
+    /// @dev The new cap takes effect on the next window rollover.
     function setGlobalRedemptionCap(
         uint256 newCapUSDC
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (globalRedemptionCapUSDC == newCapUSDC) revert SameValue();
-        _setGlobalRedemptionCap(newCapUSDC);
+        if (newCapUSDC == 0) revert ZeroCap();
+
+        uint256 pending = nextGlobalRedemptionCapUSDC;
+        if (pending == 0) {
+            pending = globalRedemptionCapUSDC;
+        }
+        if (pending == newCapUSDC) revert SameValue();
+
+        nextGlobalRedemptionCapUSDC = newCapUSDC;
+        emit GlobalRedemptionCapQueued(newCapUSDC);
     }
 
     /// @notice Set the duration of the redemption window (how long a window lasts).
@@ -259,17 +293,18 @@ contract MZUSD is
     }
 
     /// @notice Set withdrawal fee in bps (charged on USDC output).
-    /// @param newFeeBps New fee rate in bps (10_000 = 100%, 500 = 5%, 50 = 0.5%, 5 = 0.05%).
+    /// @param newFeeBps New fee rate in bps, capped at MAX_WITHDRAWAL_FEE_BPS (10%).
     function setWithdrawalFeeBps(
         uint16 newFeeBps
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
-        if (newFeeBps >= BPS) revert TooBigBps();
+        if (newFeeBps > MAX_WITHDRAWAL_FEE_BPS) revert TooBigBps();
         if (withdrawalFeeBps == newFeeBps) revert SameValue();
         withdrawalFeeBps = newFeeBps;
         emit WithdrawalFeeUpdated(newFeeBps);
     }
 
     /// @notice Set IssuanceVault address (one-time).
+    /// @param _vault IssuanceVault proxy address; must be non-zero.
     /// @dev IssuanceVault is immutable at the application level: once set, it cannot be changed.
     function setVault(address _vault) external restricted {
         if (_vault == address(0)) revert ZeroAddress();
@@ -278,16 +313,21 @@ contract MZUSD is
         emit VaultUpdated(_vault);
     }
 
-    /// @notice Set Allowlist.
+    /// @notice Set Allowlist contract for deposit/withdrawal gating.
+    /// @param _allowlist New Allowlist proxy address; must be non-zero.
     function setAllowlist(address _allowlist) external restricted {
         if (_allowlist == address(0)) revert ZeroAddress();
+        if (address(allowlist) == _allowlist) revert SameValue();
         allowlist = IAllowlist(_allowlist);
         emit AllowlistUpdated(_allowlist);
     }
 
     //GETTERS
 
-    /// @notice View redemption cap usage for the current (or next) window
+    /// @notice View redemption cap usage for the current (or next) window.
+    /// @return capUSDC Global redemption cap in USDC (6 decimals).
+    /// @return usedUSDC USDC redeemed so far in the current window (0 if window has expired).
+    /// @return remainingUSDC USDC still available for redemption in the current window.
     function getRemainingRedemptionCap()
         public
         view
@@ -296,30 +336,37 @@ contract MZUSD is
         capUSDC = globalRedemptionCapUSDC;
         if (_isWindowExpired()) {
             // Next withdrawal resets the window — full cap available
+            uint256 pendingCap = nextGlobalRedemptionCapUSDC;
+            if (pendingCap != 0) capUSDC = pendingCap;
             return (capUSDC, 0, capUSDC);
         }
         usedUSDC = windowUsedUSDC;
         remainingUSDC = usedUSDC >= capUSDC ? 0 : capUSDC - usedUSDC;
     }
 
-    /// @notice View the current redemption window timing
+    /// @notice View the current redemption window timing.
+    /// @return windowStart Start timestamp of the current (or projected) window.
+    /// @return windowEnd End timestamp of the current (or projected) window.
+    /// @return duration Window duration in seconds (may reflect a queued duration if window expired).
     function getRedemptionWindow()
         external
         view
-        returns (uint40 windowStart, uint40 windowEnd, uint32 duration)
+        returns (uint48 windowStart, uint48 windowEnd, uint32 duration)
     {
         duration = redemptionWindowDuration;
         if (_isWindowExpired()) {
             // Next withdrawal would reset — show projected window
             uint32 pending = nextRedemptionWindowDuration;
             if (pending != 0) duration = pending;
-            windowStart = uint40(block.timestamp);
+            windowStart = uint48(block.timestamp);
         } else {
             windowStart = windowStartTimestamp;
         }
         windowEnd = windowStart + duration;
     }
 
+    /// @notice Returns token decimals (18).
+    /// @return MZUSD decimal precision.
     function decimals() public pure override returns (uint8) {
         return MZ_DECIMALS;
     }
@@ -345,21 +392,28 @@ contract MZUSD is
     /// @notice Consume from the global redemption cap for the current window.
     /// @dev Rolls the window forward and applies a queued duration if needed.
     function _checkAndConsumeGlobalCap(uint256 usdcAmount) internal {
-        uint256 cap = globalRedemptionCapUSDC;
         uint32 duration = redemptionWindowDuration;
 
         if (block.timestamp >= uint256(windowStartTimestamp) + duration) {
-            windowStartTimestamp = uint40(block.timestamp);
+            windowStartTimestamp = uint48(block.timestamp);
             windowUsedUSDC = 0;
 
-            uint32 pending = nextRedemptionWindowDuration;
-            if (pending != 0) {
-                redemptionWindowDuration = pending;
+            uint32 pendingDuration = nextRedemptionWindowDuration;
+            if (pendingDuration != 0) {
+                redemptionWindowDuration = pendingDuration;
                 nextRedemptionWindowDuration = 0;
-                emit RedemptionWindowDurationUpdated(pending);
+                emit RedemptionWindowDurationUpdated(pendingDuration);
+            }
+
+            uint256 pendingCap = nextGlobalRedemptionCapUSDC;
+            if (pendingCap != 0) {
+                globalRedemptionCapUSDC = pendingCap;
+                nextGlobalRedemptionCapUSDC = 0;
+                emit GlobalRedemptionCapUpdated(pendingCap);
             }
         }
 
+        uint256 cap = globalRedemptionCapUSDC;
         uint256 newTotal = windowUsedUSDC + usdcAmount;
         if (newTotal > cap) revert GlobalRedemptionCapExceeded(cap, newTotal, usdcAmount);
 

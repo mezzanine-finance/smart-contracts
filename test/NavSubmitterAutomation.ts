@@ -100,7 +100,7 @@ describe("NavSubmitterAutomation", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([deployer.address]);
 
@@ -117,7 +117,7 @@ describe("NavSubmitterAutomation", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address], {
+        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, bob.address, 86400], {
             kind: "uups",
             initializer: "initialize",
             unsafeAllow: ["constructor", "state-variable-immutable"],

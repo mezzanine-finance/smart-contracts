@@ -6,6 +6,7 @@ import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PauseManagedUpgradeable} from "./pause/PauseManagedUpgradeable.sol";
 import {PauseCategory} from "./pause/PauseCategory.sol";
+import {IPauseManager} from "./pause/IPauseManager.sol";
 import {IMZUSD} from "./interfaces/IMZUSD.sol";
 import {ITranche} from "./interfaces/ITranche.sol";
 import {IVault} from "./interfaces/IVault.sol";
@@ -27,22 +28,13 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
 
     /// @notice Uncovered loss from the latest `applyLoss` call (MZUSD 18d).
     uint256 public lastUncoveredLossMZ;
-    /// @notice Total uncovered loss accumulated across all `applyLoss` calls (MZUSD 18d).
-    uint256 public totalUncoveredLossMZ;
 
     /// @notice Emitted after each loss application.
     /// @param usdcLoss Requested loss in USDC 6d.
     /// @param requestedMZ Requested loss in MZUSD 18d.
     /// @param burnedMZ Burned amount in MZUSD 18d.
     /// @param uncoveredMZ Uncovered amount for this call in MZUSD 18d.
-    /// @param totalUncoveredMZ Accumulated uncovered amount in MZUSD 18d.
-    event LossApplied(
-        uint256 usdcLoss,
-        uint256 requestedMZ,
-        uint256 burnedMZ,
-        uint256 uncoveredMZ,
-        uint256 totalUncoveredMZ
-    );
+    event LossApplied(uint256 usdcLoss, uint256 requestedMZ, uint256 burnedMZ, uint256 uncoveredMZ);
     /// @notice Emitted when max loss per transaction is updated.
     /// @param newLimitUSDC New max loss value in USDC 6 decimals.
     event MaxLossPerTxUpdated(uint256 newLimitUSDC);
@@ -57,8 +49,11 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     error NotNavOracle();
     /// @notice Thrown when requested loss exceeds current MZUSD total supply scaled to USDC.
     error LossExceedsTotalSupply(uint256 usdcLoss, uint256 totalSupplyUSDC);
+    /// @notice Thrown when a setter is called with the same value as the current state.
+    error SameValue();
 
     /// @notice Disable initializer on implementation contract and set immutable vault.
+    /// @param vaultAddress IssuanceVault address; must be non-zero.
     constructor(address vaultAddress) {
         if (vaultAddress == address(0)) revert ZeroAddress();
         vault = vaultAddress;
@@ -109,11 +104,8 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         (uint256 burnedMZ, uint256 uncoveredMZ) = _applyLossAcrossOrder(_toMZ(usdcLoss));
 
         lastUncoveredLossMZ = uncoveredMZ;
-        if (uncoveredMZ != 0) {
-            totalUncoveredLossMZ += uncoveredMZ;
-        }
 
-        emit LossApplied(usdcLoss, _toMZ(usdcLoss), burnedMZ, uncoveredMZ, totalUncoveredLossMZ);
+        emit LossApplied(usdcLoss, _toMZ(usdcLoss), burnedMZ, uncoveredMZ);
     }
 
     // SETTERS
@@ -123,6 +115,7 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     function setMaxLossPerTxUSDC(
         uint256 maxLossValue
     ) external restricted whenNotPaused(PauseCategory.ADMIN) {
+        if (maxLossPerTxUSDC == maxLossValue) revert SameValue();
         maxLossPerTxUSDC = maxLossValue;
         emit MaxLossPerTxUpdated(maxLossValue);
     }
@@ -141,58 +134,42 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
     /// @return burnedMZ Total amount actually burned in MZUSD 18 decimals.
     /// @return uncoveredMZ Uncovered remainder in MZUSD 18 decimals.
     /// @dev Applies proportional split inside configured pairs and sequential burn for solo tranches.
+    ///      Tranches paused under `PauseCategory.PROTOCOL` are treated as zero TVL:
+    ///      solo paused tranches are skipped; in pair mode the unpaused side absorbs the full pair loss.
     function _applyLossAcrossOrder(
         uint256 requestedMZ
     ) internal returns (uint256 burnedMZ, uint256 uncoveredMZ) {
         IVault vaultRef = IVault(vault);
         address[] memory order = vaultRef.getTrancheOrder();
         uint256 orderLen = order.length;
+        IPauseManager pauseMgr = IPauseManager(pauseManager());
 
         // Remaining amount is progressively reduced as cuts are applied by order.
         uint256 remainingMZ = requestedMZ;
 
         for (uint256 i; remainingMZ != 0 && i < orderLen; ) {
-            // Current tranche and its optional paired tranche.
             address t0 = order[i];
             address t1 = vaultRef.tranchePairedTo(t0);
 
             // Process pair only at the left side to keep a single linear pass
             // and avoid re-processing the second tranche.
             if (i + 1 < orderLen && t1 != address(0) && order[i + 1] == t1) {
-                uint256 tvl0 = ITranche(t0).totalAssets();
-                uint256 tvl1 = ITranche(t1).totalAssets();
-                uint256 pairTVL = tvl0 + tvl1;
-
-                // Paired tranches split loss either by full pair TVL coverage
-                // or proportionally by TVL when pair TVL exceeds remaining loss.
-                if (pairTVL != 0) {
-                    uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
-                    (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, tvl1, pairTVL);
-
-                    if (burn0 != 0) {
-                        ITranche(t0).burnMZUSD(burn0);
-                        burnedMZ += burn0;
-                    }
-
-                    if (burn1 != 0) {
-                        ITranche(t1).burnMZUSD(burn1);
-                        burnedMZ += burn1;
-                    }
-
-                    remainingMZ -= (burn0 + burn1);
-                }
-
+                uint256 burnedPair = _applyLossToPair(pauseMgr, t0, t1, remainingMZ);
+                burnedMZ += burnedPair;
+                remainingMZ -= burnedPair;
                 i += 2;
                 continue;
             }
 
-            // Solo tranche consumes as much loss as possible from its own TVL.
-            uint256 tvl = ITranche(t0).totalAssets();
-            if (tvl != 0) {
-                uint256 burnAmount = tvl < remainingMZ ? tvl : remainingMZ;
-                ITranche(t0).burnMZUSD(burnAmount);
-                burnedMZ += burnAmount;
-                remainingMZ -= burnAmount;
+            // Solo tranche: skip if paused; otherwise consume as much as possible from its TVL.
+            if (!pauseMgr.isPaused(t0, PauseCategory.PROTOCOL)) {
+                uint256 tvl = ITranche(t0).totalAssets();
+                if (tvl != 0) {
+                    uint256 burnAmount = tvl < remainingMZ ? tvl : remainingMZ;
+                    ITranche(t0).burnMZUSD(burnAmount);
+                    burnedMZ += burnAmount;
+                    remainingMZ -= burnAmount;
+                }
             }
 
             ++i;
@@ -202,36 +179,56 @@ contract LossManager is AccessManagedUpgradeable, UUPSUpgradeable, PauseManagedU
         uncoveredMZ = remainingMZ;
     }
 
+    /// @notice Apply loss to a paired tranche slot; paused sides are treated as zero TVL.
+    /// @param pauseMgr Pause manager used to query per-tranche PROTOCOL pause state.
+    /// @param t0 First tranche in the pair.
+    /// @param t1 Second tranche in the pair.
+    /// @param remainingMZ Remaining loss budget in MZUSD 18 decimals.
+    /// @return burnedPair Total burned across the pair in MZUSD 18 decimals.
+    function _applyLossToPair(
+        IPauseManager pauseMgr,
+        address t0,
+        address t1,
+        uint256 remainingMZ
+    ) internal returns (uint256 burnedPair) {
+        // Paused side is treated as zero TVL so the unpaused side absorbs the full pair loss.
+        uint256 tvl0 = pauseMgr.isPaused(t0, PauseCategory.PROTOCOL)
+            ? 0
+            : ITranche(t0).totalAssets();
+        uint256 tvl1 = pauseMgr.isPaused(t1, PauseCategory.PROTOCOL)
+            ? 0
+            : ITranche(t1).totalAssets();
+        uint256 pairTVL = tvl0 + tvl1;
+        if (pairTVL == 0) return 0;
+
+        uint256 lossForPair = pairTVL < remainingMZ ? pairTVL : remainingMZ;
+        (uint256 burn0, uint256 burn1) = _splitPair(lossForPair, tvl0, pairTVL);
+
+        if (burn0 != 0) ITranche(t0).burnMZUSD(burn0);
+        if (burn1 != 0) ITranche(t1).burnMZUSD(burn1);
+
+        burnedPair = burn0 + burn1;
+    }
+
     /// @notice Split `lossForPair` proportionally by TVL between two paired tranches.
     /// @param lossForPair Loss amount allocated to the pair.
     /// @param tvl0 TVL of first tranche.
-    /// @param tvl1 TVL of second tranche.
-    /// @param pairTVL Combined TVL of the pair.
+    /// @param pairTVL Combined TVL of the pair (`tvl0 + tvl1`).
     /// @return burn0 Burn amount for first tranche.
     /// @return burn1 Burn amount for second tranche.
-    /// @dev Uses floor division, then assigns rounding remainder to tranche 0 first
-    ///      and tranche 1 second, while preserving per-tranche TVL caps.
+    /// @dev Computes tranche 0 via floor division and derives tranche 1 by
+    ///      subtraction. Callers must ensure `lossForPair <= pairTVL`; under
+    ///      that invariant `burn1 <= tvl1` holds because
+    ///      `floor(loss*tvl0/pairTVL) >= loss - tvl1`, so no cap-overflow
+    ///      handling is required. The 1-wei floor-rounding residue lands on
+    ///      tranche 1.
     function _splitPair(
         uint256 lossForPair,
         uint256 tvl0,
-        uint256 tvl1,
         uint256 pairTVL
     ) internal pure returns (uint256 burn0, uint256 burn1) {
-        // Proportional split with floor rounding.
         burn0 = (lossForPair * tvl0) / pairTVL;
-        burn1 = (lossForPair * tvl1) / pairTVL;
-
-        // Allocate rounding remainder: tranche 0 first, then tranche 1.
-        uint256 rem = lossForPair - (burn0 + burn1);
-        if (rem == 0) return (burn0, burn1);
-
-        uint256 cap0 = tvl0 - burn0;
-        if (rem > cap0) {
-            burn0 += cap0;
-            burn1 += (rem - cap0);
-        } else {
-            burn0 += rem;
-        }
+        burn1 = lossForPair - burn0;
     }
 
     /// @notice While restricted is applied to the internal _authorizeUpgrade function,

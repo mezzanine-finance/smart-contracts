@@ -98,7 +98,7 @@ describe("UmbrellaEpochFinalizer", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([alice.address, bob.address]);
 
@@ -120,12 +120,16 @@ describe("UmbrellaEpochFinalizer", () => {
         )) as unknown as MZUSD;
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, alice.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusd.target, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, alice.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusd.target, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
         tranche = (await upgrades.deployProxy(
@@ -328,6 +332,26 @@ describe("UmbrellaEpochFinalizer", () => {
         await expect(finalizer.connect(chainlinkAutomation).performUpkeep(performData))
             .to.be.revertedWithCustomError(tranche, "CategoryPaused")
             .withArgs(PauseCategory.PROTOCOL);
+    });
+
+    it("checkUpkeep returns false when PROTOCOL is paused on the tranche", async () => {
+        const {candidate} = await preparePendingEpoch(alice);
+
+        const finalizer = await deployFinalizer(candidate);
+
+        // Per-contract pause: only the tranche is gated.
+        await pauseManager.pauseContract(tranche.target, PauseCategory.PROTOCOL);
+        const [neededAfterContractPause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterContractPause).to.equal(false);
+
+        await pauseManager.unpauseContract(tranche.target, PauseCategory.PROTOCOL);
+        const [neededAfterUnpause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterUnpause).to.equal(true);
+
+        // Global pause: same outcome via the shared global flag.
+        await pauseManager.pauseGlobal(PauseCategory.PROTOCOL);
+        const [neededAfterGlobalPause] = await finalizer.checkUpkeep("0x");
+        expect(neededAfterGlobalPause).to.equal(false);
     });
 
     it("finalizes an eligible epoch when work exists", async () => {

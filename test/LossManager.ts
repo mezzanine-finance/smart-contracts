@@ -116,7 +116,7 @@ describe("LossManager", () => {
         const allowlist = await upgrades.deployProxy(
             AllowlistFactory,
             [accessManager.target, sanctionsList.target],
-            {kind: "uups", initializer: "initialize"}
+            {kind: "uups", initializer: "initialize", unsafeAllow: ["constructor"]}
         );
         await allowlist.addBatch([deployer.address, alice.address, bob.address, carol.address]);
 
@@ -134,12 +134,16 @@ describe("LossManager", () => {
         mzusdAddr = await mzusd.getAddress();
 
         const VaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
-        vault = (await upgrades.deployProxy(VaultFactory, [0, bob.address, 0, carol.address], {
-            kind: "uups",
-            initializer: "initialize",
-            unsafeAllow: ["constructor", "state-variable-immutable"],
-            constructorArgs: [mzusdAddr, reservoir.target],
-        })) as unknown as IssuanceVault;
+        vault = (await upgrades.deployProxy(
+            VaultFactory,
+            [0, bob.address, 0, carol.address, 86400],
+            {
+                kind: "uups",
+                initializer: "initialize",
+                unsafeAllow: ["constructor", "state-variable-immutable"],
+                constructorArgs: [mzusdAddr, reservoir.target],
+            }
+        )) as unknown as IssuanceVault;
         vaultAddr = await vault.getAddress();
 
         const TrancheFactory = await ethers.getContractFactory("Tranche", deployer);
@@ -512,7 +516,7 @@ describe("LossManager", () => {
 
                 await setOrderAndPairs(order, new Array(order.length).fill(false));
 
-                await time.increase(DAY);
+                await time.increase(DAY + 1);
                 const {parsed, cuts} = await applyLossAndCapture(order, to6(1n));
 
                 // expected burn only from first tranche (they all have enough TVL)
@@ -713,7 +717,6 @@ describe("LossManager", () => {
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(41n))).wait();
 
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(1n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(1n));
 
             const balBefore = await mzusd.balanceOf(alice.address);
             await junior.connect(alice).claim(alice.address, epochAtRequest);
@@ -737,12 +740,10 @@ describe("LossManager", () => {
             await time.increase(DAY);
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(41n))).wait();
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(1n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(1n));
 
             await time.increase(DAY);
             await (await lossManager.connect(navOracleSigner).applyLoss(to6(20n))).wait();
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(20n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(21n));
         });
 
         it("Burns all available across all tranches, then accumulates more debt when TVL is zero", async () => {
@@ -779,7 +780,6 @@ describe("LossManager", () => {
             expect(cuts1).to.deep.equal([to18(10n), to18(10n), to18(10n)]);
             expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
             // After first burn, only reserved balances remain => no liquid TVL.
             expect(await junior.totalAssets()).to.equal(0n);
@@ -795,7 +795,6 @@ describe("LossManager", () => {
             expect(parsed2.args.burnedMZ).to.equal(0n);
             expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
 
         it("Production order pair drains all tranches and next loss accumulates pure debt", async () => {
@@ -828,7 +827,6 @@ describe("LossManager", () => {
             expect(parsed1.args.burnedMZ).to.equal(to18(40n));
             expect(parsed1.args.uncoveredMZ).to.equal(to18(5n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(5n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(5n));
 
             // All tranches fully drained.
             expect(await pol.totalAssets()).to.equal(0n);
@@ -846,7 +844,6 @@ describe("LossManager", () => {
             expect(parsed2.args.burnedMZ).to.equal(0n);
             expect(parsed2.args.uncoveredMZ).to.equal(to18(7n));
             expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(7n));
-            expect(await lossManager.totalUncoveredLossMZ()).to.equal(to18(12n));
         });
 
         it("Reverts when loss exceeds total supply sanity bound", async () => {
@@ -1185,6 +1182,129 @@ describe("LossManager", () => {
                 expect(cutM + cutJ + cutP + cutS).to.equal(burnedMZ);
                 expect(burnedMZ <= requestedMZ).to.equal(true);
             }
+        });
+    });
+
+    describe("Paused tranche handling", () => {
+        it("Skips a paused solo tranche and applies loss to the next one", async () => {
+            // Order: [junior, mezzanine, senior] with 10 MZUSD TVL each.
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(10n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(10n)));
+            await depositMZIntoTranche(carol, senior, await mintMZUSDFor(carol, to6(10n)));
+
+            // Pause junior (first in order) under PROTOCOL; burnMZUSD would revert on it.
+            await pauseManager.pauseContract(juniorAddr, PauseCategory.PROTOCOL);
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+            const s0 = await mzusd.balanceOf(seniorAddr);
+
+            await time.increase(DAY);
+            const {parsed, cuts} = await applyLossAndCapture(
+                [juniorAddr, mezzanineAddr, seniorAddr],
+                to6(5n)
+            );
+
+            // Junior untouched; mezzanine absorbs the full loss.
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(5n));
+            expect(await mzusd.balanceOf(seniorAddr)).to.equal(s0);
+
+            expect(cuts).to.deep.equal([0n, to18(5n), 0n]);
+            expect(parsed.args.burnedMZ).to.equal(to18(5n));
+            expect(parsed.args.uncoveredMZ).to.equal(0n);
+        });
+
+        it("Treats all paused solo tranches as zero TVL and accumulates uncovered", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(5n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(5n)));
+
+            await pauseManager.pauseContract(juniorAddr, PauseCategory.PROTOCOL);
+            await pauseManager.pauseContract(mezzanineAddr, PauseCategory.PROTOCOL);
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+            const s0 = await mzusd.balanceOf(seniorAddr);
+
+            await time.increase(DAY);
+            const {parsed, cuts} = await applyLossAndCapture(
+                [juniorAddr, mezzanineAddr, seniorAddr],
+                to6(3n)
+            );
+
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0);
+            expect(await mzusd.balanceOf(seniorAddr)).to.equal(s0);
+
+            expect(cuts).to.deep.equal([0n, 0n, 0n]);
+            expect(parsed.args.burnedMZ).to.equal(0n);
+            expect(parsed.args.uncoveredMZ).to.equal(to18(3n));
+            expect(await lossManager.lastUncoveredLossMZ()).to.equal(to18(3n));
+        });
+
+        it("In pair mode, paused side is skipped and the unpaused side absorbs the full pair loss", async () => {
+            // Without pause: junior=100, pol=300 → split 1:3 on a 40 loss (10, 30).
+            // With junior paused: pol absorbs the full 40.
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
+
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
+
+            await pauseManager.pauseContract(juniorAddr, PauseCategory.PROTOCOL);
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+
+            await time.increase(DAY);
+            const {parsed, cuts} = await applyLossAndCapture(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                to6(40n)
+            );
+
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0 - to18(40n));
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0);
+
+            expect(cuts[0]).to.equal(0n);
+            expect(cuts[1]).to.equal(to18(40n));
+            expect(parsed.args.burnedMZ).to.equal(to18(40n));
+            expect(parsed.args.uncoveredMZ).to.equal(0n);
+        });
+
+        it("In pair mode, both paused sides let the loss roll over to the next tranche", async () => {
+            await depositMZIntoTranche(alice, junior, await mintMZUSDFor(alice, to6(100n)));
+            await depositMZIntoPol(await mintMZUSDFor(deployer, to6(300n)));
+            await depositMZIntoTranche(bob, mezzanine, await mintMZUSDFor(bob, to6(50n)));
+
+            await setOrderAndPairs(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                [true, true, false, false]
+            );
+
+            await pauseManager.pauseContract(juniorAddr, PauseCategory.PROTOCOL);
+            await pauseManager.pauseContract(polAddr, PauseCategory.PROTOCOL);
+
+            const j0 = await mzusd.balanceOf(juniorAddr);
+            const p0 = await mzusd.balanceOf(polAddr);
+            const m0 = await mzusd.balanceOf(mezzanineAddr);
+
+            await time.increase(DAY);
+            const {parsed, cuts} = await applyLossAndCapture(
+                [juniorAddr, polAddr, mezzanineAddr, seniorAddr],
+                to6(20n)
+            );
+
+            expect(await mzusd.balanceOf(juniorAddr)).to.equal(j0);
+            expect(await mzusd.balanceOf(polAddr)).to.equal(p0);
+            expect(await mzusd.balanceOf(mezzanineAddr)).to.equal(m0 - to18(20n));
+
+            expect(cuts).to.deep.equal([0n, 0n, to18(20n), 0n]);
+            expect(parsed.args.burnedMZ).to.equal(to18(20n));
+            expect(parsed.args.uncoveredMZ).to.equal(0n);
         });
     });
 

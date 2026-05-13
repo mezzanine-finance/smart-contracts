@@ -35,13 +35,17 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
         _disableInitializers();
     }
 
-    /// @param accessManager AccessManager address for pause authorization.
+    /// @notice Initialize the PauseManager.
+    /// @param accessManager AccessManager address for pause authorization; must be non-zero.
     function initialize(address accessManager) external initializer {
         if (accessManager == address(0)) revert ZeroAddress();
         __AccessManaged_init(accessManager);
     }
 
     /// @notice Returns true when the category is paused for the target.
+    /// @param target Contract address to check.
+    /// @param category Pause category to check.
+    /// @return True if globally paused or contract-specifically paused for the category.
     /// @dev Global pause takes precedence over contract-specific pause.
     function isPaused(address target, PauseCategory category) external view returns (bool) {
         if (_globalPaused[category]) return true;
@@ -49,16 +53,22 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     }
 
     /// @notice Returns true if a category is paused globally.
+    /// @param category Pause category to check.
+    /// @return True if the category is globally paused.
     function globalPaused(PauseCategory category) external view returns (bool) {
         return _globalPaused[category];
     }
 
     /// @notice Returns true if a category is paused for a specific contract.
+    /// @param target Contract address to check.
+    /// @param category Pause category to check.
+    /// @return True if the category is paused for the specific contract.
     function contractPaused(address target, PauseCategory category) external view returns (bool) {
         return _contractPaused[target][category];
     }
 
     /// @notice Pause a category for all contracts.
+    /// @param category Pause category to activate.
     function pauseGlobal(PauseCategory category) external restricted {
         if (_globalPaused[category]) revert AlreadyPaused(category);
         _globalPaused[category] = true;
@@ -66,6 +76,7 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     }
 
     /// @notice Unpause a category for all contracts.
+    /// @param category Pause category to deactivate.
     /// @dev Configure AccessManager with an execution delay for this method.
     function unpauseGlobal(PauseCategory category) external restricted {
         if (!_globalPaused[category]) revert AlreadyUnpaused(category);
@@ -74,6 +85,8 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     }
 
     /// @notice Pause a category for a specific contract.
+    /// @param target Contract address to pause; must be non-zero.
+    /// @param category Pause category to activate.
     function pauseContract(address target, PauseCategory category) external restricted {
         if (target == address(0)) revert ZeroAddress();
         if (_contractPaused[target][category]) revert ContractAlreadyPaused(target, category);
@@ -82,6 +95,8 @@ contract PauseManager is AccessManagedUpgradeable, UUPSUpgradeable, IPauseManage
     }
 
     /// @notice Unpause a category for a specific contract.
+    /// @param target Contract address to unpause; must be non-zero.
+    /// @param category Pause category to deactivate.
     /// @dev Configure AccessManager with an execution delay for this method.
     function unpauseContract(address target, PauseCategory category) external restricted {
         if (target == address(0)) revert ZeroAddress();

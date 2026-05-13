@@ -299,11 +299,6 @@
     },
     {
         "inputs": [],
-        "name": "FullWithdrawNotAllowed",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "InvalidAmount",
         "type": "error"
     },
@@ -377,6 +372,11 @@
             }
         ],
         "name": "SafeERC20FailedOperation",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SameValue",
         "type": "error"
     },
     {
@@ -770,7 +770,7 @@
     },
     {
         "inputs": [],
-        "name": "BASIS_POINTS",
+        "name": "BPS",
         "outputs": [
             {
                 "internalType": "uint256",
@@ -1874,9 +1874,9 @@
         "name": "yieldStreamEnd",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "uint48",
                 "name": "",
-                "type": "uint64"
+                "type": "uint48"
             }
         ],
         "stateMutability": "view",
@@ -1887,9 +1887,9 @@
         "name": "yieldStreamStart",
         "outputs": [
             {
-                "internalType": "uint64",
+                "internalType": "uint48",
                 "name": "",
-                "type": "uint64"
+                "type": "uint48"
             }
         ],
         "stateMutability": "view",
