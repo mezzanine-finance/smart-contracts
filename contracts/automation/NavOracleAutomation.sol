@@ -198,6 +198,10 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         // so a PROTOCOL pause on the vault blocks either action.
         if (pauseManager.isPaused(vault, PauseCategory.PROTOCOL)) return (false, "");
 
+        // Both paths also touch MZUSD under a PROTOCOL pause guard: distributeYield mints
+        // MZUSD, while applyLoss burns it. A PROTOCOL pause on MZUSD blocks either action.
+        if (pauseManager.isPaused(address(mzusd), PauseCategory.PROTOCOL)) return (false, "");
+
         if (pendingIsYield) {
             // distributeYield reverts when no tranches are registered, and the allocation step
             // reverts with TVLZero when no tranche contributes eligible TVL. Mirror the same

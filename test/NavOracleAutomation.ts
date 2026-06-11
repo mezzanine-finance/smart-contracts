@@ -392,6 +392,28 @@ describe("NavOracleAutomation", () => {
         expect(needed).to.equal(false);
     });
 
+    it("checkUpkeep returns false when MZUSD is paused for PROTOCOL (yield path)", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(10n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        // Upkeep is needed before pause
+        const [neededBefore] = await navAutomation.checkUpkeep("0x");
+        expect(neededBefore).to.equal(true);
+
+        // Pause PROTOCOL only on MZUSD — distributeYield mints MZUSD, which would revert
+        await pauseManager.pauseContract(mzusd.target, PauseCategory.PROTOCOL);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
+    });
+
     it("performUpkeep reverts with NotReady and returns pending readyAt", async () => {
         await mintAndDepositIntoTranche(oracle, to6(10n));
 
