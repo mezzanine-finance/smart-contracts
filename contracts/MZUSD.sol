@@ -187,9 +187,8 @@ contract MZUSD is
             uint256 feeUSDC = (usdcOutGross * withdrawalFeeBps + BPS - 1) / BPS;
             usdcOutNet -= feeUSDC;
         }
-        if (usdcOutNet != 0) {
-            vault.withdraw(msg.sender, usdcOutNet);
-        }
+        if (usdcOutNet == 0) revert TooSmallWithdrawalAmount(amountMZ, usdcOutNet);
+        vault.withdraw(msg.sender, usdcOutNet);
 
         emit Withdrawal(msg.sender, usdcOutNet);
     }

@@ -487,6 +487,21 @@ describe("MZUSD <-> USDC conversion", () => {
             expect(await mzusd.balanceOf(alice.address)).to.equal(0n);
         });
 
+        it("Reverts when the rounded-up fee consumes the entire net withdrawal", async () => {
+            const feeBps = 1000; // 10% (max)
+            const depositAmountUSDC = to6(10n);
+
+            await mzusd.setWithdrawalFeeBps(feeBps);
+            await fundAndDepositForAlice(depositAmountUSDC);
+
+            // amountMZ = SCALE => usdcOutGross = 1, feeUSDC = ceil(1 * 1000 / 10000) = 1,
+            // so usdcOutNet = 0.
+            const scale = to18(1n) / to6(1n);
+            await expect(mzusd.connect(alice).requestWithdrawal(scale))
+                .to.be.revertedWithCustomError(mzusd, "TooSmallWithdrawalAmount")
+                .withArgs(scale, 0n);
+        });
+
         it("When withdrawal fee is zero, withdrawal returns full gross USDC and keeps no fee in vault", async () => {
             const initialFeeBps = 777; // 7.77%
             const depositAmountUSDC = to6(100n);
