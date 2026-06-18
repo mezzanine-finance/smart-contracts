@@ -206,15 +206,19 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
             // distributeYield reverts when no tranches are registered, and the allocation step
             // reverts with TVLZero when no tranche contributes eligible TVL. Mirror the same
             // skip filter that IssuanceVault._allocateYieldToTranches applies: a tranche must
-            // have non-zero totalAssets and at least one share held outside VIRTUAL_SHARES_RECEIVER.
-            address[] memory order = v.getTrancheOrder();
-            uint256 trancheCount = order.length;
+            // be enabled, have at least one share held outside VIRTUAL_SHARES_RECEIVER, and not
+            // be PROTOCOL-paused, otherwise its totalAssets are excluded from eligible TVL.
+            uint256 trancheCount = v.tranchesLength();
             if (trancheCount == 0) return (false, "");
+            (address[] memory order, , bool[] memory enabled) = v.getTranches(0, trancheCount);
             uint256 totalTvl;
             for (uint256 i; i < trancheCount; ++i) {
                 address tr = order[i];
-                if (IERC20(tr).totalSupply() == IERC20(tr).balanceOf(VIRTUAL_SHARES_RECEIVER))
-                    continue;
+                if (
+                    !enabled[i] ||
+                    IERC20(tr).totalSupply() == IERC20(tr).balanceOf(VIRTUAL_SHARES_RECEIVER) ||
+                    pauseManager.isPaused(tr, PauseCategory.PROTOCOL)
+                ) continue;
                 totalTvl += ITranche(tr).totalAssets();
             }
             if (totalTvl == 0) return (false, "");

@@ -40,7 +40,6 @@ contract Tranche is
     // aderyn-ignore-next-line(large-numeric-literal)
     uint256 public constant BPS = 10_000;
     uint256 public constant MAX_UNSTAKE_DELAY_EPOCHS = 30;
-    address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
 
     // If true - direct ERC4626 withdraw/redeem are enabled and umbrella unstake flow is disabled
     bool public immutable directWithdrawEnabled;

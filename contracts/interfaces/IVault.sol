@@ -12,5 +12,17 @@ interface IVault {
     function navOracle() external view returns (address navOracleAddress);
     function mzusd() external view returns (address mzusdAddress);
     function getTrancheOrder() external view returns (address[] memory order);
+    function tranchesLength() external view returns (uint256 length);
+    function getTranches(
+        uint256 start,
+        uint256 count
+    )
+        external
+        view
+        returns (
+            address[] memory tranche,
+            uint16[] memory riskPremiumBpsArr,
+            bool[] memory enabled
+        );
     function tranchePairedTo(address tranche) external view returns (address paired);
 }
