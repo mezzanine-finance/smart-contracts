@@ -738,9 +738,6 @@ contract IssuanceVault is
         uint256 lastNonZeroIndex;
 
         IPauseManager pauseManagerCached = IPauseManager(pauseManager());
-        if (pauseManagerCached.isPaused(address(mzusdToken), PauseCategory.TRANSFERS)) {
-            revert CategoryPaused(PauseCategory.TRANSFERS);
-        }
 
         TrancheInfo memory t;
         uint256 trancheTvl;
