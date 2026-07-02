@@ -414,6 +414,26 @@ describe("NavOracleAutomation", () => {
         expect(needed).to.equal(false);
     });
 
+    it("checkUpkeep returns false when MZUSD transfers are paused for non-zero yield", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(10n));
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SCALE;
+        const navUSDC = totalSupplyUSDC + to6(1n);
+        await pushOracleAnswers(navUSDC, totalSupplyMZ);
+
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        const [neededBefore] = await navAutomation.checkUpkeep("0x");
+        expect(neededBefore).to.equal(true);
+
+        await pauseManager.pauseContract(mzusd.target, PauseCategory.TRANSFERS);
+
+        const [needed] = await navAutomation.checkUpkeep("0x");
+        expect(needed).to.equal(false);
+    });
+
     it("performUpkeep reverts with NotReady and returns pending readyAt", async () => {
         await mintAndDepositIntoTranche(oracle, to6(10n));
 
@@ -932,6 +952,22 @@ describe("NavOracleAutomation", () => {
         await navAutomation.connect(oracle).submitNav();
 
         await time.increase(DAY);
+
+        const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
+        expect(upkeepNeeded).to.equal(false);
+    });
+
+    it("checkUpkeep returns false when loss exceeds current MZUSD total supply", async () => {
+        await mintAndDepositIntoTranche(oracle, to6(100n));
+
+        const actualTotalSupplyMZ = await mzusd.totalSupply();
+        const reportedTotalSupplyMZ = actualTotalSupplyMZ * 2n;
+
+        await pushOracleAnswers(to6(50n), reportedTotalSupplyMZ);
+        await navAutomation.connect(oracle).submitNav();
+        await time.increase(DAY);
+
+        expect(await navAutomation.pendingDeltaUSDC()).to.equal(to6(150n));
 
         const [upkeepNeeded] = await navAutomation.checkUpkeep("0x");
         expect(upkeepNeeded).to.equal(false);
