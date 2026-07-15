@@ -28,7 +28,9 @@ const MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 const DAY = 24 * 60 * 60;
-const SCALE = 10n ** 12n;
+const SCALE = 10n ** 12n; // USDC 6d <-> MZUSD 18d
+const SUPPLY_SCALE = 10n ** 10n; // MZUSD 18d -> oracle answer 8d
+const ORACLE_SCALE = 10n ** 2n; // oracle answer 8d -> USDC 6d
 
 const LOSS_MANAGER_ROLE = 3n;
 const ORACLE_ROLE = 6n;
@@ -178,12 +180,12 @@ describe("NavOracleAutomation", () => {
             deployer
         );
         navFeedOracle = (await PackedOracleFactory.deploy(
-            18,
+            8,
             "Mock NAV oracle"
         )) as unknown as MockPackedNavOracle;
         await navFeedOracle.waitForDeployment();
         totalSupplyFeedOracle = (await PackedOracleFactory.deploy(
-            18,
+            8,
             "Mock totalSupply oracle"
         )) as unknown as MockPackedNavOracle;
         await totalSupplyFeedOracle.waitForDeployment();
@@ -296,14 +298,16 @@ describe("NavOracleAutomation", () => {
         return mintedMZ;
     }
 
+    // Callers pass NAV in USDC (6d) and total supply in MZUSD (18d) for readability; both
+    // feeds report 8 decimals on-chain, so convert before pushing.
     async function pushOracleAnswers(
         navUSDC: bigint,
         totalSupplyMZ: bigint,
         updatedAt?: bigint
     ): Promise<void> {
         const ts = updatedAt ?? BigInt(await time.latest());
-        await navFeedOracle.setLatestRoundData(navUSDC, ts);
-        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, ts);
+        await navFeedOracle.setLatestRoundData(navUSDC * ORACLE_SCALE, ts);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ / SUPPLY_SCALE, ts);
     }
 
     it("submits NAV snapshot and blocks double submit", async () => {
@@ -323,7 +327,14 @@ describe("NavOracleAutomation", () => {
 
         await expect(tx)
             .to.emit(navAutomation, "NavSubmitted")
-            .withArgs(navUSDC, totalSupplyMZ, true, deltaUSDC, submittedAt, readyAt);
+            .withArgs(
+                navUSDC * ORACLE_SCALE,
+                totalSupplyMZ / SUPPLY_SCALE,
+                true,
+                deltaUSDC,
+                submittedAt,
+                readyAt
+            );
 
         expect(await navAutomation.hasPendingNav()).to.equal(true);
         expect(await navAutomation.pendingDeltaUSDC()).to.equal(deltaUSDC);

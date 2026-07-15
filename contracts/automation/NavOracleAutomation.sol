@@ -33,7 +33,7 @@ import {PauseCategory} from "../pause/PauseCategory.sol";
  * - If any token is missing from the multi-point package for any reason, the relayer skips the update for all feeds in that package.
  */
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
-    uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
+    uint256 public constant ORACLE_SCALE = 1e2; // oracle answers (8d) -> USDC (6d)
     uint256 public constant MAX_VETO_PERIOD = 5 days;
     uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 30 minutes;
     address private constant VIRTUAL_SHARES_RECEIVER = 0x000000000000000000000000000000000000dEaD;
@@ -268,17 +268,20 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         emit NavApplied(isYield, deltaUSDC, readyAt);
     }
 
+    /// @dev Both `nav` and `totalSupply` are oracle answers reported with 8 decimals in the
+    ///      same USD-denominated unit, so the delta is taken in 8-decimal space and only then
+    ///      scaled down to USDC (6 decimals). Rounding stays conservative: yield rounds down
+    ///      (distribute no more than covered) and loss rounds up (never under-apply a loss).
     function _deltaUSDC(
-        uint256 navUSDC,
-        uint256 totalSupplyMZ
+        uint256 nav,
+        uint256 totalSupply
     ) internal pure returns (bool isYield, uint256 deltaUSDC) {
-        uint256 totalSupplyUSDC = (totalSupplyMZ + SCALE - 1) / SCALE;
-        if (navUSDC >= totalSupplyUSDC) {
+        if (nav >= totalSupply) {
             isYield = true;
-            deltaUSDC = navUSDC - totalSupplyUSDC;
+            deltaUSDC = (nav - totalSupply) / ORACLE_SCALE;
         } else {
             isYield = false;
-            deltaUSDC = totalSupplyUSDC - navUSDC;
+            deltaUSDC = (totalSupply - nav + ORACLE_SCALE - 1) / ORACLE_SCALE;
         }
     }
 

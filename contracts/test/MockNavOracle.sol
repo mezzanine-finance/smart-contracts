@@ -5,11 +5,11 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract MockNavOracle is AggregatorV3Interface {
-    uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
+    uint256 public constant SCALE = 1e10; // MZUSD 18d -> 8d oracle answer
     // 0.001% precision to allow much smaller per-epoch growth in short test epochs.
     uint256 public constant BPS = 100_000;
     uint256 public constant PREMIUM_BPS = 3; // +0.003% per submission
-    uint256 public constant MIN_NAV_DELTA_USDC = 1;
+    uint256 public constant MIN_NAV_DELTA_USDC = 100; // 8d floor (= 1 USDC 6d unit)
 
     address public mzUSD;
 
@@ -18,7 +18,7 @@ contract MockNavOracle is AggregatorV3Interface {
     }
 
     function decimals() external view returns (uint8) {
-        return 6; // USDC decimals
+        return 8; // oracle answers reported with 8 decimals
     }
 
     function description() external view returns (string memory) {
@@ -68,13 +68,13 @@ contract MockNavOracle is AggregatorV3Interface {
     }
 
     function _calculateCurrentNav() internal view returns (uint256) {
-        uint256 totalSupplyUSDC = IERC20(mzUSD).totalSupply() / SCALE;
-        if (totalSupplyUSDC == 0) {
+        uint256 totalSupply8 = IERC20(mzUSD).totalSupply() / SCALE;
+        if (totalSupply8 == 0) {
             return 0;
         }
 
-        uint256 premiumDelta = (totalSupplyUSDC * PREMIUM_BPS + (BPS - 1)) / BPS;
+        uint256 premiumDelta = (totalSupply8 * PREMIUM_BPS + (BPS - 1)) / BPS;
         uint256 delta = premiumDelta >= MIN_NAV_DELTA_USDC ? premiumDelta : MIN_NAV_DELTA_USDC;
-        return totalSupplyUSDC + delta;
+        return totalSupply8 + delta;
     }
 }

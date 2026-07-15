@@ -5,6 +5,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract MockTotalSupplyOracle is AggregatorV3Interface {
+    uint256 public constant SCALE = 1e10; // MZUSD 18d -> 8d oracle answer
     address public mzUSD;
 
     constructor(address _mzUSD) {
@@ -12,7 +13,7 @@ contract MockTotalSupplyOracle is AggregatorV3Interface {
     }
 
     function decimals() external view returns (uint8) {
-        return 18; // USDC decimals
+        return 8; // oracle answers reported with 8 decimals
     }
 
     function description() external view returns (string memory) {
@@ -37,7 +38,7 @@ contract MockTotalSupplyOracle is AggregatorV3Interface {
         )
     {
         roundId = _roundId;
-        answer = int256(IERC20(mzUSD).totalSupply());
+        answer = int256(IERC20(mzUSD).totalSupply() / SCALE);
         startedAt = block.timestamp;
         updatedAt = block.timestamp;
         answeredInRound = 1;
@@ -55,7 +56,7 @@ contract MockTotalSupplyOracle is AggregatorV3Interface {
         )
     {
         roundId = 1;
-        answer = int256(IERC20(mzUSD).totalSupply());
+        answer = int256(IERC20(mzUSD).totalSupply() / SCALE);
         startedAt = block.timestamp;
         updatedAt = block.timestamp;
         answeredInRound = 1;

@@ -2175,6 +2175,12 @@
         "address": "0x003dbB9FA4B96E39fFa76e54c5B0ACd4F7246C0A",
         "txHash": "0x6ed03e16538c8283665d47e5840be9e4545a4228e3eea287f6674f0f22800dd2",
         "deployedAt": "2026-04-16T12:53:27.373Z"
+      },
+      {
+        "version": 2,
+        "address": "0xA6Ef468C1Af92B2ebE8595555ae337B97f30556d",
+        "txHash": "0x7ce19478a0c535a3ab3530cac0df3b7410fc7bd1bea5108a07c5cd271d8bf1f0",
+        "deployedAt": "2026-07-15T15:46:52.830Z"
       }
     ],
     "UmbrellaEpochFinalizer.mezzanine": [

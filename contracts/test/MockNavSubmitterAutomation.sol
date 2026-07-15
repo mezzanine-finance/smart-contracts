@@ -18,11 +18,11 @@ interface IVaultForMock {
 /// @notice Test-only utility automation that submits NAV to NavOracleAutomation.
 /// @dev Intentionally convenience-first and not hardened. Use only in test/dev environments.
 contract MockNavSubmitterAutomation is AutomationCompatibleInterface {
-    uint256 public constant SCALE = 1e12; // MZUSD 18d -> USDC 6d
+    uint256 public constant SCALE = 1e10; // MZUSD 18d -> 8d oracle answer
     // 0.001% precision to allow much smaller per-epoch growth in short test epochs.
     uint256 public constant BPS = 100_000;
     uint256 public constant PREMIUM_BPS = 3; // +0.003% per submission
-    uint256 public constant MIN_NAV_DELTA_USDC = 1;
+    uint256 public constant MIN_NAV_DELTA_USDC = 100; // 8d floor (= 1 USDC 6d unit)
 
     address public immutable vault;
 

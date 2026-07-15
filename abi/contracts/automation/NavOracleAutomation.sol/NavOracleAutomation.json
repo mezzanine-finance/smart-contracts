@@ -336,7 +336,7 @@
     },
     {
         "inputs": [],
-        "name": "SCALE",
+        "name": "ORACLE_SCALE",
         "outputs": [
             {
                 "internalType": "uint256",

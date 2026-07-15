@@ -28,6 +28,7 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 
 const DAY = 24 * 60 * 60;
 const ORACLE_ROLE = 6n;
+const SUPPLY_SCALE = 10n ** 10n; // MZUSD 18d -> oracle answer / submitter basis 8d
 const LOSS_MANAGER_ROLE = 3n;
 const BURNER_ROLE = 5n;
 
@@ -155,12 +156,12 @@ describe("NavSubmitterAutomation", () => {
             deployer
         );
         navFeedOracle = (await PackedOracleFactory.deploy(
-            18,
+            8,
             "Mock NAV oracle"
         )) as unknown as MockPackedNavOracle;
         await navFeedOracle.waitForDeployment();
         totalSupplyFeedOracle = (await PackedOracleFactory.deploy(
-            18,
+            8,
             "Mock totalSupply oracle"
         )) as unknown as MockPackedNavOracle;
         await totalSupplyFeedOracle.waitForDeployment();
@@ -263,14 +264,16 @@ describe("NavSubmitterAutomation", () => {
         await (await tranche.connect(user).deposit(mintedMZ, user.address)).wait();
     }
 
+    // navAnswer is already in the submitter's 8-decimal basis; total supply (MZUSD 18d) is
+    // scaled down to the feed's 8 decimals.
     async function pushOracleAnswers(
-        navUSDC: bigint,
+        navAnswer: bigint,
         totalSupplyMZ: bigint,
         updatedAt?: bigint
     ): Promise<void> {
         const ts = updatedAt ?? BigInt(await time.latest());
-        await navFeedOracle.setLatestRoundData(navUSDC, ts);
-        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ, ts);
+        await navFeedOracle.setLatestRoundData(navAnswer, ts);
+        await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ / SUPPLY_SCALE, ts);
     }
 
     it("submits nav via Chainlink-style upkeep", async () => {
@@ -278,7 +281,7 @@ describe("NavSubmitterAutomation", () => {
         await time.increase(DAY);
 
         const totalSupplyMZ = await mzusd.totalSupply();
-        const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
+        const totalSupplyUSDC = totalSupplyMZ / SUPPLY_SCALE;
         const premiumBps = await submitter.PREMIUM_BPS();
         const bps = await submitter.BPS();
         const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
@@ -334,7 +337,7 @@ describe("NavSubmitterAutomation", () => {
         await time.increase(DAY);
 
         const totalSupplyMZ = await mzusd.totalSupply();
-        const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
+        const totalSupplyUSDC = totalSupplyMZ / SUPPLY_SCALE;
         const premiumBps = await submitter.PREMIUM_BPS();
         const bps = await submitter.BPS();
         const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
@@ -357,7 +360,7 @@ describe("NavSubmitterAutomation", () => {
         await time.increase(DAY);
 
         const totalSupplyMZ = await mzusd.totalSupply();
-        const totalSupplyUSDC = totalSupplyMZ / 10n ** 12n;
+        const totalSupplyUSDC = totalSupplyMZ / SUPPLY_SCALE;
         const premiumBps = await submitter.PREMIUM_BPS();
         const bps = await submitter.BPS();
         const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
