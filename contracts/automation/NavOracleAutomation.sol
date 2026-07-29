@@ -202,7 +202,12 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
         // MZUSD, while applyLoss burns it. A PROTOCOL pause on MZUSD blocks either action.
         if (pauseManager.isPaused(address(mzusd), PauseCategory.PROTOCOL)) return (false, "");
 
+        uint256 deltaUSDC = pendingDeltaUSDC;
         if (pendingIsYield) {
+            // Non-zero yield distribution transfers MZUSD from the vault to tranches.
+            if (deltaUSDC != 0 && pauseManager.isPaused(address(mzusd), PauseCategory.TRANSFERS))
+                return (false, "");
+
             // distributeYield reverts when no tranches are registered, and the allocation step
             // reverts with TVLZero when no tranche contributes eligible TVL. Mirror the same
             // skip filter that IssuanceVault._allocateYieldToTranches applies: a tranche must
@@ -227,7 +232,9 @@ contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
             if (pauseManager.isPaused(lossManager, PauseCategory.PROTOCOL)) return (false, "");
             // applyLoss reverts when the loss exceeds the per-tx cap.
             uint256 maxLoss = ILossManager(lossManager).maxLossPerTxUSDC();
-            if (maxLoss != 0 && pendingDeltaUSDC > maxLoss) return (false, "");
+            if (maxLoss != 0 && deltaUSDC > maxLoss) return (false, "");
+            // applyLoss also rejects losses greater than current MZUSD supply scaled to USDC.
+            if (deltaUSDC > mzusd.totalSupply() / SCALE) return (false, "");
         }
 
         return (true, "");
