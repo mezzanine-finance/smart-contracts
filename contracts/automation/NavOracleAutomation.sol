@@ -33,6 +33,7 @@ import {PauseCategory} from "../pause/PauseCategory.sol";
  * - If any token is missing from the multi-point package for any reason, the relayer skips the update for all feeds in that package.
  */
 contract NavOracleAutomation is AutomationCompatibleInterface, AccessManaged {
+    uint256 public constant SCALE = 1e12; // MZUSD (18d) -> USDC (6d)
     uint256 public constant ORACLE_SCALE = 1e2; // oracle answers (8d) -> USDC (6d)
     uint256 public constant MAX_VETO_PERIOD = 5 days;
     uint32 public constant DEFAULT_MAX_ANSWER_STALENESS = 30 minutes;
