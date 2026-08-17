@@ -106,6 +106,7 @@ export interface LossManagerConfig {
 export interface NavOracleConfig {
     vetoPeriodSec: number;
     oracles: string[];
+    deployMockFeeds?: boolean;
     navFeed?: string;
     totalSupplyFeed?: string;
     maxAnswerStalenessSec?: number;
@@ -326,6 +327,14 @@ function validateConfig(config: DeployConfig, filePath: string) {
     if (!!config.navOracle.navFeed !== !!config.navOracle.totalSupplyFeed) {
         throw new Error(
             "navOracle.navFeed and navOracle.totalSupplyFeed must be configured together"
+        );
+    }
+    if (
+        config.navOracle.deployMockFeeds &&
+        (config.navOracle.navFeed !== undefined || config.navOracle.totalSupplyFeed !== undefined)
+    ) {
+        throw new Error(
+            "navOracle.deployMockFeeds cannot be combined with explicit navFeed or totalSupplyFeed"
         );
     }
     if (config.navOracle.maxAnswerStalenessSec !== undefined) {

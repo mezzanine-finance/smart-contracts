@@ -108,6 +108,7 @@
     },
     "navOracle": {
         "vetoPeriodSec": 0,
+        "deployMockFeeds": true,
         "oracles": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"]
     },
     "umbrellaFinalizer": {

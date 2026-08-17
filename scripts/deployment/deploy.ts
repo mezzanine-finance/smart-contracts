@@ -5,6 +5,8 @@ import type {
     AllowlistStub,
     LossManager,
     MZUSD,
+    MockNavOracle,
+    MockTotalSupplyOracle,
     MockUSDC,
     NavOracleAutomation,
     PauseManager,
@@ -94,6 +96,7 @@ async function ensureDeployment<T extends BaseContract>(
         },
         namespace
     );
+    saveDeployments(deployments);
 
     log.success(`${name} deployed at ${address}`);
     return {contract, address, deployed: true};
@@ -147,6 +150,7 @@ async function ensureProxyDeployment<T extends BaseContract>(
         },
         namespace
     );
+    saveDeployments(deployments);
 
     log.success(`${name} proxy deployed at ${address}`);
     return {contract, address, implementation: impl, deployed: true};
@@ -331,6 +335,38 @@ async function main() {
         deployments,
         vaultNamespace
     );
+
+    let mockNavFeed: DeployResult<MockNavOracle> | undefined;
+    let mockTotalSupplyFeed: DeployResult<MockTotalSupplyOracle> | undefined;
+    let navFeedAddress = config.navOracle.navFeed;
+    let totalSupplyFeedAddress = config.navOracle.totalSupplyFeed;
+    if (config.navOracle.deployMockFeeds) {
+        const MockNavOracleFactory = await ethers.getContractFactory("MockNavOracle", deployer);
+        mockNavFeed = await ensureDeployment<MockNavOracle>(
+            "MockNavOracle",
+            MockNavOracleFactory,
+            async () => MockNavOracleFactory.deploy(mzusd.address),
+            fresh,
+            deployments,
+            vaultNamespace
+        );
+
+        const MockTotalSupplyOracleFactory = await ethers.getContractFactory(
+            "MockTotalSupplyOracle",
+            deployer
+        );
+        mockTotalSupplyFeed = await ensureDeployment<MockTotalSupplyOracle>(
+            "MockTotalSupplyOracle",
+            MockTotalSupplyOracleFactory,
+            async () => MockTotalSupplyOracleFactory.deploy(mzusd.address),
+            fresh,
+            deployments,
+            vaultNamespace
+        );
+
+        navFeedAddress = mockNavFeed.address;
+        totalSupplyFeedAddress = mockTotalSupplyFeed.address;
+    }
 
     const IssuanceVaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
     const vault = await ensureProxyDeployment<IssuanceVault>(
@@ -860,14 +896,14 @@ async function main() {
         await (await navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)).wait();
         log.success("NavOracleAutomation.setVetoPeriod");
     }
-    const hasNavFeed = config.navOracle.navFeed !== undefined;
-    const hasSupplyFeed = config.navOracle.totalSupplyFeed !== undefined;
+    const hasNavFeed = navFeedAddress !== undefined;
+    const hasSupplyFeed = totalSupplyFeedAddress !== undefined;
     if (hasNavFeed != hasSupplyFeed) {
         throw new Error("navOracle.navFeed and navOracle.totalSupplyFeed must be set together");
     }
     if (hasNavFeed) {
-        const navFeed = config.navOracle.navFeed!;
-        const totalSupplyFeed = config.navOracle.totalSupplyFeed!;
+        const navFeed = navFeedAddress!;
+        const totalSupplyFeed = totalSupplyFeedAddress!;
         const currentNavFeed = await navOracle.contract.navOracle();
         const currentTotalSupplyFeed = await navOracle.contract.totalSupplyOracle();
         if (
@@ -1191,6 +1227,40 @@ async function main() {
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
         "IssuanceVault.navOracle mismatch"
     );
+    if (mockNavFeed && mockTotalSupplyFeed) {
+        assert((await mockNavFeed.contract.decimals()) === 8n, "MockNavOracle must use 8 decimals");
+        assert(
+            (await mockTotalSupplyFeed.contract.decimals()) === 8n,
+            "MockTotalSupplyOracle must use 8 decimals"
+        );
+        assert(
+            (await mockNavFeed.contract.mzUSD()).toLowerCase() === mzusd.address.toLowerCase(),
+            "MockNavOracle.mzUSD mismatch"
+        );
+        assert(
+            (await mockTotalSupplyFeed.contract.mzUSD()).toLowerCase() ===
+                mzusd.address.toLowerCase(),
+            "MockTotalSupplyOracle.mzUSD mismatch"
+        );
+        assert(
+            (await navOracle.contract.navOracle()).toLowerCase() ===
+                mockNavFeed.address.toLowerCase(),
+            "NavOracleAutomation.navOracle mismatch"
+        );
+        assert(
+            (await navOracle.contract.totalSupplyOracle()).toLowerCase() ===
+                mockTotalSupplyFeed.address.toLowerCase(),
+            "NavOracleAutomation.totalSupplyOracle mismatch"
+        );
+        const [, navAnswer] = await mockNavFeed.contract.latestRoundData();
+        const [, totalSupplyAnswer] = await mockTotalSupplyFeed.contract.latestRoundData();
+        const expectedTotalSupplyAnswer = (await mzusd.contract.totalSupply()) / 10_000_000_000n;
+        assert(navAnswer > 0n, "MockNavOracle answer must be positive after seeding");
+        assert(
+            totalSupplyAnswer === expectedTotalSupplyAnswer,
+            "MockTotalSupplyOracle answer is not scaled to 8 decimals"
+        );
+    }
 
     for (const tranche of trancheByKey.values()) {
         const trancheVault = await tranche.contract.vault();
@@ -1225,6 +1295,12 @@ async function main() {
     if (mzusd.implementation) {
         await verifyContract(mzusd.implementation, [usdcAddress], shouldVerify);
     }
+    if (mockNavFeed) {
+        await verifyContract(mockNavFeed.address, [mzusd.address], shouldVerify);
+    }
+    if (mockTotalSupplyFeed) {
+        await verifyContract(mockTotalSupplyFeed.address, [mzusd.address], shouldVerify);
+    }
     for (const trancheConfig of config.tranches) {
         const tranche = trancheByKey.get(trancheConfig.key);
         if (tranche?.implementation) {
@@ -1256,6 +1332,10 @@ async function main() {
     log.info(`ReservoirUSDC (proxy): ${reservoir.address}`);
     log.info(`IssuanceVault (proxy): ${vault.address}`);
     log.info(`MZUSD (proxy): ${mzusd.address}`);
+    if (mockNavFeed && mockTotalSupplyFeed) {
+        log.info(`MockNavOracle: ${mockNavFeed.address}`);
+        log.info(`MockTotalSupplyOracle: ${mockTotalSupplyFeed.address}`);
+    }
     for (const [key, tranche] of trancheByKey.entries()) {
         log.info(`Tranche ${key}: ${tranche.address}`);
     }
