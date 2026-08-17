@@ -154,7 +154,7 @@ async function ensureProxyDeployment<T extends BaseContract>(
 
 async function main() {
     const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
-    const deploymentId = getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID;
+    const requestedDeploymentId = getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID;
     const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
     const freshShared = hasFlag("--fresh-shared") || isEnvFlagEnabled("DEPLOY_FRESH_SHARED");
     const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
@@ -162,6 +162,7 @@ async function main() {
     const skipRenounce = hasFlag("--no-renounce") || isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
 
     const config = loadConfig(network.name, configPath);
+    const deploymentId = requestedDeploymentId ?? config.deploymentId;
     if (deploymentId) {
         assert(
             /^[a-z0-9][a-z0-9-]*$/.test(deploymentId),

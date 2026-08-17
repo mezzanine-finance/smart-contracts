@@ -146,6 +146,7 @@ export interface SeedConfig {
 
 export interface DeployConfig {
     version: number;
+    deploymentId?: string;
     dev: DevConfig;
     roleIds: RoleIdsConfig;
     roles: RolesConfig;
@@ -182,6 +183,13 @@ export function loadConfig(networkName: string, overridePath?: string): DeployCo
 
 function validateConfig(config: DeployConfig, filePath: string) {
     assert(typeof config.version === "number", `Missing version in ${filePath}`);
+    if (config.deploymentId !== undefined) {
+        assert(
+            /^[a-z0-9][a-z0-9-]*$/.test(config.deploymentId),
+            "deploymentId must contain only lowercase letters, numbers, and hyphens"
+        );
+        assert(config.deploymentId !== "shared", 'deploymentId "shared" is reserved');
+    }
     const roleIds = config.roleIds;
     assert(roleIds !== undefined, `Missing roleIds in ${filePath}`);
     const seenRoleIds = new Set<number>();
