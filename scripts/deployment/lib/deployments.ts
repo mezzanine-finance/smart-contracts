@@ -13,7 +13,9 @@ export type DeploymentNamespace = Record<string, DeploymentRecord[]>;
 export type NetworkDeployments = Record<string, DeploymentRecord[] | DeploymentNamespace>;
 export type DeploymentsFile = Record<string, NetworkDeployments>;
 
-const DEPLOYMENTS_PATH = path.join(__dirname, "..", "..", "..", "reports", "deployments.json");
+const DEPLOYMENTS_PATH = process.env.DEPLOYMENTS_PATH
+    ? path.resolve(process.env.DEPLOYMENTS_PATH)
+    : path.join(__dirname, "..", "..", "..", "reports", "deployments.json");
 
 export function loadDeployments(): DeploymentsFile {
     if (!fs.existsSync(DEPLOYMENTS_PATH)) return {};
