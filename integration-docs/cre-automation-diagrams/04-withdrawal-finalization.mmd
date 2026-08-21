@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    participant Cron as CRE Cron
+    participant WF as Finalization Workflow
+    participant FIN as UmbrellaEpochFinalizer
+    participant Vault as IssuanceVault
+    participant Path as CRE Write Path
+    participant Tranche
+
+    Cron->>WF: Run
+    loop Each delayed-withdrawal finalizer
+        WF->>FIN: checkUpkeep(0x)
+        FIN->>Vault: currentEpochId()
+        alt Completed epoch is waiting
+            FIN-->>WF: upkeepNeeded is true
+            WF->>Path: Request performUpkeep(0x)
+            Path->>FIN: performUpkeep(0x)
+            FIN->>FIN: Advance cursor by one epoch
+            opt Epoch contains withdrawal shares
+                FIN->>Tranche: finalizeEpoch(epochId)
+            end
+        else Finalizer is caught up
+            FIN-->>WF: upkeepNeeded is false
+            WF-->>Cron: Finish without transaction
+        end
+    end

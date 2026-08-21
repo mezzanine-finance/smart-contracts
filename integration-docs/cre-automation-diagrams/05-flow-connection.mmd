@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant User
+    participant Tranche
+    participant NAV as NAV Workflow
+    participant Vault as IssuanceVault
+    participant FIN as Finalization Workflow
+    participant Finalizer
+
+    User->>Tranche: Request delayed withdrawal
+    Tranche->>Tranche: Store request for target epoch
+    Note over NAV,Vault: Independent NAV workflow run
+    NAV->>Vault: Apply NAV and advance epoch
+    Vault->>Vault: currentEpochId increases
+    Note over Vault,FIN: Later, on a separate cron run
+    FIN->>Vault: currentEpochId()
+    Vault-->>FIN: Updated epoch ID
+    FIN->>Finalizer: checkUpkeep(0x)
+    Finalizer-->>FIN: Previous epoch is ready
+    FIN->>Finalizer: performUpkeep(0x) through CRE
+    Finalizer->>Tranche: finalizeEpoch(targetEpoch)
+    User->>Tranche: Claim withdrawal
+    Tranche-->>User: Transfer withdrawable MZUSD

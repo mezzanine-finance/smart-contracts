@@ -1,0 +1,7 @@
+flowchart LR
+    Cron["CRE cron trigger"] -->|starts| WF["Workflow running in CRE DON"]
+    WF -->|reads state| Target["Existing protocol contract"]
+    WF -->|write needed| Report["Signed CRE report"]
+    Report --> Forwarder["KeystoneForwarder"]
+    Forwarder -->|verified report| Receiver["AutomationReceiver"]
+    Receiver -->|approved call| Target

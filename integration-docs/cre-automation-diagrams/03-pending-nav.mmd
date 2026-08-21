@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant Cron as CRE Cron
+    participant WF as NAV Workflow
+    participant NAV as NavOracleAutomation
+    participant Path as CRE Write Path
+    participant Vault as IssuanceVault
+
+    Cron->>WF: Run after a NAV is pending
+    WF->>NAV: hasPendingNav()
+    NAV-->>WF: true
+    WF->>NAV: checkUpkeep(0x)
+    alt Veto ended and NAV is ready
+        NAV-->>WF: upkeepNeeded is true
+        WF->>Path: Request performUpkeep(0x)
+        Path->>NAV: performUpkeep(0x)
+        NAV->>Vault: Apply NAV and advance epoch
+    else Not ready
+        NAV-->>WF: upkeepNeeded is false
+        WF-->>Cron: Finish without transaction
+    end

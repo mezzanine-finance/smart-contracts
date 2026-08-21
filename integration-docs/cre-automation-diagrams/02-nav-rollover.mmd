@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant Cron as CRE Cron
+    participant WF as NAV Workflow
+    participant Vault as IssuanceVault
+    participant MZ as MZUSD
+    participant NAV as NavOracleAutomation
+    participant Path as CRE Write Path
+
+    Cron->>WF: Run
+    loop Each vault
+        WF->>Vault: getEpochConfig()
+        Vault-->>WF: epochStart and duration
+        WF->>NAV: hasPendingNav()
+        NAV-->>WF: pending status
+        WF->>MZ: totalSupply()
+        MZ-->>WF: supply
+        alt Epoch elapsed and no pending NAV and supply is positive
+            WF->>Path: Request submitNav()
+            Path->>NAV: submitNav()
+            alt vetoPeriod is zero
+                NAV->>Vault: Apply NAV and advance epoch
+            else vetoPeriod is positive
+                NAV->>NAV: Store pending NAV
+            end
+        else Not ready
+            WF-->>Cron: Finish without transaction
+        end
+    end
