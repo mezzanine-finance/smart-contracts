@@ -1,7 +1,11 @@
 flowchart LR
-    Cron["CRE cron trigger"] -->|starts| WF["Workflow running in CRE DON"]
-    WF -->|reads state| Target["Existing protocol contract"]
-    WF -->|write needed| Report["Signed CRE report"]
+    Cron["CRE cron trigger<br/>every 5 minutes"] -->|starts| WF["Workflow running in CRE DON"]
+    WF -->|checkUpkeep for each target| Targets["Configured target contracts"]
+    Targets --> Decision{"upkeepNeeded?"}
+    Decision -->|no| End["Finish without transaction"]
+    Decision -->|yes| Report["Signed CRE report<br/>for this ready target"]
     Report --> Forwarder["KeystoneForwarder"]
-    Forwarder -->|verified report| Receiver["AutomationReceiver"]
-    Receiver -->|approved call| Target
+    Forwarder -->|target belongs to Vault 1| Receiver1["Vault 1 AutomationReceiver"]
+    Forwarder -->|target belongs to Vault 2| Receiver2["Vault 2 AutomationReceiver"]
+    Receiver1 -->|approved performUpkeep| Vault1["Vault 1 automation targets"]
+    Receiver2 -->|approved performUpkeep| Vault2["Vault 2 automation targets"]

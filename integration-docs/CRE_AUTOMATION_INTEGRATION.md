@@ -6,100 +6,74 @@ This page is a visual reference for the planned Chainlink CRE integration.
 
 ![Common CRE write path](./cre-automation-diagrams/01-write-path.svg)
 
-This is the common write path used by both of our workflows:
+This is the common path used by both workflows:
 
-- The cron trigger starts a workflow inside the CRE DON.
-- The workflow reads the existing contracts to decide whether anything is needed.
-- If no action is needed, the run ends without a transaction.
-- If an action is needed, CRE creates a signed report.
-- `KeystoneForwarder` verifies the report and delivers it to our receiver.
-- `AutomationReceiver` forwards only an approved function call to an existing contract.
+- The cron trigger starts the workflow inside the CRE DON every five minutes.
+- The workflow calls `checkUpkeep(0x)` on each configured contract.
+- If `upkeepNeeded` is `false`, that target finishes without a transaction.
+- If `upkeepNeeded` is `true`, CRE creates a signed report for that target.
+- `KeystoneForwarder` verifies the report and delivers it to the receiver for the target's vault.
+- The receiver forwards the approved `performUpkeep(bytes)` call to the existing contract.
 
-When the receiver calls a restricted function, that function uses `AccessManager` to check
-whether the receiver has the required role. The required roles are listed later on this page.
+There will be one receiver per vault. `AccessManager` is not a separate step in this flow: the
+target contract uses it to check that its vault receiver has the required role.
 
-## Flow 1: NAV submission and epoch rollover
+## Flow 1: applying a pending NAV and rolling the epoch
 
-CRE will use existing getters to decide whether a
-new NAV can be submitted.
+`submitNav()` happens outside the current CRE scope. It is called by the client or another approved
+oracle submitter.
 
-![NAV submission and epoch rollover](./cre-automation-diagrams/02-nav-rollover.svg)
+![Pending NAV application and epoch rollover](./cre-automation-diagrams/02-nav-rollover.svg)
 
-Why these calls:
+After that, the CRE workflow calls `NavOracleAutomation.checkUpkeep(0x)` every five minutes.
+`checkUpkeep()` answers one question:
 
-- `getEpochConfig()` tells us whether the current epoch has elapsed.
-- `hasPendingNav()` prevents creating a second submission while the previous one is waiting.
-- `totalSupply()` prevents a pointless submission before the vault has activity.
-- `submitNav()` reads the oracle feeds and keeps the financial calculations in Solidity.
+> Does a pending NAV exist, and is it ready to be applied now?
 
-## Flow 2: applying a pending NAV after veto
+It does not submit a NAV. If it returns `true`, CRE requests `performUpkeep(0x)`, which applies the
+pending NAV and advances the epoch. `rejectPendingNav()` also stays outside CRE and is called by the
+client manually when needed.
 
-This branch matters when `vetoPeriod > 0`. With the current Sepolia `vetoPeriod = 0`, `submitNav()`
-applies NAV immediately and this branch is normally skipped.
+## Flow 2: processing both NAV targets
 
-![Applying a pending NAV after veto](./cre-automation-diagrams/03-pending-nav.svg)
+![Independent NAV target processing](./cre-automation-diagrams/03-pending-nav.svg)
 
-Here `checkUpkeep()` answers one specific question:
-
-> Does a pending NAV already exist, and is it ready to be applied now?
-
-It does not create a NAV submission. `performUpkeep()` applies the pending NAV and causes the epoch
-to advance.
+One run checks the `NavOracleAutomation` contract for both vaults. Each ready target gets its
+own report and transaction. If one target fails, the workflow still processes the other one. The
+next run checks their current on-chain state again and retries only targets that are still ready.
 
 ## Flow 3: delayed withdrawal finalization
 
-This is a separate workflow. It watches all delayed-withdrawal finalizers.
+This is a separate workflow. It watches deployed finalizers.
 
 ![Delayed withdrawal finalization](./cre-automation-diagrams/04-withdrawal-finalization.svg)
 
-The finalizer handles at most one epoch per transaction. If it is several epochs behind, later cron
-runs continue moving its cursor until it catches up.
+Each finalizer handles at most one epoch per transaction and per workflow run. If it is several
+epochs behind, later five-minute runs continue moving its cursor until it catches up.
 
 ## How the workflows coordinate through on-chain state
 
 ![How the workflows coordinate through IssuanceVault state](./cre-automation-diagrams/05-flow-connection.svg)
 
-This is an end-to-end user flow, not a direct message flow between the two workflows. The NAV
-workflow advances `IssuanceVault.currentEpochId`. Later, on a separate cron run, the finalization
-workflow reads that updated value and discovers that another withdrawal epoch can be finalized.
+This is an end-to-end state flow, not a direct call between the workflows. The NAV workflow applies
+a pending NAV and advances `IssuanceVault.currentEpochId`. On a later cron run, the finalization
+workflow reads that updated state and sees that another withdrawal epoch can be finalized.
 
 The workflows never call each other directly. They coordinate through the vault's on-chain state.
 
-Keeping them separate gives us simpler permissions, monitoring, retries, and failure isolation. A
-temporary finalizer failure does not block NAV rollover, and a NAV issue does not stop the finalizer
-from processing an already completed epoch.
+## Vault-specific receivers and permissions
 
-## Receiver permissions
+We use the same restricted receiver implementation, but deploy one instance per vault.
 
-The receiver will need:
+Each receiver will:
 
-- `ORACLE_ROLE` for `NavOracleAutomation.submitNav()`;
-- `CHAINLINK_AUTOMATION` for NAV and finalizer `performUpkeep(bytes)` calls.
+- accept reports only from the canonical `KeystoneForwarder`;
+- verify the expected workflow owner;
+- allow only target contracts belonging to its vault;
+- allow only the `performUpkeep(bytes)` selector.
 
-The receiver must also verify the canonical `KeystoneForwarder`, the expected CRE workflow
-identity, and the exact target-selector pair before forwarding anything. A target-selector pair is
-an allowed contract address plus an allowed function selector. For example:
+The receivers need `CHAINLINK_AUTOMATION` for their allowed `performUpkeep(bytes)` calls.
 
-```text
-(NavOracleAutomation for Vault 1, submitNav())
-(NavOracleAutomation for Vault 1, performUpkeep(bytes))
-(Vault 1 Senior Finalizer, performUpkeep(bytes))
-```
-
-Both values must match the allowlist. This prevents an authorized workflow from changing the target
-address or calldata to call a different function or contract.
-
-## Current plan
-
-```text
-1. Request CRE deploy access.
-2. Add the two CRE workflows to this repository.
-3. Add one restricted AutomationReceiver.
-4. Test the receiver and both workflows locally with CRE simulation.
-5. Deploy and configure the receiver on Sepolia.
-6. Deploy both workflows to the CRE DON.
-7. Run an end-to-end test: NAV rollover -> epoch advance -> finalization -> claim.
-```
 ## Related code
 
 - [`NavOracleAutomation.sol`](../contracts/automation/NavOracleAutomation.sol)

@@ -7,13 +7,13 @@ sequenceDiagram
     participant Path as CRE Write Path
     participant Tranche
 
-    Cron->>WF: Run
-    loop Each delayed-withdrawal finalizer
+    Cron->>WF: Run every 5 minutes
+    loop Vault 1 Senior, Vault 1 Junior, Vault 2 Junior
         WF->>FIN: checkUpkeep(0x)
         FIN->>Vault: currentEpochId()
         alt Completed epoch is waiting
             FIN-->>WF: upkeepNeeded is true
-            WF->>Path: Request performUpkeep(0x)
+            WF->>Path: Separate report for this ready finalizer
             Path->>FIN: performUpkeep(0x)
             FIN->>FIN: Advance cursor by one epoch
             opt Epoch contains withdrawal shares
@@ -24,3 +24,4 @@ sequenceDiagram
             WF-->>Cron: Finish without transaction
         end
     end
+    Note over WF,FIN: At most one epoch per finalizer per run

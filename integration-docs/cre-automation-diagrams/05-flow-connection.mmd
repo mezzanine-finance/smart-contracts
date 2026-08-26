@@ -2,15 +2,17 @@ sequenceDiagram
     autonumber
     participant User
     participant Tranche
-    participant NAV as NAV Workflow
+    participant Submitter as External NAV submitter
+    participant NAV as Pending NAV Workflow
     participant Vault as IssuanceVault
     participant FIN as Finalization Workflow
     participant Finalizer
 
     User->>Tranche: Request delayed withdrawal
     Tranche->>Tranche: Store request for target epoch
-    Note over NAV,Vault: Independent NAV workflow run
-    NAV->>Vault: Apply NAV and advance epoch
+    Submitter->>Vault: submitNav() through NavOracleAutomation
+    Note over NAV,Vault: Later, independent pending NAV workflow run
+    NAV->>Vault: performUpkeep() applies NAV and advances epoch
     Vault->>Vault: currentEpochId increases
     Note over Vault,FIN: Later, on a separate cron run
     FIN->>Vault: currentEpochId()
