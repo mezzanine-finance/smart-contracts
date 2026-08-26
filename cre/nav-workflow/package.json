@@ -1,0 +1,17 @@
+{
+  "name": "mezzanine-nav-workflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@chainlink/cre-sdk": "^1.19.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
+
