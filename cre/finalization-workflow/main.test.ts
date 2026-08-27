@@ -1,12 +1,30 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {newTestRuntime, test} from "@chainlink/cre-sdk/test";
-import {initWorkflow, onCronTrigger, type Config} from "./main";
+import {getNetwork} from "@chainlink/cre-sdk";
+import {addContractMock, EvmMock, newTestRuntime, test} from "@chainlink/cre-sdk/test";
+import type {Address} from "viem";
+import {CHECK_UPKEEP_ABI, configSchema, initWorkflow, onCronTrigger, type Config} from "./main";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
 describe("Finalization workflow", () => {
+    const config = configSchema.parse(stagingConfig);
+
+    const setup = () => {
+        const network = getNetwork({
+            chainFamily: "evm",
+            chainSelectorName: config.chainName,
+            isTestnet: config.isTestnet,
+        });
+        if (!network) throw new Error("Sepolia network is unavailable in the SDK");
+
+        return {
+            runtime: newTestRuntime<Config>(null, undefined, config),
+            evmMock: EvmMock.testInstance(network.chainSelector.selector),
+        };
+    };
+
     test("registers its cron schedule", () => {
         const config: Config = stagingConfig as Config;
         const handlers = initWorkflow(config);
@@ -17,6 +35,7 @@ describe("Finalization workflow", () => {
 
     test("configures all delayed-withdrawal finalizers", () => {
         expect(stagingConfig.chainName).toBe("ethereum-testnet-sepolia");
+        expect(stagingConfig.isTestnet).toBe(true);
         expect(stagingConfig.vaults).toEqual([
             {
                 id: "vault-1",
@@ -47,14 +66,75 @@ describe("Finalization workflow", () => {
 
     test("does not configure targets in production yet", () => {
         expect(productionConfig.chainName).toBe("ethereum-mainnet");
+        expect(productionConfig.isTestnet).toBe(false);
         expect(productionConfig.vaults).toEqual([]);
     });
 
-    test("runs the placeholder callback with the staging config", () => {
-        const runtime = newTestRuntime<Config>();
-        runtime.config = stagingConfig as Config;
+    test("reports readiness for every finalizer", () => {
+        const {runtime, evmMock} = setup();
+        const finalizers = config.vaults.flatMap(({id, finalizers}) =>
+            finalizers.map((finalizer) => ({vaultId: id, ...finalizer}))
+        );
 
-        expect(onCronTrigger(runtime)).toBe("Finalization workflow placeholder");
-        expect(runtime.getLogs()).toContain("Finalization workflow triggered.");
+        finalizers.forEach((finalizer, index) => {
+            const target = addContractMock(evmMock, {
+                address: finalizer.address as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [index === 1, index === 1 ? "0xabcd" : "0x"];
+        });
+
+        expect(onCronTrigger(runtime)).toEqual([
+            {
+                vaultId: "vault-1",
+                tranche: "senior",
+                target: finalizers[0].address as Address,
+                upkeepNeeded: false,
+                performData: "0x",
+            },
+            {
+                vaultId: "vault-1",
+                tranche: "junior",
+                target: finalizers[1].address as Address,
+                upkeepNeeded: true,
+                performData: "0xabcd",
+            },
+            {
+                vaultId: "vault-2",
+                tranche: "junior",
+                target: finalizers[2].address as Address,
+                upkeepNeeded: false,
+                performData: "0x",
+            },
+        ]);
+    });
+
+    test("continues when one finalizer fails", () => {
+        const {runtime, evmMock} = setup();
+        const finalizers = config.vaults.flatMap(({id, finalizers}) =>
+            finalizers.map((finalizer) => ({vaultId: id, ...finalizer}))
+        );
+
+        finalizers.forEach((finalizer, index) => {
+            const target = addContractMock(evmMock, {
+                address: finalizer.address as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => {
+                if (index === 0) throw new Error("RPC unavailable");
+                return [true, "0x"];
+            };
+        });
+
+        const results = onCronTrigger(runtime);
+
+        expect(results[0]).toMatchObject({
+            vaultId: "vault-1",
+            tranche: "senior",
+            upkeepNeeded: false,
+            error: "RPC unavailable",
+        });
+        expect(results[1]).toMatchObject({upkeepNeeded: true});
+        expect(results[2]).toMatchObject({upkeepNeeded: true});
     });
 });

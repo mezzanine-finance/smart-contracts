@@ -1,20 +1,109 @@
-import {CronCapability, handler, Runner, type Runtime} from "@chainlink/cre-sdk";
+import {
+    bytesToHex,
+    CronCapability,
+    encodeCallMsg,
+    EVMClient,
+    getNetwork,
+    handler,
+    LAST_FINALIZED_BLOCK_NUMBER,
+    Runner,
+    type Runtime,
+} from "@chainlink/cre-sdk";
+import {decodeFunctionResult, encodeFunctionData, zeroAddress, type Address, type Hex} from "viem";
+import {z} from "zod";
 
-export interface NavVaultConfig {
-    id: string;
-    issuanceVault: string;
-    navOracleAutomation: string;
+const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
+
+export const configSchema = z.object({
+    schedule: z.string().min(1),
+    chainName: z.string().min(1),
+    isTestnet: z.boolean(),
+    vaults: z.array(
+        z.object({
+            id: z.string().min(1),
+            issuanceVault: addressSchema,
+            navOracleAutomation: addressSchema,
+        })
+    ),
+});
+
+export type Config = z.infer<typeof configSchema>;
+
+export interface UpkeepReadiness {
+    vaultId: string;
+    target: Address;
+    upkeepNeeded: boolean;
+    performData: Hex;
+    error?: string;
 }
 
-export interface Config {
-    schedule: string;
-    chainName: string;
-    vaults: NavVaultConfig[];
-}
+export const CHECK_UPKEEP_ABI = [
+    {
+        type: "function",
+        name: "checkUpkeep",
+        stateMutability: "view",
+        inputs: [{name: "checkData", type: "bytes"}],
+        outputs: [
+            {name: "upkeepNeeded", type: "bool"},
+            {name: "performData", type: "bytes"},
+        ],
+    },
+] as const;
 
-export const onCronTrigger = (runtime: Runtime<Config>): string => {
-    runtime.log("NAV workflow triggered.");
-    return "NAV workflow placeholder";
+const errorMessage = (error: unknown): string =>
+    error instanceof Error ? error.message : String(error);
+
+export const onCronTrigger = (runtime: Runtime<Config>): UpkeepReadiness[] => {
+    const {chainName, isTestnet, vaults} = runtime.config;
+    const network = getNetwork({
+        chainFamily: "evm",
+        chainSelectorName: chainName,
+        isTestnet,
+    });
+
+    if (!network) throw new Error(`Unsupported EVM network: ${chainName}`);
+
+    const evmClient = new EVMClient(network.chainSelector.selector);
+    const callData = encodeFunctionData({
+        abi: CHECK_UPKEEP_ABI,
+        functionName: "checkUpkeep",
+        args: ["0x"],
+    });
+
+    return vaults.map(({id, navOracleAutomation}) => {
+        const target = navOracleAutomation as Address;
+
+        try {
+            const response = evmClient
+                .callContract(runtime, {
+                    call: encodeCallMsg({
+                        from: zeroAddress,
+                        to: target,
+                        data: callData,
+                    }),
+                    blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+                })
+                .result();
+            const [upkeepNeeded, performData] = decodeFunctionResult({
+                abi: CHECK_UPKEEP_ABI,
+                functionName: "checkUpkeep",
+                data: bytesToHex(response.data),
+            });
+
+            runtime.log(`NAV target ${id} (${target}): upkeepNeeded=${upkeepNeeded}`);
+            return {vaultId: id, target, upkeepNeeded, performData};
+        } catch (error) {
+            const message = errorMessage(error);
+            runtime.log(`NAV target ${id} (${target}) failed: ${message}`);
+            return {
+                vaultId: id,
+                target,
+                upkeepNeeded: false,
+                performData: "0x" as Hex,
+                error: message,
+            };
+        }
+    });
 };
 
 export const initWorkflow = (config: Config) => {
@@ -24,6 +113,6 @@ export const initWorkflow = (config: Config) => {
 };
 
 export async function main() {
-    const runner = await Runner.newRunner<Config>();
+    const runner = await Runner.newRunner<Config>({configSchema});
     await runner.run(initWorkflow);
 }

@@ -1,12 +1,30 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {newTestRuntime, test} from "@chainlink/cre-sdk/test";
-import {initWorkflow, onCronTrigger, type Config} from "./main";
+import {getNetwork} from "@chainlink/cre-sdk";
+import {addContractMock, EvmMock, newTestRuntime, test} from "@chainlink/cre-sdk/test";
+import type {Address} from "viem";
+import {CHECK_UPKEEP_ABI, configSchema, initWorkflow, onCronTrigger, type Config} from "./main";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
 describe("NAV workflow", () => {
+    const config = configSchema.parse(stagingConfig);
+
+    const setup = () => {
+        const network = getNetwork({
+            chainFamily: "evm",
+            chainSelectorName: config.chainName,
+            isTestnet: config.isTestnet,
+        });
+        if (!network) throw new Error("Sepolia network is unavailable in the SDK");
+
+        return {
+            runtime: newTestRuntime<Config>(null, undefined, config),
+            evmMock: EvmMock.testInstance(network.chainSelector.selector),
+        };
+    };
+
     test("registers its cron schedule", () => {
         const config: Config = stagingConfig;
         const handlers = initWorkflow(config);
@@ -17,6 +35,7 @@ describe("NAV workflow", () => {
 
     test("configures both Sepolia vaults", () => {
         expect(stagingConfig.chainName).toBe("ethereum-testnet-sepolia");
+        expect(stagingConfig.isTestnet).toBe(true);
         expect(stagingConfig.vaults).toEqual([
             {
                 id: "vault-1",
@@ -33,14 +52,68 @@ describe("NAV workflow", () => {
 
     test("does not configure targets in production yet", () => {
         expect(productionConfig.chainName).toBe("ethereum-mainnet");
+        expect(productionConfig.isTestnet).toBe(false);
         expect(productionConfig.vaults).toEqual([]);
     });
 
-    test("runs the placeholder callback with the staging config", () => {
-        const runtime = newTestRuntime<Config>();
-        runtime.config = stagingConfig;
+    test("reports readiness and preserves performData for every target", () => {
+        const {runtime, evmMock} = setup();
+        const [vault1, vault2] = config.vaults;
+        const target1 = addContractMock(evmMock, {
+            address: vault1.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        const target2 = addContractMock(evmMock, {
+            address: vault2.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
 
-        expect(onCronTrigger(runtime)).toBe("NAV workflow placeholder");
-        expect(runtime.getLogs()).toContain("NAV workflow triggered.");
+        target1.checkUpkeep = () => [false, "0x"];
+        target2.checkUpkeep = () => [true, "0x1234"];
+
+        expect(onCronTrigger(runtime)).toEqual([
+            {
+                vaultId: "vault-1",
+                target: vault1.navOracleAutomation as Address,
+                upkeepNeeded: false,
+                performData: "0x",
+            },
+            {
+                vaultId: "vault-2",
+                target: vault2.navOracleAutomation as Address,
+                upkeepNeeded: true,
+                performData: "0x1234",
+            },
+        ]);
+    });
+
+    test("continues when one target fails", () => {
+        const {runtime, evmMock} = setup();
+        const [vault1, vault2] = config.vaults;
+        const target1 = addContractMock(evmMock, {
+            address: vault1.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        const target2 = addContractMock(evmMock, {
+            address: vault2.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+
+        target1.checkUpkeep = () => {
+            throw new Error("RPC unavailable");
+        };
+        target2.checkUpkeep = () => [true, "0x"];
+
+        const results = onCronTrigger(runtime);
+
+        expect(results[0]).toMatchObject({
+            vaultId: "vault-1",
+            upkeepNeeded: false,
+            error: "RPC unavailable",
+        });
+        expect(results[1]).toMatchObject({
+            vaultId: "vault-2",
+            upkeepNeeded: true,
+        });
     });
 });
