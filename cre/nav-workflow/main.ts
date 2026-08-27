@@ -1,7 +1,15 @@
 import {CronCapability, handler, Runner, type Runtime} from "@chainlink/cre-sdk";
 
+export interface NavVaultConfig {
+    id: string;
+    issuanceVault: string;
+    navOracleAutomation: string;
+}
+
 export interface Config {
     schedule: string;
+    chainName: string;
+    vaults: NavVaultConfig[];
 }
 
 export const onCronTrigger = (runtime: Runtime<Config>): string => {

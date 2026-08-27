@@ -1,7 +1,20 @@
 import {CronCapability, handler, Runner, type Runtime} from "@chainlink/cre-sdk";
 
+export interface FinalizerConfig {
+    tranche: "senior" | "junior";
+    address: string;
+}
+
+export interface FinalizationVaultConfig {
+    id: string;
+    issuanceVault: string;
+    finalizers: FinalizerConfig[];
+}
+
 export interface Config {
     schedule: string;
+    chainName: string;
+    vaults: FinalizationVaultConfig[];
 }
 
 export const onCronTrigger = (runtime: Runtime<Config>): string => {

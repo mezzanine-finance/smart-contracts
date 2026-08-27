@@ -1,4 +1,16 @@
 {
-  "schedule": "*/30 * * * * *"
+  "schedule": "0 */5 * * * *",
+  "chainName": "ethereum-testnet-sepolia",
+  "vaults": [
+    {
+      "id": "vault-1",
+      "issuanceVault": "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
+      "navOracleAutomation": "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4"
+    },
+    {
+      "id": "vault-2",
+      "issuanceVault": "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
+      "navOracleAutomation": "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e"
+    }
+  ]
 }
-
