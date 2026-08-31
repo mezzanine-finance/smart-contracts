@@ -1,0 +1,21 @@
+{
+    "accessManager": "0xf9eDd373D4C3C65888b5e49bA30f517D5e21A564",
+    "chainlinkAutomationRole": 10,
+    "vaults": [
+        {
+            "id": "vault-1",
+            "targets": [
+                "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4",
+                "0xE5ead599d1c550CD1d860FaD781239c144CEa682",
+                "0xc6ae58178335be8AB541bfdC2B30188Ac4b5BB8D"
+            ]
+        },
+        {
+            "id": "vault-2",
+            "targets": [
+                "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e",
+                "0x8C6874ee655C019Cf346fB22e9cc4812d4CB87d9"
+            ]
+        }
+    ]
+}

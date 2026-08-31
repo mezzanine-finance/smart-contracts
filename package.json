@@ -57,6 +57,10 @@
         "deploy:upgrade:tranches:sepolia": "npm run deploy:upgrade:tranches -- --network sepolia",
         "deploy:upgrade:tranches:sepolia:validate": "cross-env UPGRADE_VALIDATE_ONLY=true npm run deploy:upgrade:tranches:sepolia",
         "deploy:mock-nav-submitter": "npx hardhat run scripts/deployment/deployMockNavSubmitterAutomation.ts",
+        "deploy:cre-receivers": "npx hardhat run scripts/deployment/deployCREAutomationReceivers.ts",
+        "deploy:cre-receivers:sepolia": "npm run deploy:cre-receivers -- --network sepolia",
+        "deploy:cre-receivers:sepolia:plan": "CRE_RECEIVERS_PLAN=true npm run deploy:cre-receivers:sepolia",
+        "deploy:cre-receivers:sepolia:validate": "CRE_RECEIVERS_VALIDATE=true npm run deploy:cre-receivers:sepolia",
         "deploy:grant-roles": "npx hardhat run scripts/deployment/grantRoles.ts",
         "deploy:renounce-roles": "npx hardhat run scripts/deployment/renounceRoles.ts",
         "deploy:handoff-roles": "npx hardhat run scripts/deployment/handoffRoles.ts"
