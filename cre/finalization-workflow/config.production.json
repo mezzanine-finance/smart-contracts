@@ -2,5 +2,6 @@
   "schedule": "0 */5 * * * *",
   "chainName": "ethereum-mainnet",
   "isTestnet": false,
+  "gasLimit": "500000",
   "vaults": []
 }

@@ -1,28 +1,57 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {getNetwork} from "@chainlink/cre-sdk";
-import {addContractMock, EvmMock, newTestRuntime, test} from "@chainlink/cre-sdk/test";
-import type {Address} from "viem";
-import {CHECK_UPKEEP_ABI, configSchema, initWorkflow, onCronTrigger, type Config} from "./main";
+import {bytesToHex, getNetwork} from "@chainlink/cre-sdk";
+import {
+    addContractMock,
+    EvmMock,
+    newTestRuntime,
+    REPORT_METADATA_HEADER_LENGTH,
+    test,
+} from "@chainlink/cre-sdk/test";
+import {decodeAbiParameters, decodeFunctionData, type Address, type Hex} from "viem";
+import {
+    CHECK_UPKEEP_ABI,
+    configSchema,
+    initWorkflow,
+    onCronTrigger,
+    PERFORM_UPKEEP_ABI,
+    type Config,
+} from "./main";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
 describe("NAV workflow", () => {
     const config = configSchema.parse(stagingConfig);
+    const receivers = [
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+    ] as const;
+    const configWithReceivers: Config = {
+        ...config,
+        vaults: config.vaults.map((vault, index) => ({
+            ...vault,
+            receiver: receivers[index],
+        })),
+    };
 
-    const setup = () => {
+    const setup = (runtimeConfig: Config = config) => {
         const network = getNetwork({
             chainFamily: "evm",
-            chainSelectorName: config.chainName,
-            isTestnet: config.isTestnet,
+            chainSelectorName: runtimeConfig.chainName,
+            isTestnet: runtimeConfig.isTestnet,
         });
         if (!network) throw new Error("Sepolia network is unavailable in the SDK");
 
         return {
-            runtime: newTestRuntime<Config>(null, undefined, config),
+            runtime: newTestRuntime<Config>(null, undefined, runtimeConfig),
             evmMock: EvmMock.testInstance(network.chainSelector.selector),
         };
+    };
+
+    const reportPayload = (rawReport: Uint8Array): Hex => {
+        const report = bytesToHex(rawReport);
+        return `0x${report.slice(2 + REPORT_METADATA_HEADER_LENGTH * 2)}`;
     };
 
     test("registers its cron schedule", () => {
@@ -31,6 +60,7 @@ describe("NAV workflow", () => {
 
         expect(handlers).toHaveLength(1);
         expect(config.schedule).toBe("0 */5 * * * *");
+        expect(config.gasLimit).toBe("500000");
     });
 
     test("configures both Sepolia vaults", () => {
@@ -57,8 +87,8 @@ describe("NAV workflow", () => {
     });
 
     test("reports readiness and preserves performData for every target", () => {
-        const {runtime, evmMock} = setup();
-        const [vault1, vault2] = config.vaults;
+        const {runtime, evmMock} = setup(configWithReceivers);
+        const [vault1, vault2] = configWithReceivers.vaults;
         const target1 = addContractMock(evmMock, {
             address: vault1.navOracleAutomation as Address,
             abi: CHECK_UPKEEP_ABI,
@@ -70,6 +100,11 @@ describe("NAV workflow", () => {
 
         target1.checkUpkeep = () => [false, "0x"];
         target2.checkUpkeep = () => [true, "0x1234"];
+        const receiver = addContractMock(evmMock, {
+            address: vault2.receiver as Address,
+            abi: [],
+        });
+        receiver.writeReport = () => ({txStatus: "TX_STATUS_SUCCESS"});
 
         expect(onCronTrigger(runtime)).toEqual([
             {
@@ -83,8 +118,138 @@ describe("NAV workflow", () => {
                 target: vault2.navOracleAutomation as Address,
                 upkeepNeeded: true,
                 performData: "0x1234",
+                writeAttempted: true,
+                txStatus: 2,
             },
         ]);
+    });
+
+    test("writes one receiver report per ready vault with performUpkeep calldata", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+        const writes: {receiver: Address; payload: Hex; gasLimit: bigint}[] = [];
+
+        configWithReceivers.vaults.forEach((vault) => {
+            const target = addContractMock(evmMock, {
+                address: vault.navOracleAutomation as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [true, "0x1234"];
+
+            const receiver = addContractMock(evmMock, {
+                address: vault.receiver as Address,
+                abi: [],
+            });
+            receiver.writeReport = ({report, gasConfig}) => {
+                writes.push({
+                    receiver: vault.receiver as Address,
+                    payload: reportPayload(report.rawReport),
+                    gasLimit: gasConfig.gasLimit,
+                });
+                return {txStatus: "TX_STATUS_SUCCESS"};
+            };
+        });
+
+        const results = onCronTrigger(runtime);
+
+        expect(writes).toHaveLength(2);
+        expect(results.every((result) => result.txStatus === 2)).toBe(true);
+        writes.forEach((write, index) => {
+            const [target, callData] = decodeAbiParameters(
+                [{type: "address"}, {type: "bytes"}],
+                write.payload
+            );
+            const decodedCall = decodeFunctionData({
+                abi: PERFORM_UPKEEP_ABI,
+                data: callData,
+            });
+
+            expect(write.receiver).toBe(receivers[index]);
+            expect(write.gasLimit).toBe(500000n);
+            expect(target).toBe(configWithReceivers.vaults[index].navOracleAutomation as Address);
+            expect(decodedCall.functionName).toBe("performUpkeep");
+            expect(decodedCall.args).toEqual(["0x1234"]);
+        });
+    });
+
+    test("does not create a report when upkeep is not needed", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+        let writes = 0;
+
+        configWithReceivers.vaults.forEach((vault) => {
+            const target = addContractMock(evmMock, {
+                address: vault.navOracleAutomation as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [false, "0x"];
+            const receiver = addContractMock(evmMock, {
+                address: vault.receiver as Address,
+                abi: [],
+            });
+            receiver.writeReport = () => {
+                writes += 1;
+                return {txStatus: "TX_STATUS_SUCCESS"};
+            };
+        });
+
+        const results = onCronTrigger(runtime);
+
+        expect(writes).toBe(0);
+        expect(results.every((result) => result.writeAttempted === undefined)).toBe(true);
+    });
+
+    test("continues writing other vaults when one receiver write fails", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+
+        configWithReceivers.vaults.forEach((vault, index) => {
+            const target = addContractMock(evmMock, {
+                address: vault.navOracleAutomation as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [true, "0x"];
+            const receiver = addContractMock(evmMock, {
+                address: vault.receiver as Address,
+                abi: [],
+            });
+            receiver.writeReport = () => {
+                if (index === 0) throw new Error("write rejected");
+                return {txStatus: "TX_STATUS_SUCCESS"};
+            };
+        });
+
+        const results = onCronTrigger(runtime);
+
+        expect(results[0]).toMatchObject({writeAttempted: true, error: "write rejected"});
+        expect(results[1]).toMatchObject({writeAttempted: true, txStatus: 2});
+    });
+
+    test("treats a reverted writeReport transaction as a failed write", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+        const [vault] = configWithReceivers.vaults;
+        const target = addContractMock(evmMock, {
+            address: vault.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        target.checkUpkeep = () => [true, "0x"];
+        const receiver = addContractMock(evmMock, {
+            address: vault.receiver as Address,
+            abi: [],
+        });
+        receiver.writeReport = () => ({
+            txStatus: "TX_STATUS_REVERTED",
+            errorMessage: "forwarder transaction reverted",
+        });
+        const secondTarget = addContractMock(evmMock, {
+            address: configWithReceivers.vaults[1].navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        secondTarget.checkUpkeep = () => [false, "0x"];
+
+        const [result] = onCronTrigger(runtime);
+
+        expect(result).toMatchObject({
+            writeAttempted: true,
+            error: "writeReport transaction failed with status 1: forwarder transaction reverted",
+        });
     });
 
     test("continues when one target fails", () => {
