@@ -10,14 +10,9 @@ import {
     test,
 } from "@chainlink/cre-sdk/test";
 import {decodeAbiParameters, decodeFunctionData, type Address, type Hex} from "viem";
-import {
-    CHECK_UPKEEP_ABI,
-    configSchema,
-    initWorkflow,
-    onCronTrigger,
-    PERFORM_UPKEEP_ABI,
-    type Config,
-} from "./main";
+import {configSchema, type Config} from "./config";
+import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
+import {initWorkflow, onCronTrigger} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
@@ -252,6 +247,62 @@ describe("Finalization workflow", () => {
         expect(result).toMatchObject({
             writeAttempted: true,
             error: "Receiver execution failed with status 1",
+        });
+    });
+
+    test("treats a reverted writeReport transaction as a failed write", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+        const finalizers = configWithReceivers.vaults.flatMap(({id, receiver, finalizers}) =>
+            finalizers.map((finalizer) => ({vaultId: id, receiver, ...finalizer}))
+        );
+
+        finalizers.forEach((finalizer, index) => {
+            const target = addContractMock(evmMock, {
+                address: finalizer.address as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [index === 0, "0x"];
+        });
+        const receiver = addContractMock(evmMock, {
+            address: finalizers[0].receiver as Address,
+            abi: [],
+        });
+        receiver.writeReport = () => ({
+            txStatus: "TX_STATUS_REVERTED",
+            errorMessage: "forwarder transaction reverted",
+        });
+
+        const [result] = onCronTrigger(runtime);
+
+        expect(result).toMatchObject({
+            writeAttempted: true,
+            error: "writeReport transaction failed with status 1: forwarder transaction reverted",
+        });
+    });
+
+    test("reports a ready finalizer when its receiver is not configured", () => {
+        const {runtime, evmMock} = setup();
+        const finalizers = config.vaults.flatMap(({id, finalizers}) =>
+            finalizers.map((finalizer) => ({vaultId: id, ...finalizer}))
+        );
+
+        finalizers.forEach((finalizer, index) => {
+            const target = addContractMock(evmMock, {
+                address: finalizer.address as Address,
+                abi: CHECK_UPKEEP_ABI,
+            });
+            target.checkUpkeep = () => [index === 0, index === 0 ? "0xabcd" : "0x"];
+        });
+
+        const [result] = onCronTrigger(runtime);
+
+        expect(result).toMatchObject({
+            vaultId: "vault-1",
+            tranche: "senior",
+            upkeepNeeded: true,
+            performData: "0xabcd",
+            writeAttempted: false,
+            error: "Receiver is not configured for vault-1",
         });
     });
 

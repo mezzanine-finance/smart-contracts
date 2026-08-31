@@ -4,5 +4,5 @@
     "types": ["bun"],
     "noEmit": true
   },
-  "include": ["main.ts", "main.test.ts"]
+  "include": ["*.ts"]
 }

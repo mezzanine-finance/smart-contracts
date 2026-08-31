@@ -10,14 +10,9 @@ import {
     test,
 } from "@chainlink/cre-sdk/test";
 import {decodeAbiParameters, decodeFunctionData, type Address, type Hex} from "viem";
-import {
-    CHECK_UPKEEP_ABI,
-    configSchema,
-    initWorkflow,
-    onCronTrigger,
-    PERFORM_UPKEEP_ABI,
-    type Config,
-} from "./main";
+import {configSchema, type Config} from "./config";
+import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
+import {initWorkflow, onCronTrigger} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
@@ -249,6 +244,61 @@ describe("NAV workflow", () => {
         expect(result).toMatchObject({
             writeAttempted: true,
             error: "writeReport transaction failed with status 1: forwarder transaction reverted",
+        });
+    });
+
+    test("treats a reverted receiver execution as a failed write", () => {
+        const {runtime, evmMock} = setup(configWithReceivers);
+        const [vault1, vault2] = configWithReceivers.vaults;
+        const target1 = addContractMock(evmMock, {
+            address: vault1.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        target1.checkUpkeep = () => [true, "0x"];
+        const receiver = addContractMock(evmMock, {
+            address: vault1.receiver as Address,
+            abi: [],
+        });
+        receiver.writeReport = () => ({
+            txStatus: "TX_STATUS_SUCCESS",
+            receiverContractExecutionStatus: "RECEIVER_CONTRACT_EXECUTION_STATUS_REVERTED",
+        });
+        const target2 = addContractMock(evmMock, {
+            address: vault2.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        target2.checkUpkeep = () => [false, "0x"];
+
+        const [result] = onCronTrigger(runtime);
+
+        expect(result).toMatchObject({
+            writeAttempted: true,
+            error: "Receiver execution failed with status 1",
+        });
+    });
+
+    test("reports a ready target when its receiver is not configured", () => {
+        const {runtime, evmMock} = setup();
+        const [vault1, vault2] = config.vaults;
+        const target1 = addContractMock(evmMock, {
+            address: vault1.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        target1.checkUpkeep = () => [true, "0x1234"];
+        const target2 = addContractMock(evmMock, {
+            address: vault2.navOracleAutomation as Address,
+            abi: CHECK_UPKEEP_ABI,
+        });
+        target2.checkUpkeep = () => [false, "0x"];
+
+        const [result] = onCronTrigger(runtime);
+
+        expect(result).toMatchObject({
+            vaultId: "vault-1",
+            upkeepNeeded: true,
+            performData: "0x1234",
+            writeAttempted: false,
+            error: "Receiver is not configured for vault-1",
         });
     });
 
