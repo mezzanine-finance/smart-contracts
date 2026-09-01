@@ -8,10 +8,11 @@ import {ICREReceiver} from "../interfaces/ICREReceiver.sol";
 /// @title CRE automation receiver
 /// @notice Validates CRE workflow reports and forwards approved upkeep calls.
 /// @dev Deploy one instance per vault and allow only that vault's automation targets.
-///      Reports are encoded as abi.encode(target, callData). CRE metadata is packed as
+///      Reports are encoded as abi.encode(target, callData). CRE identity metadata is packed as
 ///      workflowId (32 bytes), workflowName (10 bytes), and workflowOwner (20 bytes).
 contract AutomationReceiver is ICREReceiver, Ownable {
-    uint256 private constant METADATA_LENGTH = 62;
+    uint256 private constant IDENTITY_METADATA_LENGTH = 62;
+    uint256 private constant FORWARDER_METADATA_LENGTH = 64;
 
     address public forwarder;
     address public workflowOwner;
@@ -51,7 +52,10 @@ contract AutomationReceiver is ICREReceiver, Ownable {
     /// @notice Accept a verified CRE report and forward its approved call.
     function onReport(bytes calldata metadata, bytes calldata report) external override {
         if (msg.sender != forwarder) revert InvalidSender(msg.sender, forwarder);
-        if (metadata.length != METADATA_LENGTH) revert InvalidMetadataLength(metadata.length);
+        if (
+            metadata.length != IDENTITY_METADATA_LENGTH &&
+            metadata.length != FORWARDER_METADATA_LENGTH
+        ) revert InvalidMetadataLength(metadata.length);
 
         (bytes32 workflowId, address reportWorkflowOwner) = _decodeMetadata(metadata);
         if (reportWorkflowOwner != workflowOwner)

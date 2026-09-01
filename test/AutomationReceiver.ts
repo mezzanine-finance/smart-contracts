@@ -19,6 +19,9 @@ describe("AutomationReceiver", () => {
             [workflowId, WORKFLOW_NAME, author]
         );
 
+    const forwarderMetadata = (workflowId: string, author: string, reportId = "0x1234") =>
+        ethers.concat([metadata(workflowId, author), reportId]);
+
     const report = (targetAddress: string, callData: string) =>
         ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes"], [targetAddress, callData]);
 
@@ -77,6 +80,19 @@ describe("AutomationReceiver", () => {
         expect(await target.calls()).to.equal(1);
     });
 
+    it("accepts production forwarder metadata with a report ID", async () => {
+        const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
+
+        await receiver
+            .connect(forwarder)
+            .onReport(
+                forwarderMetadata(NAV_WORKFLOW_ID, workflowOwner.address),
+                report(target.target, callData)
+            );
+
+        expect(await target.calls()).to.equal(1);
+    });
+
     it("rejects calls that do not come from the forwarder", async () => {
         const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
 
@@ -96,6 +112,20 @@ describe("AutomationReceiver", () => {
         await expect(receiver.connect(forwarder).onReport("0x1234", "0x"))
             .to.be.revertedWithCustomError(receiver, "InvalidMetadataLength")
             .withArgs(2);
+
+        const identityMetadata = metadata(NAV_WORKFLOW_ID, workflowOwner.address);
+        await expect(
+            receiver.connect(forwarder).onReport(ethers.concat([identityMetadata, "0x12"]), "0x")
+        )
+            .to.be.revertedWithCustomError(receiver, "InvalidMetadataLength")
+            .withArgs(63);
+        await expect(
+            receiver
+                .connect(forwarder)
+                .onReport(ethers.concat([identityMetadata, "0x123456"]), "0x")
+        )
+            .to.be.revertedWithCustomError(receiver, "InvalidMetadataLength")
+            .withArgs(65);
     });
 
     it("rejects zero addresses in the constructor", async () => {
