@@ -15,9 +15,18 @@ interface VaultAutomationConfig {
     targets: string[];
 }
 
+interface WorkflowPermissionConfig {
+    name: string;
+    id: string;
+    allowed: boolean;
+}
+
 interface CREAutomationConfig {
     accessManager: string;
     chainlinkAutomationRole: number;
+    forwarder: string;
+    workflowOwner: string;
+    workflowPermissions: WorkflowPermissionConfig[];
     vaults: VaultAutomationConfig[];
 }
 
@@ -26,8 +35,25 @@ const PERFORM_UPKEEP_SELECTOR = ethers.id("performUpkeep(bytes)").slice(0, 10);
 function loadConfig(configPath: string): CREAutomationConfig {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as CREAutomationConfig;
     if (!ethers.isAddress(config.accessManager)) throw new Error("Invalid AccessManager address");
+    if (!ethers.isAddress(config.forwarder)) throw new Error("Invalid forwarder address");
+    if (!ethers.isAddress(config.workflowOwner)) throw new Error("Invalid workflow owner address");
     if (!Number.isSafeInteger(config.chainlinkAutomationRole)) {
         throw new Error("Invalid CHAINLINK_AUTOMATION role ID");
+    }
+    if (config.workflowPermissions.length === 0) {
+        throw new Error("At least one workflow permission is required");
+    }
+
+    const workflowIds = new Set<string>();
+    for (const permission of config.workflowPermissions) {
+        if (!permission.name || !ethers.isHexString(permission.id, 32)) {
+            throw new Error(`Invalid workflow permission: ${permission.name || permission.id}`);
+        }
+        const normalizedId = permission.id.toLowerCase();
+        if (workflowIds.has(normalizedId)) {
+            throw new Error(`Duplicate workflow ID: ${permission.id}`);
+        }
+        workflowIds.add(normalizedId);
     }
     if (config.vaults.length === 0) throw new Error("At least one vault is required");
 
@@ -68,10 +94,25 @@ async function validateTargetRoles(
 async function configureReceiver(
     receiver: AutomationReceiver,
     accessManager: AccessManager,
+    config: CREAutomationConfig,
     vault: VaultAutomationConfig,
     roleId: number
 ): Promise<void> {
     const receiverAddress = await receiver.getAddress();
+    if ((await receiver.forwarder()) !== config.forwarder) {
+        const tx = await receiver.setForwarder(config.forwarder);
+        await tx.wait();
+    }
+    if ((await receiver.workflowOwner()) !== config.workflowOwner) {
+        const tx = await receiver.setWorkflowOwner(config.workflowOwner);
+        await tx.wait();
+    }
+    for (const permission of config.workflowPermissions) {
+        if ((await receiver.allowedWorkflowIds(permission.id)) !== permission.allowed) {
+            const tx = await receiver.setWorkflowPermission(permission.id, permission.allowed);
+            await tx.wait();
+        }
+    }
     for (const target of vault.targets) {
         if (!(await receiver.allowedCalls(target, PERFORM_UPKEEP_SELECTOR))) {
             const tx = await receiver.setCallPermission(target, PERFORM_UPKEEP_SELECTOR, true);
@@ -94,8 +135,12 @@ async function main() {
             path.join(__dirname, "config", `cre-automation.${network.name}.json`)
     );
     const config = loadConfig(configPath);
-    const forwarder = process.env.CRE_FORWARDER_ADDRESS;
-    const workflowOwner = process.env.CRE_WORKFLOW_OWNER;
+    const forwarder = process.env.CRE_FORWARDER_ADDRESS ?? config.forwarder;
+    const workflowOwner = process.env.CRE_WORKFLOW_OWNER ?? config.workflowOwner;
+    if (!ethers.isAddress(forwarder)) throw new Error("Invalid resolved forwarder address");
+    if (!ethers.isAddress(workflowOwner))
+        throw new Error("Invalid resolved workflow owner address");
+    const resolvedConfig = {...config, forwarder, workflowOwner};
     const [deployer] = await ethers.getSigners();
 
     console.log("=== CRE Automation Receivers ===");
@@ -103,7 +148,14 @@ async function main() {
     console.log("Config:", configPath);
     console.log("Deployer / receiver owner:", deployer.address);
     console.log("AccessManager:", config.accessManager);
+    console.log("Forwarder:", forwarder);
+    console.log("Workflow owner:", workflowOwner);
     console.log("performUpkeep(bytes) selector:", PERFORM_UPKEEP_SELECTOR);
+    for (const permission of config.workflowPermissions) {
+        console.log(
+            `workflow ${permission.name}: ${permission.id} (${permission.allowed ? "allowed" : "revoked"})`
+        );
+    }
     for (const vault of config.vaults) {
         console.log(`${vault.id}: ${vault.targets.length} target(s)`);
         for (const target of vault.targets) console.log("  -", target);
@@ -113,7 +165,9 @@ async function main() {
         console.log(
             "Plan only: no RPC reads, deployments, permissions, or report writes performed."
         );
-        console.log("Required for deployment: CRE_FORWARDER_ADDRESS and CRE_WORKFLOW_OWNER.");
+        console.log(
+            "CRE_FORWARDER_ADDRESS and CRE_WORKFLOW_OWNER may override the configured values."
+        );
         return;
     }
 
@@ -127,13 +181,6 @@ async function main() {
     if (validateOnly) {
         console.log("Validation only: no deployments, permissions, or report writes performed.");
         return;
-    }
-
-    if (!forwarder || !ethers.isAddress(forwarder)) {
-        throw new Error("Set CRE_FORWARDER_ADDRESS to the canonical forwarder address");
-    }
-    if (!workflowOwner || !ethers.isAddress(workflowOwner)) {
-        throw new Error("Set CRE_WORKFLOW_OWNER to the CRE workflow owner address");
     }
 
     const deployments = loadDeployments();
@@ -165,8 +212,16 @@ async function main() {
             console.log(`${vault.id}: deployed receiver ${address}`);
         }
 
-        await configureReceiver(receiver, accessManager, vault, config.chainlinkAutomationRole);
-        console.log(`${vault.id}: call permissions and AccessManager role configured`);
+        await configureReceiver(
+            receiver,
+            accessManager,
+            resolvedConfig,
+            vault,
+            config.chainlinkAutomationRole
+        );
+        console.log(
+            `${vault.id}: workflow identity, call permissions, and AccessManager role configured`
+        );
 
         await verifyContract(await receiver.getAddress(), [
             deployer.address,
@@ -175,9 +230,7 @@ async function main() {
         ]);
     }
 
-    console.log(
-        "Workflow IDs are intentionally configured later, after final workflow hashes exist."
-    );
+    console.log("Configured workflow permissions now match the deployment config.");
 }
 
 main().catch((error) => {

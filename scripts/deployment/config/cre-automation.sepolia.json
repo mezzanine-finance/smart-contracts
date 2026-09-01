@@ -1,6 +1,20 @@
 {
     "accessManager": "0xf9eDd373D4C3C65888b5e49bA30f517D5e21A564",
     "chainlinkAutomationRole": 10,
+    "forwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
+    "workflowOwner": "0x41d925a7790e82fb1640f0b257f4a9bb4ac761b4",
+    "workflowPermissions": [
+        {
+            "name": "nav-staging",
+            "id": "0x00d52ca6ff0a50ef7d3f1ee9a0541edf6c9b40045e811f2ef04bbc7f4702dbed",
+            "allowed": true
+        },
+        {
+            "name": "finalization-staging",
+            "id": "0x00575ca10e461adcaafa8f018bbc13a9c0a74d000f315f2ef9453eb87dcdf474",
+            "allowed": true
+        }
+    ],
     "vaults": [
         {
             "id": "vault-1",
