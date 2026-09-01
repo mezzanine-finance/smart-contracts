@@ -8,6 +8,7 @@ import {
     recordDeployment,
     saveDeployments,
 } from "./lib/deployments";
+import {verifyContract} from "./lib/verify";
 
 interface VaultAutomationConfig {
     id: string;
@@ -166,6 +167,12 @@ async function main() {
 
         await configureReceiver(receiver, accessManager, vault, config.chainlinkAutomationRole);
         console.log(`${vault.id}: call permissions and AccessManager role configured`);
+
+        await verifyContract(await receiver.getAddress(), [
+            deployer.address,
+            forwarder,
+            workflowOwner,
+        ]);
     }
 
     console.log(

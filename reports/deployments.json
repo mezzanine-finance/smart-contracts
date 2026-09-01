@@ -2077,7 +2077,27 @@
         "txHash": "0x207129b78b83eef97b790b140fcbe84e5e7cddde4f76cbd7078069e0581cc4cc",
         "deployedAt": "2026-03-02T10:26:36.967Z"
       }
-    ]
+    ],
+    "vault-1": {
+      "AutomationReceiver": [
+        {
+          "version": 1,
+          "address": "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
+          "txHash": "0x8d3440a5d91ae41dd9947b49f3404800866818a906e7c689aa6afb7ab75ea47e",
+          "deployedAt": "2026-09-01T09:12:00.588Z"
+        }
+      ]
+    },
+    "vault-2": {
+      "AutomationReceiver": [
+        {
+          "version": 1,
+          "address": "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
+          "txHash": "0x18c6d5873d741effe95b7e7da435ec350bbd3ecd1f9a6d6aff2f85e4e0405769",
+          "deployedAt": "2026-09-01T09:13:01.824Z"
+        }
+      ]
+    }
   },
   "mainnet": {
     "AccessManager": [
