@@ -29,6 +29,10 @@ describe("NAV workflow", () => {
             receiver: receivers[index],
         })),
     };
+    const configWithoutReceivers: Config = {
+        ...config,
+        vaults: config.vaults.map(({receiver: _receiver, ...vault}) => vault),
+    };
 
     const setup = (runtimeConfig: Config = config) => {
         const network = getNetwork({
@@ -65,11 +69,13 @@ describe("NAV workflow", () => {
             {
                 id: "vault-1",
                 issuanceVault: "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
+                receiver: "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
                 navOracleAutomation: "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4",
             },
             {
                 id: "vault-2",
                 issuanceVault: "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
+                receiver: "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
                 navOracleAutomation: "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e",
             },
         ]);
@@ -278,8 +284,8 @@ describe("NAV workflow", () => {
     });
 
     test("reports a ready target when its receiver is not configured", () => {
-        const {runtime, evmMock} = setup();
-        const [vault1, vault2] = config.vaults;
+        const {runtime, evmMock} = setup(configWithoutReceivers);
+        const [vault1, vault2] = configWithoutReceivers.vaults;
         const target1 = addContractMock(evmMock, {
             address: vault1.navOracleAutomation as Address,
             abi: CHECK_UPKEEP_ABI,

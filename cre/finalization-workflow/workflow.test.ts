@@ -29,6 +29,10 @@ describe("Finalization workflow", () => {
             receiver: receivers[index],
         })),
     };
+    const configWithoutReceivers: Config = {
+        ...config,
+        vaults: config.vaults.map(({receiver: _receiver, ...vault}) => vault),
+    };
 
     const setup = (runtimeConfig: Config = config) => {
         const network = getNetwork({
@@ -65,6 +69,7 @@ describe("Finalization workflow", () => {
             {
                 id: "vault-1",
                 issuanceVault: "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
+                receiver: "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
                 finalizers: [
                     {
                         tranche: "senior",
@@ -79,6 +84,7 @@ describe("Finalization workflow", () => {
             {
                 id: "vault-2",
                 issuanceVault: "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
+                receiver: "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
                 finalizers: [
                     {
                         tranche: "junior",
@@ -281,8 +287,8 @@ describe("Finalization workflow", () => {
     });
 
     test("reports a ready finalizer when its receiver is not configured", () => {
-        const {runtime, evmMock} = setup();
-        const finalizers = config.vaults.flatMap(({id, finalizers}) =>
+        const {runtime, evmMock} = setup(configWithoutReceivers);
+        const finalizers = configWithoutReceivers.vaults.flatMap(({id, finalizers}) =>
             finalizers.map((finalizer) => ({vaultId: id, ...finalizer}))
         );
 
