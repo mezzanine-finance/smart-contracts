@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {ethers, network} from "hardhat";
+import {artifacts, ethers, network} from "hardhat";
 import type {AccessManager, AutomationReceiver} from "../../typechain-types";
 import {
     getLatestDeployment,
@@ -10,6 +10,7 @@ import {
     type DeploymentRecord,
 } from "./lib/deployments";
 import {buildWorkflowPermissionChanges} from "./lib/creWorkflowPermissions";
+import {hasCurrentRuntimeBytecode} from "./lib/creReceiverDeployment";
 import {verifyContract} from "./lib/verify";
 
 interface VaultAutomationConfig {
@@ -200,6 +201,7 @@ async function main() {
 
     const deployments = loadDeployments();
     const factory = await ethers.getContractFactory("AutomationReceiver", deployer);
+    const receiverArtifact = await artifacts.readArtifact("AutomationReceiver");
     for (const vault of config.vaults) {
         const existing = getLatestDeployment(
             deployments,
@@ -207,13 +209,24 @@ async function main() {
             "AutomationReceiver",
             vault.id
         );
+        const existingCode = existing ? await ethers.provider.getCode(existing.address) : "0x";
+        const canReuseExisting =
+            existing !== undefined &&
+            hasCurrentRuntimeBytecode(existingCode, receiverArtifact.deployedBytecode);
         let receiver: AutomationReceiver;
         let deployment: DeploymentRecord;
-        if (existing && (await ethers.provider.getCode(existing.address)) !== "0x") {
+        let replacedReceiver: string | undefined;
+        if (existing && canReuseExisting) {
             receiver = factory.attach(existing.address) as AutomationReceiver;
             deployment = existing;
             console.log(`${vault.id}: reusing receiver ${existing.address}`);
         } else {
+            if (existing && existingCode !== "0x") {
+                replacedReceiver = existing.address;
+                console.log(
+                    `${vault.id}: receiver ${existing.address} has outdated runtime bytecode; deploying a replacement`
+                );
+            }
             receiver = await factory.deploy(deployer.address, forwarder, workflowOwner);
             await receiver.waitForDeployment();
             const address = await receiver.getAddress();
@@ -238,6 +251,20 @@ async function main() {
             vault,
             config.chainlinkAutomationRole
         );
+        if (replacedReceiver) {
+            const [oldReceiverHasRole] = await accessManager.hasRole(
+                config.chainlinkAutomationRole,
+                replacedReceiver
+            );
+            if (oldReceiverHasRole) {
+                const tx = await accessManager.revokeRole(
+                    config.chainlinkAutomationRole,
+                    replacedReceiver
+                );
+                await tx.wait();
+                console.log(`${vault.id}: revoked AccessManager role from ${replacedReceiver}`);
+            }
+        }
         saveDeployments(deployments);
         console.log(
             `${vault.id}: workflow identity, call permissions, and AccessManager role configured`

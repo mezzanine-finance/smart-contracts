@@ -1,5 +1,6 @@
 import {expect} from "chai";
 import {buildWorkflowPermissionChanges} from "../scripts/deployment/lib/creWorkflowPermissions";
+import {hasCurrentRuntimeBytecode} from "../scripts/deployment/lib/creReceiverDeployment";
 
 describe("CRE workflow permission reconciliation", () => {
     it("does nothing when active permissions match the desired state", () => {
@@ -26,5 +27,17 @@ describe("CRE workflow permission reconciliation", () => {
             {id: "0xold-nav", allowed: false},
             {id: "0xtemporary", allowed: false},
         ]);
+    });
+});
+
+describe("CRE receiver deployment selection", () => {
+    it("reuses a deployment only when its runtime bytecode matches", () => {
+        expect(hasCurrentRuntimeBytecode("0xABCD", "0xabcd")).to.equal(true);
+        expect(hasCurrentRuntimeBytecode("0xabcd", "0x1234")).to.equal(false);
+    });
+
+    it("does not reuse an address without deployed bytecode", () => {
+        expect(hasCurrentRuntimeBytecode("0x", "0xabcd")).to.equal(false);
+        expect(hasCurrentRuntimeBytecode("0xabcd", "0x")).to.equal(false);
     });
 });
