@@ -2,11 +2,11 @@ import fs from "fs";
 import path from "path";
 import {ethers, network} from "hardhat";
 import {getLatestDeployment, loadDeployments} from "../deployment/lib/deployments";
+import {buildWorkflowPermissionChanges} from "../deployment/lib/creWorkflowPermissions";
 
 interface WorkflowPermissionConfig {
     name: string;
     id: string;
-    allowed: boolean;
 }
 
 interface VaultConfig {
@@ -75,12 +75,27 @@ async function main() {
         ready &&= workflowOwner.toLowerCase() === config.workflowOwner.toLowerCase();
         ready &&= hasRole;
 
+        const activeWorkflowIds = new Set(
+            (deployment.workflowIds ?? []).map((id) => id.toLowerCase())
+        );
+        const desiredWorkflowIds = new Set(
+            config.workflowPermissions.map(({id}) => id.toLowerCase())
+        );
+        const permissionChanges = buildWorkflowPermissionChanges(
+            activeWorkflowIds,
+            desiredWorkflowIds
+        );
         for (const permission of config.workflowPermissions) {
-            const actual = await receiver.allowedWorkflowIds(permission.id);
-            const matches = actual === permission.allowed;
-            console.log(`  workflow ${permission.name}: ${matches ? "OK" : "MISMATCH"}`);
-            ready &&= matches;
+            const allowed = await receiver.allowedWorkflowIds(permission.id);
+            console.log(`  workflow ${permission.name}: ${allowed ? "OK" : "MISSING"}`);
+            ready &&= allowed;
         }
+        for (const change of permissionChanges.filter(({allowed}) => !allowed)) {
+            const allowed = await receiver.allowedWorkflowIds(change.id);
+            console.log(`  stale workflow ${change.id}: ${allowed ? "ALLOWED" : "REVOKED"}`);
+            ready &&= !allowed;
+        }
+        ready &&= permissionChanges.length === 0;
 
         for (const target of vault.targets) {
             const allowed = await receiver.allowedCalls(target, PERFORM_UPKEEP_SELECTOR);

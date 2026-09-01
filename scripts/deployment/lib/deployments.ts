@@ -7,6 +7,7 @@ export interface DeploymentRecord {
     implementation?: string;
     txHash?: string;
     deployedAt?: string;
+    workflowIds?: string[];
 }
 
 export type DeploymentNamespace = Record<string, DeploymentRecord[]>;

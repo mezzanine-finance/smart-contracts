@@ -7,7 +7,9 @@ import {
     loadDeployments,
     recordDeployment,
     saveDeployments,
+    type DeploymentRecord,
 } from "./lib/deployments";
+import {buildWorkflowPermissionChanges} from "./lib/creWorkflowPermissions";
 import {verifyContract} from "./lib/verify";
 
 interface VaultAutomationConfig {
@@ -18,7 +20,6 @@ interface VaultAutomationConfig {
 interface WorkflowPermissionConfig {
     name: string;
     id: string;
-    allowed: boolean;
 }
 
 interface CREAutomationConfig {
@@ -93,6 +94,7 @@ async function validateTargetRoles(
 
 async function configureReceiver(
     receiver: AutomationReceiver,
+    deployment: DeploymentRecord,
     accessManager: AccessManager,
     config: CREAutomationConfig,
     vault: VaultAutomationConfig,
@@ -107,12 +109,27 @@ async function configureReceiver(
         const tx = await receiver.setWorkflowOwner(config.workflowOwner);
         await tx.wait();
     }
-    for (const permission of config.workflowPermissions) {
-        if ((await receiver.allowedWorkflowIds(permission.id)) !== permission.allowed) {
-            const tx = await receiver.setWorkflowPermission(permission.id, permission.allowed);
+    if (!deployment.workflowIds) {
+        throw new Error(
+            `${vault.id} deployment is missing tracked workflow IDs; initialize workflowIds in reports/deployments.json before reconciliation`
+        );
+    }
+    const activeWorkflowIds = new Set(deployment.workflowIds.map((id) => id.toLowerCase()));
+    const desiredWorkflowIds = new Set(config.workflowPermissions.map(({id}) => id.toLowerCase()));
+    for (const change of buildWorkflowPermissionChanges(activeWorkflowIds, desiredWorkflowIds)) {
+        console.log(`  workflow ${change.id}: ${change.allowed ? "allowing" : "revoking"}`);
+        if ((await receiver.allowedWorkflowIds(change.id)) !== change.allowed) {
+            const tx = await receiver.setWorkflowPermission(change.id, change.allowed);
             await tx.wait();
         }
     }
+    for (const id of desiredWorkflowIds) {
+        if (!(await receiver.allowedWorkflowIds(id))) {
+            const tx = await receiver.setWorkflowPermission(id, true);
+            await tx.wait();
+        }
+    }
+    deployment.workflowIds = [...desiredWorkflowIds];
     for (const target of vault.targets) {
         if (!(await receiver.allowedCalls(target, PERFORM_UPKEEP_SELECTOR))) {
             const tx = await receiver.setCallPermission(target, PERFORM_UPKEEP_SELECTOR, true);
@@ -152,9 +169,7 @@ async function main() {
     console.log("Workflow owner:", workflowOwner);
     console.log("performUpkeep(bytes) selector:", PERFORM_UPKEEP_SELECTOR);
     for (const permission of config.workflowPermissions) {
-        console.log(
-            `workflow ${permission.name}: ${permission.id} (${permission.allowed ? "allowed" : "revoked"})`
-        );
+        console.log(`workflow ${permission.name}: ${permission.id}`);
     }
     for (const vault of config.vaults) {
         console.log(`${vault.id}: ${vault.targets.length} target(s)`);
@@ -193,32 +208,37 @@ async function main() {
             vault.id
         );
         let receiver: AutomationReceiver;
+        let deployment: DeploymentRecord;
         if (existing && (await ethers.provider.getCode(existing.address)) !== "0x") {
             receiver = factory.attach(existing.address) as AutomationReceiver;
+            deployment = existing;
             console.log(`${vault.id}: reusing receiver ${existing.address}`);
         } else {
             receiver = await factory.deploy(deployer.address, forwarder, workflowOwner);
             await receiver.waitForDeployment();
             const address = await receiver.getAddress();
             const txHash = receiver.deploymentTransaction()?.hash;
-            recordDeployment(
+            deployment = recordDeployment(
                 deployments,
                 network.name,
                 "AutomationReceiver",
                 {address, txHash, deployedAt: new Date().toISOString()},
                 vault.id
             );
+            deployment.workflowIds = [];
             saveDeployments(deployments);
             console.log(`${vault.id}: deployed receiver ${address}`);
         }
 
         await configureReceiver(
             receiver,
+            deployment,
             accessManager,
             resolvedConfig,
             vault,
             config.chainlinkAutomationRole
         );
+        saveDeployments(deployments);
         console.log(
             `${vault.id}: workflow identity, call permissions, and AccessManager role configured`
         );
