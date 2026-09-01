@@ -146,7 +146,11 @@ describe("NAV workflow", () => {
                     payload: reportPayload(report.rawReport),
                     gasLimit: gasConfig.gasLimit,
                 });
-                return {txStatus: "TX_STATUS_SUCCESS"};
+                return {
+                    txStatus: "TX_STATUS_SUCCESS",
+                    receiverContractExecutionStatus: "RECEIVER_CONTRACT_EXECUTION_STATUS_SUCCESS",
+                    txHash: "EjQ=",
+                };
             };
         });
 
@@ -154,6 +158,11 @@ describe("NAV workflow", () => {
 
         expect(writes).toHaveLength(2);
         expect(results.every((result) => result.txStatus === 2)).toBe(true);
+        expect(
+            results.every(
+                (result) => result.receiverExecutionStatus === 0 && result.txHash === "0x1234"
+            )
+        ).toBe(true);
         writes.forEach((write, index) => {
             const [target, callData] = decodeAbiParameters(
                 [{type: "address"}, {type: "bytes"}],

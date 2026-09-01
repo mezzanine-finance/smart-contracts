@@ -1,9 +1,21 @@
-import {EVMClient, prepareReportRequest, TxStatus, type Runtime} from "@chainlink/cre-sdk";
+import {
+    bytesToHex,
+    EVMClient,
+    prepareReportRequest,
+    TxStatus,
+    type Runtime,
+} from "@chainlink/cre-sdk";
 import {encodeAbiParameters, encodeFunctionData, type Address, type Hex} from "viem";
 import type {Config} from "./config";
 import {PERFORM_UPKEEP_ABI} from "./contracts";
 
 const RECEIVER_EXECUTION_SUCCESS = 0;
+
+export interface WriteReportResult {
+    txStatus: number;
+    receiverExecutionStatus?: number;
+    txHash?: Hex;
+}
 
 export const writeUpkeepReport = (
     runtime: Runtime<Config>,
@@ -12,7 +24,7 @@ export const writeUpkeepReport = (
     target: Address,
     performData: Hex,
     gasLimit: string
-): number => {
+): WriteReportResult => {
     const callData = encodeFunctionData({
         abi: PERFORM_UPKEEP_ABI,
         functionName: "performUpkeep",
@@ -37,5 +49,11 @@ export const writeUpkeepReport = (
             `Receiver execution failed with status ${reply.receiverContractExecutionStatus}`
         );
     }
-    return reply.txStatus;
+    return {
+        txStatus: reply.txStatus,
+        ...(reply.receiverContractExecutionStatus === undefined
+            ? {}
+            : {receiverExecutionStatus: Number(reply.receiverContractExecutionStatus)}),
+        ...(reply.txHash && reply.txHash.length > 0 ? {txHash: bytesToHex(reply.txHash)} : {}),
+    };
 };

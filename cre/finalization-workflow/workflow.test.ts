@@ -168,7 +168,11 @@ describe("Finalization workflow", () => {
                     receiver: vault.receiver as Address,
                     payload: reportPayload(report.rawReport),
                 });
-                return {txStatus: "TX_STATUS_SUCCESS"};
+                return {
+                    txStatus: "TX_STATUS_SUCCESS",
+                    receiverContractExecutionStatus: "RECEIVER_CONTRACT_EXECUTION_STATUS_SUCCESS",
+                    txHash: "EjQ=",
+                };
             };
         });
 
@@ -176,6 +180,11 @@ describe("Finalization workflow", () => {
 
         expect(writes).toHaveLength(3);
         expect(results.every((result) => result.txStatus === 2)).toBe(true);
+        expect(
+            results.every(
+                (result) => result.receiverExecutionStatus === 0 && result.txHash === "0x1234"
+            )
+        ).toBe(true);
         const expectedTargets = configWithReceivers.vaults.flatMap((vault) =>
             vault.finalizers.map((finalizer) => ({
                 receiver: vault.receiver,

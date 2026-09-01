@@ -12,6 +12,8 @@ export interface UpkeepReadiness {
     performData: Hex;
     writeAttempted?: boolean;
     txStatus?: number;
+    receiverExecutionStatus?: number;
+    txHash?: Hex;
     error?: string;
 }
 
@@ -52,7 +54,7 @@ export const onCronTrigger = (runtime: Runtime<Config>): UpkeepReadiness[] => {
             try {
                 if (!receiver) throw new Error(`Receiver is not configured for ${id}`);
                 writeAttempted = true;
-                const txStatus = writeUpkeepReport(
+                const writeResult = writeUpkeepReport(
                     runtime,
                     evmClient,
                     receiver as Address,
@@ -60,8 +62,10 @@ export const onCronTrigger = (runtime: Runtime<Config>): UpkeepReadiness[] => {
                     readiness.performData,
                     gasLimit
                 );
-                runtime.log(`Finalizer ${id}/${tranche} (${target}): txStatus=${txStatus}`);
-                return {...readiness, writeAttempted, txStatus};
+                runtime.log(
+                    `Finalizer ${id}/${tranche}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
+                );
+                return {...readiness, writeAttempted, ...writeResult};
             } catch (error) {
                 const message = errorMessage(error);
                 runtime.log(`Finalizer ${id}/${tranche} (${target}) write failed: ${message}`);

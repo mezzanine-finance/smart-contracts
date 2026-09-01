@@ -141,6 +141,13 @@ function runValidation() {
 }
 
 function runWorkflow(folder, broadcast) {
+    const mode = broadcast ? "BROADCAST" : "SIMULATION";
+    console.log(`\n[${mode}] ${folder}`);
+    console.log(
+        broadcast
+            ? "Real Sepolia writes are enabled. Successful writes should return a transaction hash."
+            : "Using live Sepolia reads, but reports and writes are simulated; on-chain state will not change."
+    );
     const args = [
         "-e",
         ".env",
@@ -155,6 +162,11 @@ function runWorkflow(folder, broadcast) {
     ];
     if (broadcast) args.push("--broadcast");
     run(cre, args, {cwd: creRoot});
+    console.log(
+        broadcast
+            ? `[${mode}] ${folder} finished. Check each ready target's txHash above.`
+            : `[${mode}] ${folder} finished without broadcasting transactions.`
+    );
 }
 
 switch (action) {
