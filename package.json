@@ -61,6 +61,11 @@
         "deploy:cre-receivers:sepolia": "npm run deploy:cre-receivers -- --network sepolia",
         "deploy:cre-receivers:sepolia:plan": "CRE_RECEIVERS_PLAN=true npm run deploy:cre-receivers:sepolia",
         "deploy:cre-receivers:sepolia:validate": "CRE_RECEIVERS_VALIDATE=true npm run deploy:cre-receivers:sepolia",
+        "cre:status:sepolia": "node scripts/cre/manage.mjs status sepolia",
+        "cre:check:sepolia": "node scripts/cre/manage.mjs check sepolia",
+        "cre:setup:sepolia": "node scripts/cre/manage.mjs setup sepolia",
+        "cre:simulate:sepolia": "node scripts/cre/manage.mjs simulate sepolia",
+        "cre:broadcast:sepolia": "node scripts/cre/manage.mjs broadcast sepolia",
         "deploy:grant-roles": "npx hardhat run scripts/deployment/grantRoles.ts",
         "deploy:renounce-roles": "npx hardhat run scripts/deployment/renounceRoles.ts",
         "deploy:handoff-roles": "npx hardhat run scripts/deployment/handoffRoles.ts"
