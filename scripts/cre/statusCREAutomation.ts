@@ -1,8 +1,13 @@
 import fs from "fs";
 import path from "path";
-import {ethers, network} from "hardhat";
+import {artifacts, ethers, network} from "hardhat";
 import {getLatestDeployment, loadDeployments} from "../deployment/lib/deployments";
+import {hasCurrentRuntimeBytecode} from "../deployment/lib/creReceiverDeployment";
 import {buildWorkflowPermissionChanges} from "../deployment/lib/creWorkflowPermissions";
+import {
+    resolveWorkflowReceivers,
+    type CREWorkflowConfig,
+} from "../deployment/lib/creWorkflowConfig";
 
 interface WorkflowPermissionConfig {
     name: string;
@@ -16,6 +21,7 @@ interface VaultConfig {
 
 interface CREAutomationConfig {
     accessManager: string;
+    chainSelector: string;
     chainlinkAutomationRole: number;
     forwarder: string;
     workflowOwner: string;
@@ -24,6 +30,16 @@ interface CREAutomationConfig {
 }
 
 const PERFORM_UPKEEP_SELECTOR = ethers.id("performUpkeep(bytes)").slice(0, 10);
+
+function loadWorkflowReceiverConfigs(): ReadonlyMap<string, string> {
+    const configName =
+        network.name === "sepolia" ? "config.staging.json" : "config.production.json";
+    const workflowConfigs = ["nav-workflow", "finalization-workflow"].map((workflow) => {
+        const configPath = path.resolve(__dirname, "../../cre", workflow, configName);
+        return JSON.parse(fs.readFileSync(configPath, "utf8")) as CREWorkflowConfig;
+    });
+    return resolveWorkflowReceivers(workflowConfigs);
+}
 
 async function main() {
     const configPath = path.resolve(
@@ -34,8 +50,18 @@ async function main() {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as CREAutomationConfig;
     const deployments = loadDeployments();
     const accessManager = await ethers.getContractAt("AccessManager", config.accessManager);
+    const receiverArtifact = await artifacts.readArtifact("AutomationReceiver");
     const strict = process.env.CRE_STATUS_STRICT === "true";
     let ready = true;
+    let workflowReceivers = new Map<string, string>();
+    try {
+        workflowReceivers = new Map(loadWorkflowReceiverConfigs());
+    } catch (error) {
+        console.log(
+            `Workflow receiver configs: INVALID (${error instanceof Error ? error.message : String(error)})`
+        );
+        ready = false;
+    }
 
     console.log("\nOn-chain receiver wiring");
     for (const vault of config.vaults) {
@@ -46,9 +72,38 @@ async function main() {
             "AutomationReceiver",
             vault.id
         );
-        if (!deployment || (await ethers.provider.getCode(deployment.address)) === "0x") {
+        if (!deployment) {
             console.log("  receiver: MISSING");
             ready = false;
+            continue;
+        }
+
+        const deployedCode = await ethers.provider.getCode(deployment.address);
+        if (deployedCode === "0x") {
+            console.log(`  receiver: ${deployment.address}`);
+            console.log("  runtime bytecode: MISSING");
+            ready = false;
+            continue;
+        }
+
+        const hasCurrentBytecode = hasCurrentRuntimeBytecode(
+            deployedCode,
+            receiverArtifact.deployedBytecode
+        );
+        const configuredReceiver = workflowReceivers.get(vault.id);
+        const workflowConfigMatches =
+            configuredReceiver?.toLowerCase() === deployment.address.toLowerCase();
+
+        console.log(`  receiver: ${deployment.address}`);
+        console.log(`  runtime bytecode: ${hasCurrentBytecode ? "OK" : "OUTDATED"}`);
+        console.log(
+            `  workflow configs: ${workflowConfigMatches ? "OK" : `MISMATCH (${configuredReceiver ?? "missing"})`}`
+        );
+        ready &&= hasCurrentBytecode;
+        ready &&= workflowConfigMatches;
+
+        if (!hasCurrentBytecode) {
+            console.log("  chain selector: UNAVAILABLE (outdated receiver)");
             continue;
         }
 
@@ -56,13 +111,16 @@ async function main() {
         const owner = await receiver.owner();
         const forwarder = await receiver.forwarder();
         const workflowOwner = await receiver.workflowOwner();
+        const chainSelector = await receiver.chainSelector();
         const [hasRole] = await accessManager.hasRole(
             config.chainlinkAutomationRole,
             deployment.address
         );
 
-        console.log(`  receiver: ${deployment.address}`);
         console.log(`  contract owner: ${owner}`);
+        console.log(
+            `  chain selector: ${chainSelector === BigInt(config.chainSelector) ? "OK" : `MISMATCH (${chainSelector})`}`
+        );
         console.log(
             `  forwarder: ${forwarder.toLowerCase() === config.forwarder.toLowerCase() ? "OK" : "MISMATCH"}`
         );
@@ -73,6 +131,7 @@ async function main() {
 
         ready &&= forwarder.toLowerCase() === config.forwarder.toLowerCase();
         ready &&= workflowOwner.toLowerCase() === config.workflowOwner.toLowerCase();
+        ready &&= chainSelector === BigInt(config.chainSelector);
         ready &&= hasRole;
 
         const activeWorkflowIds = new Set(
