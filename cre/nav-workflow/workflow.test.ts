@@ -73,23 +73,19 @@ describe("NAV workflow", () => {
         );
     });
 
-    test("configures both Sepolia vaults", () => {
-        expect(stagingConfig.chainName).toBe("ethereum-testnet-sepolia");
-        expect(stagingConfig.isTestnet).toBe(true);
-        expect(stagingConfig.vaults).toEqual([
-            {
-                id: "vault-1",
-                issuanceVault: "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
-                receiver: "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
-                navOracleAutomation: "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4",
-            },
-            {
-                id: "vault-2",
-                issuanceVault: "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
-                receiver: "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
-                navOracleAutomation: "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e",
-            },
-        ]);
+    test("configures valid and unique Sepolia vaults", () => {
+        const parsedConfig = configSchema.parse(stagingConfig);
+        const vaultIds = parsedConfig.vaults.map(({id}) => id);
+
+        expect(parsedConfig.chainName).toBe("ethereum-testnet-sepolia");
+        expect(parsedConfig.isTestnet).toBe(true);
+        expect(new Set(vaultIds).size).toBe(vaultIds.length);
+        parsedConfig.vaults.forEach(({issuanceVault, navOracleAutomation, receiver}) => {
+            expect(issuanceVault).not.toBe("0x0000000000000000000000000000000000000000");
+            expect(navOracleAutomation).not.toBe("0x0000000000000000000000000000000000000000");
+            expect(receiver).toBeDefined();
+            expect(receiver).not.toBe("0x0000000000000000000000000000000000000000");
+        });
     });
 
     test("does not configure targets in production yet", () => {

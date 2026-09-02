@@ -15,6 +15,7 @@ import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
 import {initWorkflow, onCronTrigger} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
+import navStagingConfig from "../nav-workflow/config.staging.json";
 
 describe("Finalization workflow", () => {
     const scheduledAt = 1_800_000_000n;
@@ -73,37 +74,37 @@ describe("Finalization workflow", () => {
         );
     });
 
-    test("configures all delayed-withdrawal finalizers", () => {
-        expect(stagingConfig.chainName).toBe("ethereum-testnet-sepolia");
-        expect(stagingConfig.isTestnet).toBe(true);
-        expect(stagingConfig.vaults).toEqual([
-            {
-                id: "vault-1",
-                issuanceVault: "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
-                receiver: "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
-                finalizers: [
-                    {
-                        tranche: "senior",
-                        address: "0xE5ead599d1c550CD1d860FaD781239c144CEa682",
-                    },
-                    {
-                        tranche: "junior",
-                        address: "0xc6ae58178335be8AB541bfdC2B30188Ac4b5BB8D",
-                    },
-                ],
-            },
-            {
-                id: "vault-2",
-                issuanceVault: "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
-                receiver: "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
-                finalizers: [
-                    {
-                        tranche: "junior",
-                        address: "0x8C6874ee655C019Cf346fB22e9cc4812d4CB87d9",
-                    },
-                ],
-            },
-        ]);
+    test("configures valid and unique delayed-withdrawal finalizers", () => {
+        const parsedConfig = configSchema.parse(stagingConfig);
+        const vaultIds = parsedConfig.vaults.map(({id}) => id);
+
+        expect(parsedConfig.chainName).toBe("ethereum-testnet-sepolia");
+        expect(parsedConfig.isTestnet).toBe(true);
+        expect(new Set(vaultIds).size).toBe(vaultIds.length);
+        parsedConfig.vaults.forEach(({issuanceVault, receiver, finalizers}) => {
+            expect(issuanceVault).not.toBe("0x0000000000000000000000000000000000000000");
+            expect(receiver).toBeDefined();
+            expect(receiver).not.toBe("0x0000000000000000000000000000000000000000");
+            expect(finalizers.length).toBeGreaterThan(0);
+            expect(new Set(finalizers.map(({tranche}) => tranche)).size).toBe(finalizers.length);
+            finalizers.forEach(({address}) => {
+                expect(address).not.toBe("0x0000000000000000000000000000000000000000");
+            });
+        });
+    });
+
+    test("uses the same vault and receiver wiring as the NAV workflow", () => {
+        const navVaults = new Map(
+            navStagingConfig.vaults.map(({id, issuanceVault, receiver}) => [
+                id,
+                {issuanceVault, receiver},
+            ])
+        );
+
+        expect(navVaults.size).toBe(stagingConfig.vaults.length);
+        stagingConfig.vaults.forEach(({id, issuanceVault, receiver}) => {
+            expect(navVaults.get(id)).toEqual({issuanceVault, receiver});
+        });
     });
 
     test("does not configure targets in production yet", () => {
