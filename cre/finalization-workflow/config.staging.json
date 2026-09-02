@@ -7,7 +7,7 @@
     {
       "id": "vault-1",
       "issuanceVault": "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
-      "receiver": "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
+      "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
       "finalizers": [
         {
           "tranche": "senior",
@@ -22,7 +22,7 @@
     {
       "id": "vault-2",
       "issuanceVault": "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
-      "receiver": "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
+      "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
       "finalizers": [
         {
           "tranche": "junior",

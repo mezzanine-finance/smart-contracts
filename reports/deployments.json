@@ -2089,6 +2089,17 @@
             "0x00d52ca6ff0a50ef7d3f1ee9a0541edf6c9b40045e811f2ef04bbc7f4702dbed",
             "0x00575ca10e461adcaafa8f018bbc13a9c0a74d000f315f2ef9453eb87dcdf474"
           ]
+        },
+        {
+          "version": 2,
+          "address": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
+          "txHash": "0xd6f5fede08ba1c9859424dafc7301621516815560946b12c030968ddb9e251b0",
+          "deployedAt": "2026-09-02T12:55:00.889Z",
+          "replaces": "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
+          "workflowIds": [
+            "0x0066d31b8f00d575c55ce3fe8f7cf12001b16874f31d1d6cccd7d5c7397825dd",
+            "0x00cbdd17f1a0e4fec2d53fa5ece1999d8d0ad0a88cc3c8c8336570e86ab0a711"
+          ]
         }
       ]
     },
@@ -2102,6 +2113,17 @@
           "workflowIds": [
             "0x00d52ca6ff0a50ef7d3f1ee9a0541edf6c9b40045e811f2ef04bbc7f4702dbed",
             "0x00575ca10e461adcaafa8f018bbc13a9c0a74d000f315f2ef9453eb87dcdf474"
+          ]
+        },
+        {
+          "version": 2,
+          "address": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
+          "txHash": "0x6ad7672f6f4eb154fff4bc34d19dc106679e27a3a7580f36d53eb9fdccccfc96",
+          "deployedAt": "2026-09-02T12:55:13.088Z",
+          "replaces": "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
+          "workflowIds": [
+            "0x0066d31b8f00d575c55ce3fe8f7cf12001b16874f31d1d6cccd7d5c7397825dd",
+            "0x00cbdd17f1a0e4fec2d53fa5ece1999d8d0ad0a88cc3c8c8336570e86ab0a711"
           ]
         }
       ]

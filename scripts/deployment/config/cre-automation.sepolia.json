@@ -7,11 +7,11 @@
     "workflowPermissions": [
         {
             "name": "nav-staging",
-            "id": "0x00d52ca6ff0a50ef7d3f1ee9a0541edf6c9b40045e811f2ef04bbc7f4702dbed"
+            "id": "0x0066d31b8f00d575c55ce3fe8f7cf12001b16874f31d1d6cccd7d5c7397825dd"
         },
         {
             "name": "finalization-staging",
-            "id": "0x00575ca10e461adcaafa8f018bbc13a9c0a74d000f315f2ef9453eb87dcdf474"
+            "id": "0x00cbdd17f1a0e4fec2d53fa5ece1999d8d0ad0a88cc3c8c8336570e86ab0a711"
         }
     ],
     "vaults": [
