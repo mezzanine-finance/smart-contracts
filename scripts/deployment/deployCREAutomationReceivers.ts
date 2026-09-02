@@ -10,7 +10,8 @@ import {
     type DeploymentRecord,
 } from "./lib/deployments";
 import {buildWorkflowPermissionChanges} from "./lib/creWorkflowPermissions";
-import {hasCurrentRuntimeBytecode} from "./lib/creReceiverDeployment";
+import {syncWorkflowReceivers, type CREWorkflowConfig} from "./lib/creWorkflowConfig";
+import {hasCurrentRuntimeBytecode, shouldConfigureReceiver} from "./lib/creReceiverDeployment";
 import {verifyContract} from "./lib/verify";
 
 interface VaultAutomationConfig {
@@ -34,6 +35,25 @@ interface CREAutomationConfig {
 }
 
 const PERFORM_UPKEEP_SELECTOR = ethers.id("performUpkeep(bytes)").slice(0, 10);
+const SEPOLIA_WORKFLOW_CONFIG_PATHS = [
+    path.resolve(__dirname, "../../cre/nav-workflow/config.staging.json"),
+    path.resolve(__dirname, "../../cre/finalization-workflow/config.staging.json"),
+];
+
+function syncWorkflowConfigFiles(receivers: ReadonlyMap<string, string>): void {
+    for (const workflowConfigPath of SEPOLIA_WORKFLOW_CONFIG_PATHS) {
+        const workflowConfig = JSON.parse(
+            fs.readFileSync(workflowConfigPath, "utf8")
+        ) as CREWorkflowConfig;
+        const result = syncWorkflowReceivers(workflowConfig, receivers);
+        if (!result.changed) {
+            console.log(`Workflow config already current: ${workflowConfigPath}`);
+            continue;
+        }
+        fs.writeFileSync(workflowConfigPath, `${JSON.stringify(result.config, null, 2)}\n`);
+        console.log(`Updated workflow receiver addresses: ${workflowConfigPath}`);
+    }
+}
 
 function loadConfig(configPath: string): CREAutomationConfig {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as CREAutomationConfig;
@@ -155,6 +175,7 @@ async function configureReceiver(
 async function main() {
     const planOnly = process.env.CRE_RECEIVERS_PLAN === "true";
     const validateOnly = process.env.CRE_RECEIVERS_VALIDATE === "true";
+    const prepareOnly = process.env.CRE_RECEIVERS_PREPARE === "true";
     const configPath = path.resolve(
         process.env.CRE_AUTOMATION_CONFIG ??
             path.join(__dirname, "config", `cre-automation.${network.name}.json`)
@@ -177,6 +198,7 @@ async function main() {
     console.log("Forwarder:", forwarder);
     console.log("Workflow owner:", workflowOwner);
     console.log("performUpkeep(bytes) selector:", PERFORM_UPKEEP_SELECTOR);
+    console.log("Mode:", prepareOnly ? "prepare receivers without permissions" : "configure");
     for (const permission of config.workflowPermissions) {
         console.log(`workflow ${permission.name}: ${permission.id}`);
     }
@@ -210,6 +232,8 @@ async function main() {
     const deployments = loadDeployments();
     const factory = await ethers.getContractFactory("AutomationReceiver", deployer);
     const receiverArtifact = await artifacts.readArtifact("AutomationReceiver");
+    const selectedReceivers = new Map<string, string>();
+    let preparedReceiverCount = 0;
     for (const vault of config.vaults) {
         const existing = getLatestDeployment(
             deployments,
@@ -230,14 +254,14 @@ async function main() {
             existing !== undefined && hasCurrentCode && hasExpectedChainSelector;
         let receiver: AutomationReceiver;
         let deployment: DeploymentRecord;
-        let replacedReceiver: string | undefined;
+        let newlyDeployed = false;
         if (existing && canReuseExisting) {
             receiver = factory.attach(existing.address) as AutomationReceiver;
             deployment = existing;
             console.log(`${vault.id}: reusing receiver ${existing.address}`);
         } else {
+            newlyDeployed = true;
             if (existing && existingCode !== "0x") {
-                replacedReceiver = existing.address;
                 console.log(
                     `${vault.id}: receiver ${existing.address} has outdated bytecode or chain selector; deploying a replacement`
                 );
@@ -255,7 +279,12 @@ async function main() {
                 deployments,
                 network.name,
                 "AutomationReceiver",
-                {address, txHash, deployedAt: new Date().toISOString()},
+                {
+                    address,
+                    txHash,
+                    deployedAt: new Date().toISOString(),
+                    ...(existing && existingCode !== "0x" ? {replaces: existing.address} : {}),
+                },
                 vault.id
             );
             deployment.workflowIds = [];
@@ -263,32 +292,47 @@ async function main() {
             console.log(`${vault.id}: deployed receiver ${address}`);
         }
 
-        await configureReceiver(
-            receiver,
-            deployment,
-            accessManager,
-            resolvedConfig,
-            vault,
-            config.chainlinkAutomationRole
-        );
-        if (replacedReceiver) {
+        const shouldConfigure = shouldConfigureReceiver(prepareOnly, newlyDeployed);
+        if (shouldConfigure) {
+            await configureReceiver(
+                receiver,
+                deployment,
+                accessManager,
+                resolvedConfig,
+                vault,
+                config.chainlinkAutomationRole
+            );
+        } else {
+            if (newlyDeployed) {
+                preparedReceiverCount += 1;
+                console.log(
+                    `${vault.id}: receiver prepared without workflow permissions or AccessManager role`
+                );
+            } else {
+                console.log(`${vault.id}: existing receiver left unchanged during preparation`);
+            }
+        }
+        if (shouldConfigure && deployment.replaces) {
             const [oldReceiverHasRole] = await accessManager.hasRole(
                 config.chainlinkAutomationRole,
-                replacedReceiver
+                deployment.replaces
             );
             if (oldReceiverHasRole) {
                 const tx = await accessManager.revokeRole(
                     config.chainlinkAutomationRole,
-                    replacedReceiver
+                    deployment.replaces
                 );
                 await tx.wait();
-                console.log(`${vault.id}: revoked AccessManager role from ${replacedReceiver}`);
+                console.log(`${vault.id}: revoked AccessManager role from ${deployment.replaces}`);
             }
         }
         saveDeployments(deployments);
-        console.log(
-            `${vault.id}: workflow identity, call permissions, and AccessManager role configured`
-        );
+        selectedReceivers.set(vault.id, await receiver.getAddress());
+        if (shouldConfigure) {
+            console.log(
+                `${vault.id}: workflow identity, call permissions, and AccessManager role configured`
+            );
+        }
 
         await verifyContract(await receiver.getAddress(), [
             deployer.address,
@@ -298,7 +342,16 @@ async function main() {
         ]);
     }
 
-    console.log("Configured workflow permissions now match the deployment config.");
+    if (network.name === "sepolia") syncWorkflowConfigFiles(selectedReceivers);
+
+    if (prepareOnly || preparedReceiverCount > 0) {
+        console.log(
+            "Receiver preparation complete. No permissions were granted to newly deployed receivers."
+        );
+        console.log("Recompute workflow IDs before the final configuration pass.");
+    } else {
+        console.log("Configured workflow permissions now match the deployment config.");
+    }
 }
 
 main().catch((error) => {

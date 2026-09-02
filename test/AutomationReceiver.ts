@@ -195,8 +195,9 @@ describe("AutomationReceiver", () => {
 
     it("tracks replay protection independently per target", async () => {
         const secondTarget = await ethers.deployContract("MockAutomationTarget");
+        const secondTargetAddress = await secondTarget.getAddress();
         const selector = target.interface.getFunction("performUpkeep").selector;
-        await receiver.setCallPermission(secondTarget.target, selector, true);
+        await receiver.setCallPermission(secondTargetAddress, selector, true);
         const encodedMetadata = metadata(NAV_WORKFLOW_ID, workflowOwner.address);
         const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
 
@@ -205,12 +206,12 @@ describe("AutomationReceiver", () => {
             .onReport(encodedMetadata, report(target.target, callData));
         await receiver
             .connect(forwarder)
-            .onReport(encodedMetadata, report(secondTarget.target, callData));
+            .onReport(encodedMetadata, report(secondTargetAddress, callData));
 
         expect(await target.calls()).to.equal(1);
         expect(await secondTarget.calls()).to.equal(1);
         expect(await receiver.lastScheduledAt(target.target)).to.equal(SCHEDULED_AT);
-        expect(await receiver.lastScheduledAt(secondTarget.target)).to.equal(SCHEDULED_AT);
+        expect(await receiver.lastScheduledAt(secondTargetAddress)).to.equal(SCHEDULED_AT);
     });
 
     it("rejects a different workflow owner", async () => {

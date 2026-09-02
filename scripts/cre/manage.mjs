@@ -46,7 +46,7 @@ const cre = resolveCreCommand();
 function run(command, args, options = {}) {
     const result = spawnSync(command, args, {
         cwd: options.cwd ?? repositoryRoot,
-        env: commandEnvironment,
+        env: {...commandEnvironment, ...options.env},
         encoding: "utf8",
         stdio: options.capture ? "pipe" : "inherit",
     });
@@ -124,6 +124,32 @@ function assertIdentityMatchesConfig({identities, owner}) {
     if (errors.length > 0) throw new Error(errors.join("\n"));
 }
 
+function assertWorkflowOwnerMatchesConfig(owner) {
+    if (owner !== deploymentConfig.workflowOwner.toLowerCase()) {
+        throw new Error(
+            `CRE organization owner mismatch: config=${deploymentConfig.workflowOwner}, actual=${owner}`
+        );
+    }
+}
+
+function syncWorkflowIds({identities, owner}) {
+    assertWorkflowOwnerMatchesConfig(owner);
+    let changed = false;
+    for (const identity of identities) {
+        const permission = workflowPermission(identity.name);
+        if (permission.id.toLowerCase() === identity.id) continue;
+        console.log(`Updating ${identity.name} ID: ${permission.id} -> ${identity.id}`);
+        permission.id = identity.id;
+        changed = true;
+    }
+    if (changed) {
+        fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
+        console.log(`Updated workflow IDs in ${configPath}`);
+    } else {
+        console.log("Configured workflow IDs are already current.");
+    }
+}
+
 function printIdentity({identities, owner}) {
     console.log(`CRE organization owner: ${owner}`);
     for (const identity of identities) console.log(`${identity.name}: ${identity.id}`);
@@ -183,12 +209,22 @@ switch (action) {
     }
     case "setup": {
         console.log("=== CRE setup — Sepolia ===");
-        const identity = readIdentities();
-        assertIdentityMatchesConfig(identity);
-        printIdentity(identity);
+        const initialIdentity = readIdentities();
+        assertWorkflowOwnerMatchesConfig(initialIdentity.owner);
+        printIdentity(initialIdentity);
+        console.log("Deploying receivers and synchronizing their workflow config addresses...");
+        run("npm", ["run", `deploy:cre-receivers:${network}`], {
+            env: {CRE_RECEIVERS_PREPARE: "true"},
+        });
+        console.log("Recomputing workflow IDs from the synchronized configs...");
+        const finalIdentity = readIdentities();
+        syncWorkflowIds(finalIdentity);
+        printIdentity(finalIdentity);
+        console.log("Applying final workflow permissions...");
         run("npm", ["run", `deploy:cre-receivers:${network}`]);
         commandEnvironment.CRE_STATUS_STRICT = "true";
         runOnchainStatus(true);
+        console.log("CRE Sepolia setup is synchronized and complete.");
         break;
     }
     case "simulate":

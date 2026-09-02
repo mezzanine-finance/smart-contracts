@@ -1,6 +1,9 @@
 import {expect} from "chai";
 import {buildWorkflowPermissionChanges} from "../scripts/deployment/lib/creWorkflowPermissions";
-import {hasCurrentRuntimeBytecode} from "../scripts/deployment/lib/creReceiverDeployment";
+import {
+    hasCurrentRuntimeBytecode,
+    shouldConfigureReceiver,
+} from "../scripts/deployment/lib/creReceiverDeployment";
 
 describe("CRE workflow permission reconciliation", () => {
     it("does nothing when active permissions match the desired state", () => {
@@ -39,5 +42,12 @@ describe("CRE receiver deployment selection", () => {
     it("does not reuse an address without deployed bytecode", () => {
         expect(hasCurrentRuntimeBytecode("0x", "0xabcd")).to.equal(false);
         expect(hasCurrentRuntimeBytecode("0xabcd", "0x")).to.equal(false);
+    });
+
+    it("keeps prepared and newly deployed receivers unprivileged", () => {
+        expect(shouldConfigureReceiver(true, true)).to.equal(false);
+        expect(shouldConfigureReceiver(true, false)).to.equal(false);
+        expect(shouldConfigureReceiver(false, true)).to.equal(false);
+        expect(shouldConfigureReceiver(false, false)).to.equal(true);
     });
 });

@@ -8,3 +8,7 @@ export function hasCurrentRuntimeBytecode(
         deployedCode.toLowerCase() === expectedRuntimeCode.toLowerCase()
     );
 }
+
+export function shouldConfigureReceiver(prepareOnly: boolean, newlyDeployed: boolean): boolean {
+    return !prepareOnly && !newlyDeployed;
+}
