@@ -23,14 +23,19 @@ export const writeUpkeepReport = (
     receiver: Address,
     target: Address,
     performData: Hex,
-    gasLimit: string
+    gasLimit: string,
+    chainSelector: bigint,
+    scheduledAt: bigint
 ): WriteReportResult => {
     const callData = encodeFunctionData({
         abi: PERFORM_UPKEEP_ABI,
         functionName: "performUpkeep",
         args: [performData],
     });
-    const payload = encodeAbiParameters([{type: "address"}, {type: "bytes"}], [target, callData]);
+    const payload = encodeAbiParameters(
+        [{type: "address"}, {type: "bytes"}, {type: "uint64"}, {type: "uint64"}],
+        [target, callData, chainSelector, scheduledAt]
+    );
     const report = runtime.report(prepareReportRequest(payload)).result();
     const reply = evmClient
         .writeReport(runtime, {receiver, report, gasConfig: {gasLimit}})

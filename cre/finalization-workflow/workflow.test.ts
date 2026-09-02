@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {bytesToHex, getNetwork} from "@chainlink/cre-sdk";
+import {bytesToHex, getNetwork, type CronPayload} from "@chainlink/cre-sdk";
 import {
     addContractMock,
     EvmMock,
@@ -17,6 +17,9 @@ import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 
 describe("Finalization workflow", () => {
+    const scheduledAt = 1_800_000_000n;
+    const cronPayload = () =>
+        ({scheduledExecutionTime: {seconds: scheduledAt, nanos: 0}}) as CronPayload;
     const config = configSchema.parse(stagingConfig);
     const receivers = [
         "0x1111111111111111111111111111111111111111",
@@ -60,6 +63,14 @@ describe("Finalization workflow", () => {
         expect(handlers).toHaveLength(1);
         expect(config.schedule).toBe("0 */5 * * * *");
         expect(config.gasLimit).toBe("500000");
+    });
+
+    test("requires deterministic cron execution time", () => {
+        const {runtime} = setup(configWithReceivers);
+
+        expect(() => onCronTrigger(runtime, {} as CronPayload)).toThrow(
+            "Cron scheduled execution time is missing or invalid"
+        );
     });
 
     test("configures all delayed-withdrawal finalizers", () => {
@@ -120,7 +131,7 @@ describe("Finalization workflow", () => {
         });
         receiver.writeReport = () => ({txStatus: "TX_STATUS_SUCCESS"});
 
-        expect(onCronTrigger(runtime)).toEqual([
+        expect(onCronTrigger(runtime, cronPayload())).toEqual([
             {
                 vaultId: "vault-1",
                 tranche: "senior",
@@ -176,7 +187,7 @@ describe("Finalization workflow", () => {
             };
         });
 
-        const results = onCronTrigger(runtime);
+        const results = onCronTrigger(runtime, cronPayload());
 
         expect(writes).toHaveLength(3);
         expect(results.every((result) => result.txStatus === 2)).toBe(true);
@@ -192,8 +203,8 @@ describe("Finalization workflow", () => {
             }))
         );
         writes.forEach((write, index) => {
-            const [target, callData] = decodeAbiParameters(
-                [{type: "address"}, {type: "bytes"}],
+            const [target, callData, chainSelector, reportScheduledAt] = decodeAbiParameters(
+                [{type: "address"}, {type: "bytes"}, {type: "uint64"}, {type: "uint64"}],
                 write.payload
             );
             const decodedCall = decodeFunctionData({
@@ -203,6 +214,8 @@ describe("Finalization workflow", () => {
 
             expect(write.receiver).toBe(expectedTargets[index].receiver as Address);
             expect(target).toBe(expectedTargets[index].target as Address);
+            expect(chainSelector).toBe(16015286601757825753n);
+            expect(reportScheduledAt).toBe(scheduledAt);
             expect(decodedCall.functionName).toBe("performUpkeep");
             expect(decodedCall.args).toEqual(["0xabcd"]);
         });
@@ -229,7 +242,7 @@ describe("Finalization workflow", () => {
             };
         });
 
-        const results = onCronTrigger(runtime);
+        const results = onCronTrigger(runtime, cronPayload());
 
         expect(results[0]).toMatchObject({writeAttempted: true, error: "write rejected"});
         expect(results[1]).toMatchObject({writeAttempted: true, error: "write rejected"});
@@ -257,7 +270,7 @@ describe("Finalization workflow", () => {
             });
         });
 
-        const [result] = onCronTrigger(runtime);
+        const [result] = onCronTrigger(runtime, cronPayload());
 
         expect(result).toMatchObject({
             writeAttempted: true,
@@ -287,7 +300,7 @@ describe("Finalization workflow", () => {
             errorMessage: "forwarder transaction reverted",
         });
 
-        const [result] = onCronTrigger(runtime);
+        const [result] = onCronTrigger(runtime, cronPayload());
 
         expect(result).toMatchObject({
             writeAttempted: true,
@@ -309,7 +322,7 @@ describe("Finalization workflow", () => {
             target.checkUpkeep = () => [index === 0, index === 0 ? "0xabcd" : "0x"];
         });
 
-        const [result] = onCronTrigger(runtime);
+        const [result] = onCronTrigger(runtime, cronPayload());
 
         expect(result).toMatchObject({
             vaultId: "vault-1",
@@ -338,7 +351,7 @@ describe("Finalization workflow", () => {
             };
         });
 
-        const results = onCronTrigger(runtime);
+        const results = onCronTrigger(runtime, cronPayload());
 
         expect(results[0]).toMatchObject({
             vaultId: "vault-1",

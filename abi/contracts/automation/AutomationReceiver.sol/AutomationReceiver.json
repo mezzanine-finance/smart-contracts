@@ -15,6 +15,11 @@
                 "internalType": "address",
                 "name": "workflowOwner_",
                 "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "chainSelector_",
+                "type": "uint64"
             }
         ],
         "stateMutability": "nonpayable",
@@ -39,6 +44,11 @@
     {
         "inputs": [],
         "name": "InvalidCallData",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidChainSelector",
         "type": "error"
     },
     {
@@ -107,8 +117,45 @@
         "type": "error"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "target",
+                "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "received",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "lastAccepted",
+                "type": "uint64"
+            }
+        ],
+        "name": "StaleReport",
+        "type": "error"
+    },
+    {
         "inputs": [],
         "name": "TargetCallFailed",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint64",
+                "name": "received",
+                "type": "uint64"
+            },
+            {
+                "internalType": "uint64",
+                "name": "expected",
+                "type": "uint64"
+            }
+        ],
+        "name": "UnexpectedChainSelector",
         "type": "error"
     },
     {
@@ -298,12 +345,44 @@
     },
     {
         "inputs": [],
+        "name": "chainSelector",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "forwarder",
         "outputs": [
             {
                 "internalType": "address",
                 "name": "",
                 "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "target",
+                "type": "address"
+            }
+        ],
+        "name": "lastScheduledAt",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "scheduledAt",
+                "type": "uint64"
             }
         ],
         "stateMutability": "view",

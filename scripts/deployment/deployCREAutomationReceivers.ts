@@ -25,6 +25,7 @@ interface WorkflowPermissionConfig {
 
 interface CREAutomationConfig {
     accessManager: string;
+    chainSelector: string;
     chainlinkAutomationRole: number;
     forwarder: string;
     workflowOwner: string;
@@ -39,6 +40,12 @@ function loadConfig(configPath: string): CREAutomationConfig {
     if (!ethers.isAddress(config.accessManager)) throw new Error("Invalid AccessManager address");
     if (!ethers.isAddress(config.forwarder)) throw new Error("Invalid forwarder address");
     if (!ethers.isAddress(config.workflowOwner)) throw new Error("Invalid workflow owner address");
+    if (
+        !/^[1-9][0-9]*$/.test(config.chainSelector) ||
+        BigInt(config.chainSelector) > 2n ** 64n - 1n
+    ) {
+        throw new Error("Invalid chain selector");
+    }
     if (!Number.isSafeInteger(config.chainlinkAutomationRole)) {
         throw new Error("Invalid CHAINLINK_AUTOMATION role ID");
     }
@@ -166,6 +173,7 @@ async function main() {
     console.log("Config:", configPath);
     console.log("Deployer / receiver owner:", deployer.address);
     console.log("AccessManager:", config.accessManager);
+    console.log("Chain selector:", config.chainSelector);
     console.log("Forwarder:", forwarder);
     console.log("Workflow owner:", workflowOwner);
     console.log("performUpkeep(bytes) selector:", PERFORM_UPKEEP_SELECTOR);
@@ -210,9 +218,16 @@ async function main() {
             vault.id
         );
         const existingCode = existing ? await ethers.provider.getCode(existing.address) : "0x";
-        const canReuseExisting =
+        const hasCurrentCode =
             existing !== undefined &&
             hasCurrentRuntimeBytecode(existingCode, receiverArtifact.deployedBytecode);
+        const hasExpectedChainSelector =
+            existing !== undefined &&
+            hasCurrentCode &&
+            (await (factory.attach(existing.address) as AutomationReceiver).chainSelector()) ===
+                BigInt(config.chainSelector);
+        const canReuseExisting =
+            existing !== undefined && hasCurrentCode && hasExpectedChainSelector;
         let receiver: AutomationReceiver;
         let deployment: DeploymentRecord;
         let replacedReceiver: string | undefined;
@@ -224,10 +239,15 @@ async function main() {
             if (existing && existingCode !== "0x") {
                 replacedReceiver = existing.address;
                 console.log(
-                    `${vault.id}: receiver ${existing.address} has outdated runtime bytecode; deploying a replacement`
+                    `${vault.id}: receiver ${existing.address} has outdated bytecode or chain selector; deploying a replacement`
                 );
             }
-            receiver = await factory.deploy(deployer.address, forwarder, workflowOwner);
+            receiver = await factory.deploy(
+                deployer.address,
+                forwarder,
+                workflowOwner,
+                config.chainSelector
+            );
             await receiver.waitForDeployment();
             const address = await receiver.getAddress();
             const txHash = receiver.deploymentTransaction()?.hash;
@@ -274,6 +294,7 @@ async function main() {
             deployer.address,
             forwarder,
             workflowOwner,
+            config.chainSelector,
         ]);
     }
 

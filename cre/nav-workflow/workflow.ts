@@ -1,4 +1,11 @@
-import {CronCapability, EVMClient, getNetwork, handler, type Runtime} from "@chainlink/cre-sdk";
+import {
+    CronCapability,
+    EVMClient,
+    getNetwork,
+    handler,
+    type CronPayload,
+    type Runtime,
+} from "@chainlink/cre-sdk";
 import {type Address, type Hex} from "viem";
 import type {Config} from "./config";
 import {readUpkeep} from "./read";
@@ -19,11 +26,23 @@ export interface UpkeepReadiness {
 const errorMessage = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
 
-export const onCronTrigger = (runtime: Runtime<Config>): UpkeepReadiness[] => {
+const scheduledExecutionTime = (trigger: CronPayload): bigint => {
+    const seconds = trigger.scheduledExecutionTime?.seconds;
+    if (seconds === undefined || seconds <= 0n || seconds > 0xffffffffffffffffn) {
+        throw new Error("Cron scheduled execution time is missing or invalid");
+    }
+    return seconds;
+};
+
+export const onCronTrigger = (
+    runtime: Runtime<Config>,
+    trigger: CronPayload
+): UpkeepReadiness[] => {
     const {chainName, isTestnet, gasLimit, vaults} = runtime.config;
     const network = getNetwork({chainFamily: "evm", chainSelectorName: chainName, isTestnet});
     if (!network) throw new Error(`Unsupported EVM network: ${chainName}`);
     const evmClient = new EVMClient(network.chainSelector.selector);
+    const scheduledAt = scheduledExecutionTime(trigger);
 
     return vaults.map(({id, navOracleAutomation, receiver}) => {
         const target = navOracleAutomation as Address;
@@ -49,7 +68,9 @@ export const onCronTrigger = (runtime: Runtime<Config>): UpkeepReadiness[] => {
                 receiver as Address,
                 target,
                 readiness.performData,
-                gasLimit
+                gasLimit,
+                network.chainSelector.selector,
+                scheduledAt
             );
             runtime.log(
                 `NAV target ${id}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`

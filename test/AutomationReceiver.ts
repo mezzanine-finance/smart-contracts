@@ -5,6 +5,8 @@ describe("AutomationReceiver", () => {
     const NAV_WORKFLOW_ID = ethers.id("nav-workflow");
     const FINALIZATION_WORKFLOW_ID = ethers.id("finalization-workflow");
     const WORKFLOW_NAME = ethers.dataSlice(ethers.id("workflow-name"), 0, 10);
+    const CHAIN_SELECTOR = 16015286601757825753n;
+    const SCHEDULED_AT = 1_800_000_000n;
 
     let owner: any;
     let forwarder: any;
@@ -22,8 +24,16 @@ describe("AutomationReceiver", () => {
     const forwarderMetadata = (workflowId: string, author: string, reportId = "0x1234") =>
         ethers.concat([metadata(workflowId, author), reportId]);
 
-    const report = (targetAddress: string, callData: string) =>
-        ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes"], [targetAddress, callData]);
+    const report = (
+        targetAddress: string,
+        callData: string,
+        chainSelector = CHAIN_SELECTOR,
+        scheduledAt = SCHEDULED_AT
+    ) =>
+        ethers.AbiCoder.defaultAbiCoder().encode(
+            ["address", "bytes", "uint64", "uint64"],
+            [targetAddress, callData, chainSelector, scheduledAt]
+        );
 
     beforeEach(async () => {
         [owner, forwarder, workflowOwner, other] = await ethers.getSigners();
@@ -32,6 +42,7 @@ describe("AutomationReceiver", () => {
             owner.address,
             forwarder.address,
             workflowOwner.address,
+            CHAIN_SELECTOR,
         ]);
         target = await ethers.deployContract("MockAutomationTarget");
 
@@ -132,11 +143,74 @@ describe("AutomationReceiver", () => {
         const factory = await ethers.getContractFactory("AutomationReceiver");
 
         await expect(
-            factory.deploy(owner.address, ethers.ZeroAddress, workflowOwner.address)
+            factory.deploy(owner.address, ethers.ZeroAddress, workflowOwner.address, CHAIN_SELECTOR)
         ).to.be.revertedWithCustomError(factory, "ZeroAddress");
         await expect(
-            factory.deploy(owner.address, forwarder.address, ethers.ZeroAddress)
+            factory.deploy(owner.address, forwarder.address, ethers.ZeroAddress, CHAIN_SELECTOR)
         ).to.be.revertedWithCustomError(factory, "ZeroAddress");
+        await expect(
+            factory.deploy(owner.address, forwarder.address, workflowOwner.address, 0)
+        ).to.be.revertedWithCustomError(factory, "InvalidChainSelector");
+    });
+
+    it("rejects reports intended for another chain", async () => {
+        const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
+
+        await expect(
+            receiver
+                .connect(forwarder)
+                .onReport(
+                    metadata(NAV_WORKFLOW_ID, workflowOwner.address),
+                    report(target.target, callData, CHAIN_SELECTOR + 1n)
+                )
+        )
+            .to.be.revertedWithCustomError(receiver, "UnexpectedChainSelector")
+            .withArgs(CHAIN_SELECTOR + 1n, CHAIN_SELECTOR);
+    });
+
+    it("rejects replayed and older reports for the same target", async () => {
+        const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
+        const encodedMetadata = metadata(NAV_WORKFLOW_ID, workflowOwner.address);
+
+        await receiver
+            .connect(forwarder)
+            .onReport(encodedMetadata, report(target.target, callData));
+
+        await expect(
+            receiver.connect(forwarder).onReport(encodedMetadata, report(target.target, callData))
+        )
+            .to.be.revertedWithCustomError(receiver, "StaleReport")
+            .withArgs(target.target, SCHEDULED_AT, SCHEDULED_AT);
+        await expect(
+            receiver
+                .connect(forwarder)
+                .onReport(
+                    encodedMetadata,
+                    report(target.target, callData, CHAIN_SELECTOR, SCHEDULED_AT - 1n)
+                )
+        )
+            .to.be.revertedWithCustomError(receiver, "StaleReport")
+            .withArgs(target.target, SCHEDULED_AT - 1n, SCHEDULED_AT);
+    });
+
+    it("tracks replay protection independently per target", async () => {
+        const secondTarget = await ethers.deployContract("MockAutomationTarget");
+        const selector = target.interface.getFunction("performUpkeep").selector;
+        await receiver.setCallPermission(secondTarget.target, selector, true);
+        const encodedMetadata = metadata(NAV_WORKFLOW_ID, workflowOwner.address);
+        const callData = target.interface.encodeFunctionData("performUpkeep", ["0x"]);
+
+        await receiver
+            .connect(forwarder)
+            .onReport(encodedMetadata, report(target.target, callData));
+        await receiver
+            .connect(forwarder)
+            .onReport(encodedMetadata, report(secondTarget.target, callData));
+
+        expect(await target.calls()).to.equal(1);
+        expect(await secondTarget.calls()).to.equal(1);
+        expect(await receiver.lastScheduledAt(target.target)).to.equal(SCHEDULED_AT);
+        expect(await receiver.lastScheduledAt(secondTarget.target)).to.equal(SCHEDULED_AT);
     });
 
     it("rejects a different workflow owner", async () => {

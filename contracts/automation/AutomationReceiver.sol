@@ -8,7 +8,7 @@ import {ICREReceiver} from "../interfaces/ICREReceiver.sol";
 /// @title CRE automation receiver
 /// @notice Validates CRE workflow reports and forwards approved upkeep calls.
 /// @dev Deploy one instance per vault and allow only that vault's automation targets.
-///      Reports are encoded as abi.encode(target, callData). CRE identity metadata is packed as
+///      Reports are encoded as abi.encode(target, callData, chainSelector, scheduledAt). CRE identity metadata is packed as
 ///      workflowId (32 bytes), workflowName (10 bytes), and workflowOwner (20 bytes).
 contract AutomationReceiver is ICREReceiver, Ownable {
     uint256 private constant IDENTITY_METADATA_LENGTH = 62;
@@ -16,15 +16,20 @@ contract AutomationReceiver is ICREReceiver, Ownable {
 
     address public forwarder;
     address public workflowOwner;
+    uint64 public chainSelector;
 
     mapping(bytes32 workflowId => bool allowed) public allowedWorkflowIds;
     mapping(address target => mapping(bytes4 selector => bool allowed)) public allowedCalls;
+    mapping(address target => uint64 scheduledAt) public lastScheduledAt;
 
     error ZeroAddress();
     error InvalidMetadataLength(uint256 received);
     error InvalidSender(address received, address expected);
     error InvalidWorkflowOwner(address received, address expected);
     error WorkflowNotAllowed(bytes32 workflowId);
+    error InvalidChainSelector();
+    error UnexpectedChainSelector(uint64 received, uint64 expected);
+    error StaleReport(address target, uint64 received, uint64 lastAccepted);
     error InvalidCallData();
     error CallNotAllowed(address target, bytes4 selector);
     error TargetCallFailed();
@@ -42,11 +47,14 @@ contract AutomationReceiver is ICREReceiver, Ownable {
     constructor(
         address initialOwner,
         address forwarder_,
-        address workflowOwner_
+        address workflowOwner_,
+        uint64 chainSelector_
     ) Ownable(initialOwner) {
         if (forwarder_ == address(0) || workflowOwner_ == address(0)) revert ZeroAddress();
+        if (chainSelector_ == 0) revert InvalidChainSelector();
         forwarder = forwarder_;
         workflowOwner = workflowOwner_;
+        chainSelector = chainSelector_;
     }
 
     /// @notice Accept a verified CRE report and forward its approved call.
@@ -62,13 +70,24 @@ contract AutomationReceiver is ICREReceiver, Ownable {
             revert InvalidWorkflowOwner(reportWorkflowOwner, workflowOwner);
         if (!allowedWorkflowIds[workflowId]) revert WorkflowNotAllowed(workflowId);
 
-        (address target, bytes memory callData) = abi.decode(report, (address, bytes));
+        (
+            address target,
+            bytes memory callData,
+            uint64 reportChainSelector,
+            uint64 scheduledAt
+        ) = abi.decode(report, (address, bytes, uint64, uint64));
         if (target == address(0)) revert ZeroAddress();
+        if (reportChainSelector != chainSelector)
+            revert UnexpectedChainSelector(reportChainSelector, chainSelector);
+        uint64 previousScheduledAt = lastScheduledAt[target];
+        if (scheduledAt == 0 || scheduledAt <= previousScheduledAt)
+            revert StaleReport(target, scheduledAt, previousScheduledAt);
         if (callData.length < 4) revert InvalidCallData();
 
         bytes4 selector = _selector(callData);
         if (!allowedCalls[target][selector]) revert CallNotAllowed(target, selector);
 
+        lastScheduledAt[target] = scheduledAt;
         (bool success, bytes memory returnData) = target.call(callData);
         if (!success) {
             if (returnData.length == 0) revert TargetCallFailed();
