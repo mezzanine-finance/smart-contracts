@@ -273,9 +273,26 @@ function deployWorkflow(folder) {
         {cwd: creRoot}
     );
     console.log(`\n[STATUS] ${folder}`);
-    run(cre, ["-e", ".env", "workflow", "get", `./${folder}`, "--target", "staging-settings"], {
-        cwd: creRoot,
-    });
+    try {
+        run(
+            cre,
+            [
+                "-e",
+                ".env",
+                "workflow",
+                "get",
+                `./${folder}`,
+                "--target",
+                "staging-settings",
+                "--all-registries",
+            ],
+            {cwd: creRoot}
+        );
+    } catch {
+        console.warn(
+            `[STATUS] ${folder} was deployed, but its registry status is not available yet. Retry with cre workflow get.`
+        );
+    }
 }
 
 switch (action) {
