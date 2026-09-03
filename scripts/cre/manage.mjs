@@ -9,6 +9,7 @@ const repositoryRoot = path.resolve(scriptDirectory, "../..");
 const creRoot = path.join(repositoryRoot, "cre");
 const network = process.argv[3] ?? "sepolia";
 const action = process.argv[2];
+const expectedOrganizationId = process.argv[4];
 
 if (network !== "sepolia") {
     throw new Error(`Unsupported CRE environment: ${network}`);
@@ -132,23 +133,46 @@ function assertWorkflowOwnerMatchesConfig(owner) {
     }
 }
 
-function assertDeployAccess() {
+function assertMigrationOrganization(expectedId) {
+    if (!expectedId) {
+        throw new Error(
+            "Pass the expected CRE organization ID: npm run cre:migrate-organization:sepolia -- org_..."
+        );
+    }
     const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+    const actualId = account.match(/Organization ID:\s*(org_[A-Za-z0-9]+)/)?.[1];
+    if (!actualId) throw new Error("Could not read the active CRE organization ID");
+    if (actualId !== expectedId) {
+        throw new Error(
+            `Active CRE organization mismatch: expected=${expectedId}, actual=${actualId}`
+        );
+    }
     if (!/Deploy Access:\s*Enabled/i.test(account)) {
         throw new Error("The active CRE organization does not have workflow deploy access");
     }
+    console.log(`Active CRE organization: ${actualId}`);
 }
 
 function syncOrganizationIdentity({identities, owner}) {
-    console.log(`Workflow owner: ${deploymentConfig.workflowOwner} -> ${owner}`);
-    deploymentConfig.workflowOwner = owner;
+    let changed = false;
+    if (deploymentConfig.workflowOwner.toLowerCase() !== owner) {
+        console.log(`Workflow owner: ${deploymentConfig.workflowOwner} -> ${owner}`);
+        deploymentConfig.workflowOwner = owner;
+        changed = true;
+    }
     for (const identity of identities) {
         const permission = workflowPermission(identity.name);
+        if (permission.id.toLowerCase() === identity.id) continue;
         console.log(`${identity.name}: ${permission.id} -> ${identity.id}`);
         permission.id = identity.id;
+        changed = true;
     }
-    fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
-    console.log(`Updated CRE organization identity in ${configPath}`);
+    if (changed) {
+        fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
+        console.log(`Updated CRE organization identity in ${configPath}`);
+    } else {
+        console.log("Configured CRE organization identity is already current.");
+    }
 }
 
 function syncWorkflowIds({identities, owner}) {
@@ -251,7 +275,7 @@ switch (action) {
         console.log(
             "This command updates the configured CRE identity and changes receiver permissions on Sepolia."
         );
-        assertDeployAccess();
+        assertMigrationOrganization(expectedOrganizationId);
         const identity = readIdentities();
         printIdentity(identity);
         syncOrganizationIdentity(identity);
