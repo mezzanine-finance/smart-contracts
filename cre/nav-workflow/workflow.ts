@@ -20,6 +20,7 @@ export interface UpkeepReadiness {
     txStatus?: number;
     receiverExecutionStatus?: number;
     txHash?: Hex;
+    writeOutcome?: "SUCCESS" | "FAILED" | "UNCONFIRMED";
     error?: string;
 }
 
@@ -72,14 +73,16 @@ export const onCronTrigger = (
                 network.chainSelector.selector,
                 scheduledAt
             );
+            const writeOutcome =
+                writeResult.receiverExecutionStatus === undefined ? "UNCONFIRMED" : "SUCCESS";
             runtime.log(
-                `NAV target ${id}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
+                `[${writeOutcome}] NAV target ${id}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
             );
-            return {...readiness, writeAttempted, ...writeResult};
+            return {...readiness, writeAttempted, ...writeResult, writeOutcome};
         } catch (error) {
             const message = errorMessage(error);
-            runtime.log(`NAV target ${id} (${target}) write failed: ${message}`);
-            return {...readiness, writeAttempted, error: message};
+            runtime.log(`[FAILED] NAV target ${id} (${target}) write failed: ${message}`);
+            return {...readiness, writeAttempted, writeOutcome: "FAILED", error: message};
         }
     });
 };

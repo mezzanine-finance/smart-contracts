@@ -128,6 +128,7 @@ describe("NAV workflow", () => {
                 performData: "0x1234",
                 writeAttempted: true,
                 txStatus: 2,
+                writeOutcome: "UNCONFIRMED",
             },
         ]);
     });
@@ -167,7 +168,10 @@ describe("NAV workflow", () => {
         expect(results.every((result) => result.txStatus === 2)).toBe(true);
         expect(
             results.every(
-                (result) => result.receiverExecutionStatus === 0 && result.txHash === "0x1234"
+                (result) =>
+                    result.receiverExecutionStatus === 0 &&
+                    result.txHash === "0x1234" &&
+                    result.writeOutcome === "SUCCESS"
             )
         ).toBe(true);
         writes.forEach((write, index) => {
@@ -237,8 +241,16 @@ describe("NAV workflow", () => {
 
         const results = onCronTrigger(runtime, cronPayload());
 
-        expect(results[0]).toMatchObject({writeAttempted: true, error: "write rejected"});
-        expect(results[1]).toMatchObject({writeAttempted: true, txStatus: 2});
+        expect(results[0]).toMatchObject({
+            writeAttempted: true,
+            writeOutcome: "FAILED",
+            error: "write rejected",
+        });
+        expect(results[1]).toMatchObject({
+            writeAttempted: true,
+            txStatus: 2,
+            writeOutcome: "UNCONFIRMED",
+        });
     });
 
     test("treats a reverted writeReport transaction as a failed write", () => {
@@ -267,6 +279,7 @@ describe("NAV workflow", () => {
 
         expect(result).toMatchObject({
             writeAttempted: true,
+            writeOutcome: "FAILED",
             error: "writeReport transaction failed with status 1: forwarder transaction reverted",
         });
     });
@@ -297,6 +310,7 @@ describe("NAV workflow", () => {
 
         expect(result).toMatchObject({
             writeAttempted: true,
+            writeOutcome: "FAILED",
             error: "Receiver execution failed with status 1",
         });
     });
@@ -322,6 +336,7 @@ describe("NAV workflow", () => {
             upkeepNeeded: true,
             performData: "0x1234",
             writeAttempted: false,
+            writeOutcome: "FAILED",
             error: "Receiver is not configured for vault-1",
         });
     });

@@ -21,6 +21,7 @@ export interface UpkeepReadiness {
     txStatus?: number;
     receiverExecutionStatus?: number;
     txHash?: Hex;
+    writeOutcome?: "SUCCESS" | "FAILED" | "UNCONFIRMED";
     error?: string;
 }
 
@@ -83,14 +84,18 @@ export const onCronTrigger = (
                     network.chainSelector.selector,
                     scheduledAt
                 );
+                const writeOutcome =
+                    writeResult.receiverExecutionStatus === undefined ? "UNCONFIRMED" : "SUCCESS";
                 runtime.log(
-                    `Finalizer ${id}/${tranche}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
+                    `[${writeOutcome}] Finalizer ${id}/${tranche}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
                 );
-                return {...readiness, writeAttempted, ...writeResult};
+                return {...readiness, writeAttempted, ...writeResult, writeOutcome};
             } catch (error) {
                 const message = errorMessage(error);
-                runtime.log(`Finalizer ${id}/${tranche} (${target}) write failed: ${message}`);
-                return {...readiness, writeAttempted, error: message};
+                runtime.log(
+                    `[FAILED] Finalizer ${id}/${tranche} (${target}) write failed: ${message}`
+                );
+                return {...readiness, writeAttempted, writeOutcome: "FAILED", error: message};
             }
         })
     );

@@ -148,6 +148,7 @@ describe("Finalization workflow", () => {
                 performData: "0xabcd",
                 writeAttempted: true,
                 txStatus: 2,
+                writeOutcome: "UNCONFIRMED",
             },
             {
                 vaultId: "vault-2",
@@ -194,7 +195,10 @@ describe("Finalization workflow", () => {
         expect(results.every((result) => result.txStatus === 2)).toBe(true);
         expect(
             results.every(
-                (result) => result.receiverExecutionStatus === 0 && result.txHash === "0x1234"
+                (result) =>
+                    result.receiverExecutionStatus === 0 &&
+                    result.txHash === "0x1234" &&
+                    result.writeOutcome === "SUCCESS"
             )
         ).toBe(true);
         const expectedTargets = configWithReceivers.vaults.flatMap((vault) =>
@@ -245,9 +249,21 @@ describe("Finalization workflow", () => {
 
         const results = onCronTrigger(runtime, cronPayload());
 
-        expect(results[0]).toMatchObject({writeAttempted: true, error: "write rejected"});
-        expect(results[1]).toMatchObject({writeAttempted: true, error: "write rejected"});
-        expect(results[2]).toMatchObject({writeAttempted: true, txStatus: 2});
+        expect(results[0]).toMatchObject({
+            writeAttempted: true,
+            writeOutcome: "FAILED",
+            error: "write rejected",
+        });
+        expect(results[1]).toMatchObject({
+            writeAttempted: true,
+            writeOutcome: "FAILED",
+            error: "write rejected",
+        });
+        expect(results[2]).toMatchObject({
+            writeAttempted: true,
+            txStatus: 2,
+            writeOutcome: "UNCONFIRMED",
+        });
     });
 
     test("treats a reverted receiver execution as a failed write", () => {
@@ -275,6 +291,7 @@ describe("Finalization workflow", () => {
 
         expect(result).toMatchObject({
             writeAttempted: true,
+            writeOutcome: "FAILED",
             error: "Receiver execution failed with status 1",
         });
     });
@@ -305,6 +322,7 @@ describe("Finalization workflow", () => {
 
         expect(result).toMatchObject({
             writeAttempted: true,
+            writeOutcome: "FAILED",
             error: "writeReport transaction failed with status 1: forwarder transaction reverted",
         });
     });
@@ -331,6 +349,7 @@ describe("Finalization workflow", () => {
             upkeepNeeded: true,
             performData: "0xabcd",
             writeAttempted: false,
+            writeOutcome: "FAILED",
             error: "Receiver is not configured for vault-1",
         });
     });
