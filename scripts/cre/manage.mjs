@@ -132,6 +132,25 @@ function assertWorkflowOwnerMatchesConfig(owner) {
     }
 }
 
+function assertDeployAccess() {
+    const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+    if (!/Deploy Access:\s*Enabled/i.test(account)) {
+        throw new Error("The active CRE organization does not have workflow deploy access");
+    }
+}
+
+function syncOrganizationIdentity({identities, owner}) {
+    console.log(`Workflow owner: ${deploymentConfig.workflowOwner} -> ${owner}`);
+    deploymentConfig.workflowOwner = owner;
+    for (const identity of identities) {
+        const permission = workflowPermission(identity.name);
+        console.log(`${identity.name}: ${permission.id} -> ${identity.id}`);
+        permission.id = identity.id;
+    }
+    fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
+    console.log(`Updated CRE organization identity in ${configPath}`);
+}
+
 function syncWorkflowIds({identities, owner}) {
     assertWorkflowOwnerMatchesConfig(owner);
     let changed = false;
@@ -190,7 +209,7 @@ function runWorkflow(folder, broadcast) {
     run(cre, args, {cwd: creRoot});
     console.log(
         broadcast
-            ? `[${mode}] ${folder} finished. Check each ready target's txHash above.`
+            ? `[${mode}] ${folder} completed. Review each ready target's [SUCCESS], [FAILED], or [UNCONFIRMED] result above.`
             : `[${mode}] ${folder} finished without broadcasting transactions.`
     );
 }
@@ -225,6 +244,24 @@ switch (action) {
         commandEnvironment.CRE_STATUS_STRICT = "true";
         runOnchainStatus(true);
         console.log("CRE Sepolia setup is synchronized and complete.");
+        break;
+    }
+    case "migrate-organization": {
+        console.log("=== CRE organization migration — Sepolia ===");
+        console.log(
+            "This command updates the configured CRE identity and changes receiver permissions on Sepolia."
+        );
+        assertDeployAccess();
+        const identity = readIdentities();
+        printIdentity(identity);
+        syncOrganizationIdentity(identity);
+        console.log(
+            "Restoring the canonical forwarder and applying the new owner and workflow IDs..."
+        );
+        run("npm", ["run", `deploy:cre-receivers:${network}`]);
+        commandEnvironment.CRE_STATUS_STRICT = "true";
+        runOnchainStatus(true);
+        console.log("CRE Sepolia organization migration is complete.");
         break;
     }
     case "simulate":
@@ -269,6 +306,6 @@ switch (action) {
     }
     default:
         throw new Error(
-            "Usage: node scripts/cre/manage.mjs <check|setup|simulate|broadcast|status> sepolia"
+            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|simulate|broadcast|status> sepolia"
         );
 }

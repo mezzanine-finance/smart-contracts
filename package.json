@@ -64,6 +64,7 @@
         "cre:status:sepolia": "node scripts/cre/manage.mjs status sepolia",
         "cre:check:sepolia": "node scripts/cre/manage.mjs check sepolia",
         "cre:setup:sepolia": "node scripts/cre/manage.mjs setup sepolia",
+        "cre:migrate-organization:sepolia": "node scripts/cre/manage.mjs migrate-organization sepolia",
         "cre:simulate:sepolia": "node scripts/cre/manage.mjs simulate sepolia",
         "cre:broadcast:sepolia": "node scripts/cre/manage.mjs broadcast sepolia",
         "deploy:grant-roles": "npx hardhat run scripts/deployment/grantRoles.ts",

@@ -3,15 +3,15 @@
     "chainSelector": "16015286601757825753",
     "chainlinkAutomationRole": 10,
     "forwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
-    "workflowOwner": "0x41d925a7790e82fb1640f0b257f4a9bb4ac761b4",
+    "workflowOwner": "0x2b8c480c73ef7846a73260f882632c6e1782437f",
     "workflowPermissions": [
         {
             "name": "nav-staging",
-            "id": "0x0066d31b8f00d575c55ce3fe8f7cf12001b16874f31d1d6cccd7d5c7397825dd"
+            "id": "0x0070c59e63c4e364b5c94264dec25dd5e0dcc042d26f8e31304f9510a7bc99e5"
         },
         {
             "name": "finalization-staging",
-            "id": "0x00cbdd17f1a0e4fec2d53fa5ece1999d8d0ad0a88cc3c8c8336570e86ab0a711"
+            "id": "0x00846757c2787b7ab0077cf4e1ef89c024b59bd9d6910fc6b7f144f4d0aee22d"
         }
     ],
     "vaults": [
