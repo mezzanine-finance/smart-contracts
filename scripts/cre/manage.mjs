@@ -53,7 +53,9 @@ function run(command, args, options = {}) {
     });
     if (result.error) throw result.error;
     if (result.status !== 0) {
-        if (options.capture) process.stderr.write(result.stderr || result.stdout || "");
+        if (options.capture && !options.quietFailure) {
+            process.stderr.write(result.stderr || result.stdout || "");
+        }
         throw new Error(`${command} exited with status ${result.status}`);
     }
     return `${result.stdout ?? ""}${result.stderr ?? ""}`;
@@ -274,7 +276,7 @@ function deployWorkflow(folder) {
     );
     console.log(`\n[STATUS] ${folder}`);
     try {
-        run(
+        const status = run(
             cre,
             [
                 "-e",
@@ -286,11 +288,12 @@ function deployWorkflow(folder) {
                 "staging-settings",
                 "--all-registries",
             ],
-            {cwd: creRoot}
+            {cwd: creRoot, capture: true, quietFailure: true}
         );
+        process.stdout.write(status);
     } catch {
         console.warn(
-            `[STATUS] ${folder} was deployed, but its registry status is not available yet. Retry with cre workflow get.`
+            `[STATUS] ${folder} was deployed, but registry indexing is still pending. Retry with: cre -e .env workflow get ./${folder} --target staging-settings --all-registries`
         );
     }
 }
