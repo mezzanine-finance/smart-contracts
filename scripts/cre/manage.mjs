@@ -153,6 +153,13 @@ function assertMigrationOrganization(expectedId) {
     console.log(`Active CRE organization: ${actualId}`);
 }
 
+function assertDeployAccess() {
+    const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+    if (!/Deploy Access:\s*Enabled/i.test(account)) {
+        throw new Error("The active CRE organization does not have workflow deploy access");
+    }
+}
+
 function syncOrganizationIdentity({identities, owner}) {
     let changed = false;
     if (deploymentConfig.workflowOwner.toLowerCase() !== owner) {
@@ -238,6 +245,39 @@ function runWorkflow(folder, broadcast) {
     );
 }
 
+function runDeployPreflight() {
+    assertDeployAccess();
+    const identity = readIdentities();
+    assertIdentityMatchesConfig(identity);
+    printIdentity(identity);
+    runValidation();
+    commandEnvironment.CRE_STATUS_STRICT = "true";
+    runOnchainStatus(true);
+}
+
+function deployWorkflow(folder) {
+    console.log(`\n[DEPLOY] ${folder}`);
+    run(
+        cre,
+        [
+            "-e",
+            ".env",
+            "workflow",
+            "deploy",
+            `./${folder}`,
+            "--target",
+            "staging-settings",
+            "--non-interactive",
+            "--yes",
+        ],
+        {cwd: creRoot}
+    );
+    console.log(`\n[STATUS] ${folder}`);
+    run(cre, ["-e", ".env", "workflow", "get", `./${folder}`, "--target", "staging-settings"], {
+        cwd: creRoot,
+    });
+}
+
 switch (action) {
     case "check": {
         console.log("=== CRE preflight — Sepolia ===");
@@ -288,6 +328,22 @@ switch (action) {
         console.log("CRE Sepolia organization migration is complete.");
         break;
     }
+    case "deploy-nav":
+        console.log("=== CRE NAV workflow deploy — Sepolia ===");
+        runDeployPreflight();
+        deployWorkflow("nav-workflow");
+        break;
+    case "deploy-finalization":
+        console.log("=== CRE finalization workflow deploy — Sepolia ===");
+        runDeployPreflight();
+        deployWorkflow("finalization-workflow");
+        break;
+    case "deploy":
+        console.log("=== CRE workflow deploy — Sepolia ===");
+        runDeployPreflight();
+        deployWorkflow("nav-workflow");
+        deployWorkflow("finalization-workflow");
+        break;
     case "simulate":
         console.log("=== CRE local simulation against Sepolia ===");
         runWorkflow("nav-workflow", false);
@@ -330,6 +386,6 @@ switch (action) {
     }
     default:
         throw new Error(
-            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|simulate|broadcast|status> sepolia"
+            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|deploy-nav|deploy-finalization|deploy|simulate|broadcast|status> sepolia"
         );
 }
