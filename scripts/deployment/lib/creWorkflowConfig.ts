@@ -1,3 +1,4 @@
+// Update receiver addresses in workflow configs and check that both workflows agree.
 export interface CREWorkflowVaultConfig {
     id: string;
     receiver?: string;
@@ -9,6 +10,7 @@ export interface CREWorkflowConfig {
     [key: string]: unknown;
 }
 
+// Match vaults by ID and replace only their receiver address; preserve other settings.
 export function syncWorkflowReceivers(
     config: CREWorkflowConfig,
     receivers: ReadonlyMap<string, string>
@@ -32,6 +34,7 @@ export function syncWorkflowReceivers(
     return {config: changed ? {...config, vaults} : config, changed};
 }
 
+// Require the same vault IDs and receiver addresses in NAV and finalization configs.
 export function resolveWorkflowReceivers(
     configs: readonly CREWorkflowConfig[]
 ): ReadonlyMap<string, string> {

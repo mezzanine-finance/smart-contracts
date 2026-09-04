@@ -1,3 +1,4 @@
+// Operator commands coordinating CRE identity, receiver setup and workflow execution.
 import {spawnSync} from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -67,6 +68,7 @@ function workflowPermission(name) {
     return permission;
 }
 
+// Let the CLI derive identity from the active organization and current artifacts.
 function readWorkflowIdentity(folder, permissionName) {
     const output = run(
         cre,
@@ -184,6 +186,7 @@ function syncOrganizationIdentity({identities, owner}) {
     }
 }
 
+// Ordinary setup may rotate IDs, but changing organization requires explicit migration.
 function syncWorkflowIds({identities, owner}) {
     assertWorkflowOwnerMatchesConfig(owner);
     let changed = false;
@@ -292,6 +295,7 @@ function deployWorkflow(folder) {
         );
         process.stdout.write(status);
     } catch {
+        // Deployment can succeed before the registry's read API exposes the workflow.
         console.warn(
             `[STATUS] ${folder} was deployed, but registry indexing is still pending. Retry with: cre -e .env workflow get ./${folder} --target staging-settings --all-registries`
         );
@@ -320,6 +324,7 @@ switch (action) {
             env: {CRE_RECEIVERS_PREPARE: "true"},
         });
         console.log("Recomputing workflow IDs from the synchronized configs...");
+        // Receiver addresses are part of the config, so hash only after synchronizing them.
         const finalIdentity = readIdentities();
         syncWorkflowIds(finalIdentity);
         printIdentity(finalIdentity);

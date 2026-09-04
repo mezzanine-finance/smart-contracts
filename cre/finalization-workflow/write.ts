@@ -1,3 +1,4 @@
+// Builds the receiver payload and validates CRE write results.
 import {
     bytesToHex,
     EVMClient,
@@ -32,6 +33,7 @@ export const writeUpkeepReport = (
         functionName: "performUpkeep",
         args: [performData],
     });
+    // Must match AutomationReceiver.onReport; the last two fields bind chain and run.
     const payload = encodeAbiParameters(
         [{type: "address"}, {type: "bytes"}, {type: "uint64"}, {type: "uint64"}],
         [target, callData, chainSelector, scheduledAt]
@@ -46,6 +48,7 @@ export const writeUpkeepReport = (
             `writeReport transaction failed with status ${reply.txStatus}: ${reply.errorMessage ?? "no error message"}`
         );
     }
+    // A successful outer transaction does not guarantee that the receiver succeeded.
     if (
         reply.receiverContractExecutionStatus !== undefined &&
         Number(reply.receiverContractExecutionStatus) !== RECEIVER_EXECUTION_SUCCESS

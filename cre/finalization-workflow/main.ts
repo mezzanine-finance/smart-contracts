@@ -1,3 +1,4 @@
+// CRE runner entry point; workflow behavior lives in workflow.ts.
 import {Runner} from "@chainlink/cre-sdk";
 import {configSchema, type Config} from "./config";
 import {initWorkflow} from "./workflow";

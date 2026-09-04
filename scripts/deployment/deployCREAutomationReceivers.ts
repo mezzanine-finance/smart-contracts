@@ -1,3 +1,4 @@
+// Deploy, configure and verify per-vault receivers; plan/validate modes do not send transactions.
 import fs from "fs";
 import path from "path";
 import {artifacts, ethers, network} from "hardhat";

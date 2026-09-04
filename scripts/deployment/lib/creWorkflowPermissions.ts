@@ -1,3 +1,4 @@
+// List which workflow IDs to allow or revoke; does not send transactions.
 export interface WorkflowPermissionChange {
     id: string;
     allowed: boolean;

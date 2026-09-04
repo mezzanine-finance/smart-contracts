@@ -1,3 +1,4 @@
+// Read-only comparison of deployed receiver wiring with local configs and records.
 import fs from "fs";
 import path from "path";
 import {artifacts, ethers, network} from "hardhat";

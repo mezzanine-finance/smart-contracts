@@ -1,3 +1,4 @@
+// Reads upkeep readiness and calldata from finalized on-chain state.
 import {
     bytesToHex,
     encodeCallMsg,

@@ -1,3 +1,4 @@
+// Runtime schema for the environment-specific workflow JSON.
 import {z} from "zod";
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);

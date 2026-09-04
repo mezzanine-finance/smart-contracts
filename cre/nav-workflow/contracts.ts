@@ -1,3 +1,6 @@
+// Minimal ABIs for reading readiness and encoding approved upkeep calls.
+// Maintained manually, not generated: update both workflows' contracts.ts files
+// if the Solidity upkeep function inputs or outputs change.
 export const CHECK_UPKEEP_ABI = [
     {
         type: "function",

@@ -1,3 +1,4 @@
+// Coordinates cron-triggered checks and independent writes for configured targets.
 import {
     CronCapability,
     EVMClient,
@@ -27,6 +28,7 @@ export interface UpkeepReadiness {
 const errorMessage = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
 
+// Bind replay protection to the scheduled run, not each node's local clock.
 const scheduledExecutionTime = (trigger: CronPayload): bigint => {
     const seconds = trigger.scheduledExecutionTime?.seconds;
     if (seconds === undefined || seconds <= 0n || seconds > 0xffffffffffffffffn) {
@@ -35,6 +37,7 @@ const scheduledExecutionTime = (trigger: CronPayload): bigint => {
     return seconds;
 };
 
+// Catch failures per target so one failed call does not prevent the remaining work.
 export const onCronTrigger = (
     runtime: Runtime<Config>,
     trigger: CronPayload
