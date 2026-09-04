@@ -94,7 +94,6 @@ From `cre/`, inspect deployed runs with:
 cre workflow list --output json
 cre execution list mezzanine-nav-workflow-staging --output json
 cre execution list mezzanine-finalization-workflow-staging --output json
-cre execution logs <execution-uuid>
 ```
 
 ## Tests

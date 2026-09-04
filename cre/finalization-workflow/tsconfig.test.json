@@ -1,4 +1,5 @@
 {
+  // Separate type-check settings for tests: add Bun types without exposing them to workflow code.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["bun"],
