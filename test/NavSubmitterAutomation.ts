@@ -10,6 +10,7 @@ import {
 import type {SnapshotRestorer} from "@nomicfoundation/hardhat-network-helpers";
 
 import {
+    AutomationReceiver,
     IERC20,
     LossManager,
     MockNavSubmitterAutomation,
@@ -29,8 +30,13 @@ const USDC_WHALE = "0xffA69C0080582098aF595156240214b742735a5e";
 const DAY = 24 * 60 * 60;
 const ORACLE_ROLE = 6n;
 const SUPPLY_SCALE = 10n ** 10n; // MZUSD 18d -> oracle answer / submitter basis 8d
+const ORACLE_SCALE = 100n; // oracle answer 8d -> USDC 6d
 const LOSS_MANAGER_ROLE = 3n;
 const BURNER_ROLE = 5n;
+const CHAINLINK_AUTOMATION_ROLE = 10n;
+const NAV_SUBMITTER_WORKFLOW_ID = ethers.id("nav-submitter-workflow");
+const WORKFLOW_NAME = ethers.dataSlice(ethers.id("nav-submitter"), 0, 10);
+const CHAIN_SELECTOR = 16015286601757825753n;
 
 const to6 = (value: string | number | bigint) => parseUnits(value.toString(), 6);
 const to18 = (value: string | number | bigint) => parseUnits(value.toString(), 18);
@@ -46,6 +52,8 @@ describe("NavSubmitterAutomation", () => {
 
     let deployer: any;
     let bob: any;
+    let forwarder: any;
+    let workflowOwner: any;
 
     let accessManager: any;
     let pauseManager: PauseManager;
@@ -60,10 +68,11 @@ describe("NavSubmitterAutomation", () => {
     let navFeedOracle: MockPackedNavOracle;
     let totalSupplyFeedOracle: MockPackedNavOracle;
     let submitter: MockNavSubmitterAutomation;
+    let receiver: AutomationReceiver;
     let whale: any;
 
     before(async () => {
-        [deployer, bob] = await ethers.getSigners();
+        [deployer, bob, forwarder, workflowOwner] = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20", MAINNET_USDC, deployer);
         usdcTotalSupply = await usdc.totalSupply();
@@ -175,6 +184,21 @@ describe("NavSubmitterAutomation", () => {
         )) as unknown as MockNavSubmitterAutomation;
         await submitter.waitForDeployment();
 
+        const ReceiverFactory = await ethers.getContractFactory("AutomationReceiver", deployer);
+        receiver = (await ReceiverFactory.deploy(
+            deployer.address,
+            forwarder.address,
+            workflowOwner.address,
+            CHAIN_SELECTOR
+        )) as unknown as AutomationReceiver;
+        await receiver.waitForDeployment();
+        await receiver.setWorkflowPermission(NAV_SUBMITTER_WORKFLOW_ID, true);
+        await receiver.setCallPermission(
+            submitter.target,
+            submitter.interface.getFunction("performUpkeep").selector,
+            true
+        );
+
         const ADMIN_ROLE = await accessManager.ADMIN_ROLE();
 
         const setVaultSelector = mzusd.interface.getFunction("setVault").selector;
@@ -216,6 +240,7 @@ describe("NavSubmitterAutomation", () => {
         );
 
         const submitSelector = navAutomation.interface.getFunction("submitNav").selector;
+        const performSelector = navAutomation.interface.getFunction("performUpkeep").selector;
         const rejectSelector = navAutomation.interface.getFunction("rejectPendingNav").selector;
         const setVetoSelector = navAutomation.interface.getFunction("setVetoPeriod").selector;
         const setOraclesSelector = navAutomation.interface.getFunction("setOracles").selector;
@@ -228,10 +253,16 @@ describe("NavSubmitterAutomation", () => {
         );
         await accessManager.setTargetFunctionRole(
             navAutomation.target,
+            [performSelector],
+            CHAINLINK_AUTOMATION_ROLE
+        );
+        await accessManager.setTargetFunctionRole(
+            navAutomation.target,
             [rejectSelector, setVetoSelector, setOraclesSelector, setStalenessSelector],
             ADMIN_ROLE
         );
         await accessManager.grantRole(ORACLE_ROLE, submitter.target as string, 0);
+        await accessManager.grantRole(CHAINLINK_AUTOMATION_ROLE, bob.address, 0);
         await accessManager.grantRole(ADMIN_ROLE, navAutomation.target as string, 0);
         await navAutomation
             .connect(deployer)
@@ -274,6 +305,20 @@ describe("NavSubmitterAutomation", () => {
         const ts = updatedAt ?? BigInt(await time.latest());
         await navFeedOracle.setLatestRoundData(navAnswer, ts);
         await totalSupplyFeedOracle.setLatestRoundData(totalSupplyMZ / SUPPLY_SCALE, ts);
+    }
+
+    function workflowMetadata(): string {
+        return ethers.solidityPacked(
+            ["bytes32", "bytes10", "address"],
+            [NAV_SUBMITTER_WORKFLOW_ID, WORKFLOW_NAME, workflowOwner.address]
+        );
+    }
+
+    function receiverReport(callData: string, scheduledAt: bigint): string {
+        return ethers.AbiCoder.defaultAbiCoder().encode(
+            ["address", "bytes", "uint64", "uint64"],
+            [submitter.target, callData, CHAIN_SELECTOR, scheduledAt]
+        );
     }
 
     it("submits nav via Chainlink-style upkeep", async () => {
@@ -353,6 +398,80 @@ describe("NavSubmitterAutomation", () => {
             submitter,
             "NoWork"
         );
+    });
+
+    it("submits pending NAV and lets NAV upkeep apply it after veto", async () => {
+        const vetoPeriod = 60;
+        await navAutomation.connect(deployer).setVetoPeriod(vetoPeriod);
+        await mintAndDepositIntoTranche(deployer, to6(100n));
+        await time.increase(DAY);
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupplyUSDC = totalSupplyMZ / SUPPLY_SCALE;
+        const premiumBps = await submitter.PREMIUM_BPS();
+        const bps = await submitter.BPS();
+        const expectedDelta = (totalSupplyUSDC * premiumBps + (bps - 1n)) / bps;
+        await pushOracleAnswers(totalSupplyUSDC + expectedDelta, totalSupplyMZ);
+
+        const epochBefore = await vault.currentEpochId();
+        await submitter.performUpkeep("0x");
+
+        expect(await navAutomation.hasPendingNav()).to.equal(true);
+        expect(await vault.currentEpochId()).to.equal(epochBefore);
+        expect((await navAutomation.checkUpkeep("0x"))[0]).to.equal(false);
+        expect((await submitter.checkUpkeep("0x"))[0]).to.equal(false);
+
+        await time.increase(vetoPeriod);
+
+        expect((await navAutomation.checkUpkeep("0x"))[0]).to.equal(true);
+        await expect(navAutomation.connect(bob).performUpkeep("0x"))
+            .to.emit(navAutomation, "NavApplied")
+            .withArgs(true, expectedDelta / ORACLE_SCALE, await navAutomation.pendingReadyAt());
+
+        expect(await navAutomation.hasPendingNav()).to.equal(false);
+        expect(await vault.currentEpochId()).to.equal(epochBefore + 1n);
+    });
+
+    it("runs the complete CRE receiver -> submitter -> NAV upkeep flow", async () => {
+        const vetoPeriod = 60;
+        await navAutomation.connect(deployer).setVetoPeriod(vetoPeriod);
+        await mintAndDepositIntoTranche(deployer, to6(100n));
+        await time.increase(DAY);
+
+        const totalSupplyMZ = await mzusd.totalSupply();
+        const totalSupply8 = totalSupplyMZ / SUPPLY_SCALE;
+        const premiumBps = await submitter.PREMIUM_BPS();
+        const bps = await submitter.BPS();
+        const expectedDelta8 = (totalSupply8 * premiumBps + (bps - 1n)) / bps;
+        await pushOracleAnswers(totalSupply8 + expectedDelta8, totalSupplyMZ);
+
+        const epochBefore = await vault.currentEpochId();
+        const scheduledAt = BigInt(await time.latest());
+        const callData = submitter.interface.encodeFunctionData("performUpkeep", ["0x"]);
+
+        await expect(
+            receiver
+                .connect(forwarder)
+                .onReport(workflowMetadata(), receiverReport(callData, scheduledAt))
+        )
+            .to.emit(receiver, "CallForwarded")
+            .withArgs(
+                NAV_SUBMITTER_WORKFLOW_ID,
+                submitter.target,
+                submitter.interface.getFunction("performUpkeep").selector
+            );
+
+        expect(await navAutomation.hasPendingNav()).to.equal(true);
+        expect(await vault.currentEpochId()).to.equal(epochBefore);
+        expect(await receiver.lastScheduledAt(submitter.target)).to.equal(scheduledAt);
+
+        await time.increase(vetoPeriod);
+        await expect(navAutomation.connect(bob).performUpkeep("0x"))
+            .to.emit(navAutomation, "NavApplied")
+            .withArgs(true, expectedDelta8 / ORACLE_SCALE, await navAutomation.pendingReadyAt());
+
+        expect(await navAutomation.hasPendingNav()).to.equal(false);
+        expect(await vault.currentEpochId()).to.equal(epochBefore + 1n);
     });
 
     it("previewNextNav matches checkUpkeep readiness and nav math", async () => {
