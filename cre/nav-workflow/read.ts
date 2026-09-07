@@ -31,6 +31,7 @@ export const readUpkeep = (
                     args: ["0x"],
                 }),
             }),
+            // Finalized reads can lag recent state changes until a later cron run.
             blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
         })
         .result();
