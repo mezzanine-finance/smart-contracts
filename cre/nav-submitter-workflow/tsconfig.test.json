@@ -1,0 +1,10 @@
+{
+    // Add Bun's test globals only while type-checking tests.
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "types": ["bun"],
+        "noEmit": true
+    },
+    "include": ["*.ts"],
+    "exclude": []
+}
