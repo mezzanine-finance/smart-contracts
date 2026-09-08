@@ -7,8 +7,9 @@ using deterministic mock oracle feeds.
 This workflow must not be deployed to mainnet. Its runtime schema accepts only
 `isTestnet: true`, and `workflow.yaml` exposes only staging settings.
 
-The staging vault list remains empty until the multi-vault deployment branch is
-integrated and the per-vault submitter addresses are deployed and recorded.
+The staging configuration targets the two existing Sepolia vaults. Each has a
+dedicated submitter recorded under its vault namespace in `reports/deployments.json`.
+Before running on DON, allow the deployed workflow ID in both receivers.
 
 With `vetoPeriod=0`, `submitNav()` applies NAV immediately and the regular NAV
 workflow has no pending work. Use a nonzero veto period to exercise the complete

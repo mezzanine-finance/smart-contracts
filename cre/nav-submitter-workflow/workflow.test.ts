@@ -52,10 +52,13 @@ describe("test NAV submitter workflow", () => {
         return `0x${report.slice(2 + REPORT_METADATA_HEADER_LENGTH * 2)}`;
     };
 
-    test("exposes only an empty testnet staging configuration initially", () => {
+    test("configures two unique testnet submitters with receivers", () => {
         const parsed = configSchema.parse(stagingConfig);
         expect(parsed.isTestnet).toBe(true);
-        expect(parsed.vaults).toEqual([]);
+        expect(parsed.vaults).toHaveLength(2);
+        expect(new Set(parsed.vaults.map((vault) => vault.id)).size).toBe(2);
+        expect(new Set(parsed.vaults.map((vault) => vault.submitter.toLowerCase())).size).toBe(2);
+        expect(parsed.vaults.every((vault) => vault.receiver !== undefined)).toBe(true);
         expect(initWorkflow(parsed)).toHaveLength(1);
     });
 

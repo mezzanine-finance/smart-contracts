@@ -2079,6 +2079,14 @@
       }
     ],
     "vault-1": {
+      "MockNavSubmitterAutomation": [
+        {
+          "version": 1,
+          "address": "0xB31d9eAE8E0E75183DECe024E3f511aCCE41a992",
+          "txHash": "0x915e808b1ec45fd3989b6b433ec9486ff7afc1260e2a7643273f17a363a57c3e",
+          "deployedAt": "2026-09-08T12:19:36.000Z"
+        }
+      ],
       "AutomationReceiver": [
         {
           "version": 1,
@@ -2104,6 +2112,14 @@
       ]
     },
     "vault-2": {
+      "MockNavSubmitterAutomation": [
+        {
+          "version": 1,
+          "address": "0x6e5F597A608116b96789B8BaC6E7aA6D442e0Bb0",
+          "txHash": "0xdfe95e73d7c763df5b05e352ef43abb1c5293cfe978a7a5a22810b717c6e6f0a",
+          "deployedAt": "2026-09-08T12:19:48.000Z"
+        }
+      ],
       "AutomationReceiver": [
         {
           "version": 1,
