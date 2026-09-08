@@ -6,6 +6,10 @@
     "workflowOwner": "0x2b8c480c73ef7846a73260f882632c6e1782437f",
     "workflowPermissions": [
         {
+            "name": "nav-submitter-test-staging",
+            "id": "0x002cce75a49d5f9e7db8443e1632b50419dab58cb73916645f55e0c69390f2e2"
+        },
+        {
             "name": "nav-staging",
             "id": "0x0070c59e63c4e364b5c94264dec25dd5e0dcc042d26f8e31304f9510a7bc99e5"
         },
