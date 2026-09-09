@@ -16,6 +16,8 @@ import type {
     IssuanceVault,
 } from "../../typechain-types";
 import {loadConfig} from "./lib/config";
+import {resolveDeploymentScope} from "./lib/deploymentScope";
+import {buildDeploymentPlan} from "./lib/deploymentPlan";
 import {
     loadDeployments,
     saveDeployments,
@@ -156,7 +158,7 @@ async function ensureProxyDeployment<T extends BaseContract>(
     return {contract, address, implementation: impl, deployed: true};
 }
 
-async function main() {
+export async function main() {
     const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
     const requestedDeploymentId = getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID;
     const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
@@ -174,8 +176,17 @@ async function main() {
         );
         assert(deploymentId !== "shared", 'deploymentId "shared" is reserved');
     }
-    const sharedNamespace = deploymentId ? "shared" : undefined;
-    const vaultNamespace = deploymentId;
+    const {sharedNamespace, vaultNamespace} = resolveDeploymentScope(config, deploymentId);
+    const deployments = loadDeployments();
+    const plan = buildDeploymentPlan(config, network.name, deployments, {
+        deploymentId,
+        fresh,
+        freshShared,
+    });
+    if (hasFlag("--plan") || isEnvFlagEnabled("DEPLOY_PLAN")) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+    }
     upgrades.silenceWarnings();
 
     const gasTracker = new GasTracker();
@@ -190,6 +201,7 @@ async function main() {
     log.info(`Dev deployer: ${format.addr(devDeployer)}`);
     log.info(`Final admin: ${format.addr(config.roles.admin)}`);
     log.info(`Deployment ID: ${deploymentId ?? "legacy"}`);
+    log.info(`Infrastructure ID: ${sharedNamespace ?? "legacy"}`);
     log.info(`Fresh deploy: ${fresh}`);
     log.info(`Fresh shared contracts: ${freshShared}`);
     log.info(
@@ -223,7 +235,29 @@ async function main() {
     const shouldVerify =
         config.verify?.enabled !== false && !skipVerify && !isLocalNetwork(network.name);
 
-    const deployments = loadDeployments();
+    // A vault cannot be reattached to another AccessManager by changing its config.
+    if (!fresh) {
+        const existingMzusd = getLatestDeployment(
+            deployments,
+            network.name,
+            "MZUSD",
+            vaultNamespace
+        );
+        if (existingMzusd && (await hasCode(existingMzusd.address))) {
+            const recordedManager = getLatestDeployment(
+                deployments,
+                network.name,
+                "AccessManager",
+                sharedNamespace
+            );
+            assert(recordedManager, "Existing vault requires its recorded infrastructure");
+            const token = await ethers.getContractAt("MZUSD", existingMzusd.address);
+            assert(
+                (await token.authority()).toLowerCase() === recordedManager.address.toLowerCase(),
+                "Selected infrastructure does not match the existing vault's AccessManager"
+            );
+        }
+    }
 
     // === Deploy core contracts ===
     const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
@@ -719,9 +753,17 @@ async function main() {
         const mzusdSeeder = mzusd.contract.connect(seedSigner);
         const reservoirSeeder = reservoir.contract.connect(seedSigner);
 
-        const seedMzusdUsdc = parseUSDC(seed.mzusdDepositUSDC ?? "0");
-        const seedVaultUsdc = parseUSDC(seed.vaultUSDC ?? "0");
-        const seedReservoirUsdc = parseUSDC(seed.reservoirUSDC ?? "0");
+        // Initial funding only: never infer whether to repeat transfers from current balances.
+        // Reused contracts may have spent their seed legitimately. Interrupted seeding requires
+        // explicit reconciliation, not another automatic transfer on the next deployment run.
+        const seedMzusdUsdc = mzusd.deployed ? parseUSDC(seed.mzusdDepositUSDC ?? "0") : 0n;
+        const seedVaultUsdc = vault.deployed ? parseUSDC(seed.vaultUSDC ?? "0") : 0n;
+        const seedReservoirUsdc = reservoir.deployed ? parseUSDC(seed.reservoirUSDC ?? "0") : 0n;
+        if (!mzusd.deployed || !vault.deployed || !reservoir.deployed) {
+            log.info(
+                "Skipping initial funding for reused contracts; reconcile interrupted seeding separately"
+            );
+        }
         const totalSeedUsdc = seedMzusdUsdc + seedVaultUsdc + seedReservoirUsdc;
 
         if (totalSeedUsdc > 0n) {
@@ -756,6 +798,10 @@ async function main() {
                     tranche !== undefined,
                     `Unknown tranche key in deadShares: ${deadShare.key}`
                 );
+                if (!tranche.deployed) {
+                    log.info(`Skipping Tranche.deadShares ${deadShare.key}: reused contract`);
+                    continue;
+                }
 
                 const trancheSupply = await tranche.contract.totalSupply();
                 if (trancheSupply > 0n) {
@@ -782,6 +828,10 @@ async function main() {
             for (const deposit of seed.trancheDeposits) {
                 const tranche = trancheByKey.get(deposit.key);
                 assert(tranche !== undefined, `Unknown tranche key in seed: ${deposit.key}`);
+                if (!tranche.deployed) {
+                    log.info(`Skipping Tranche.seed ${deposit.key}: reused contract`);
+                    continue;
+                }
                 const amountMzusd =
                     deposit.amountMZUSD !== undefined
                         ? parseMZUSD(deposit.amountMZUSD)
@@ -1356,7 +1406,9 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    log.error(err?.message ?? err);
-    process.exitCode = 1;
-});
+if (process.env.DEPLOYMENT_SCRIPT_IMPORT !== "true") {
+    main().catch((err) => {
+        log.error(err?.message ?? err);
+        process.exitCode = 1;
+    });
+}

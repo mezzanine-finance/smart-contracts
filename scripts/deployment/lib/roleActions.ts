@@ -1,6 +1,7 @@
 import {ethers, network} from "hardhat";
 import {getArg, hasFlag, isLocalNetwork} from "./helpers";
 import {loadConfig} from "./config";
+import {resolveDeploymentScope} from "./deploymentScope";
 import {getLatestDeployment, loadDeployments} from "./deployments";
 import {ensureRoleMember} from "./roles";
 import {log} from "./logger";
@@ -23,22 +24,41 @@ function uniqueAddresses(addresses: string[]): string[] {
 }
 
 export async function grantRoles() {
-    const configPath = getArg("--config");
+    const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
     const includeDev = hasFlag("--include-dev");
     const config = loadConfig(network.name, configPath);
+    const {sharedNamespace, vaultNamespace} = resolveDeploymentScope(
+        config,
+        getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID
+    );
     const deployments = loadDeployments();
 
-    const accessManagerDeployment = getLatestDeployment(deployments, network.name, "AccessManager");
+    const accessManagerDeployment = getLatestDeployment(
+        deployments,
+        network.name,
+        "AccessManager",
+        sharedNamespace
+    );
     if (!accessManagerDeployment) {
         throw new Error("AccessManager deployment not found for this network");
     }
 
-    const vaultDeployment = getLatestDeployment(deployments, network.name, "IssuanceVault");
+    const vaultDeployment = getLatestDeployment(
+        deployments,
+        network.name,
+        "IssuanceVault",
+        vaultNamespace
+    );
     if (!vaultDeployment) {
         throw new Error("IssuanceVault deployment not found for this network");
     }
     const trancheDeployments = config.tranches.map((tranche) => {
-        const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
+        const deployment = getLatestDeployment(
+            deployments,
+            network.name,
+            `Tranche.${tranche.key}`,
+            vaultNamespace
+        );
         if (!deployment) {
             throw new Error(`Tranche deployment not found for key: ${tranche.key}`);
         }
@@ -163,21 +183,40 @@ export async function grantRoles() {
 }
 
 export async function renounceRoles() {
-    const configPath = getArg("--config");
+    const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
     const config = loadConfig(network.name, configPath);
+    const {sharedNamespace, vaultNamespace} = resolveDeploymentScope(
+        config,
+        getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID
+    );
     const deployments = loadDeployments();
 
-    const accessManagerDeployment = getLatestDeployment(deployments, network.name, "AccessManager");
+    const accessManagerDeployment = getLatestDeployment(
+        deployments,
+        network.name,
+        "AccessManager",
+        sharedNamespace
+    );
     if (!accessManagerDeployment) {
         throw new Error("AccessManager deployment not found for this network");
     }
 
-    const vaultDeployment = getLatestDeployment(deployments, network.name, "IssuanceVault");
+    const vaultDeployment = getLatestDeployment(
+        deployments,
+        network.name,
+        "IssuanceVault",
+        vaultNamespace
+    );
     if (!vaultDeployment) {
         throw new Error("IssuanceVault deployment not found for this network");
     }
     const trancheDeployments = config.tranches.map((tranche) => {
-        const deployment = getLatestDeployment(deployments, network.name, `Tranche.${tranche.key}`);
+        const deployment = getLatestDeployment(
+            deployments,
+            network.name,
+            `Tranche.${tranche.key}`,
+            vaultNamespace
+        );
         if (!deployment) {
             throw new Error(`Tranche deployment not found for key: ${tranche.key}`);
         }

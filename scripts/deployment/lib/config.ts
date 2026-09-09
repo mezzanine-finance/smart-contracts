@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import {ethers} from "hardhat";
 import {assert, parseBps, parseMZUSD, parseUSDC, requireAddress} from "./helpers";
+import {readConfigProfile} from "./configProfiles";
+import {resolveDeploymentScope} from "./deploymentScope";
 
 export interface RoleIdsConfig {
     PAUSER_ROLE: number;
@@ -148,6 +150,7 @@ export interface SeedConfig {
 export interface DeployConfig {
     version: number;
     deploymentId?: string;
+    infrastructureId?: string;
     dev: DevConfig;
     roleIds: RoleIdsConfig;
     roles: RolesConfig;
@@ -176,13 +179,13 @@ export function loadConfig(networkName: string, overridePath?: string): DeployCo
     if (!fs.existsSync(filePath)) {
         throw new Error(`Config file not found: ${filePath}`);
     }
-    const raw = fs.readFileSync(filePath, "utf8");
-    const config = JSON.parse(raw) as DeployConfig;
+    const config = readConfigProfile(filePath) as unknown as DeployConfig;
     validateConfig(config, filePath);
     return config;
 }
 
 function validateConfig(config: DeployConfig, filePath: string) {
+    resolveDeploymentScope(config);
     assert(typeof config.version === "number", `Missing version in ${filePath}`);
     if (config.deploymentId !== undefined) {
         assert(
