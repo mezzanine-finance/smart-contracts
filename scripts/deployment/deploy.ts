@@ -919,14 +919,7 @@ export async function main() {
         const desiredHysteresis = BigInt(config.vault.hysteresisBps ?? 0);
         assert(desiredBuffer > 0n, "vault.idleBufferUSDC must be > 0");
         if (currentBuffer !== desiredBuffer || currentHysteresis !== desiredHysteresis) {
-            const vaultUsdc = await usdcToken.balanceOf(vault.address);
-            const reservoirUsdc = await usdcToken.balanceOf(reservoir.address);
-            const low = (desiredBuffer * (BPS - desiredHysteresis)) / BPS;
-            if (vaultUsdc < low && reservoirUsdc === 0n) {
-                throw new Error(
-                    "IssuanceVault.setBuffer requires seeded USDC in IssuanceVault or Reservoir before rebalance"
-                );
-            }
+            // Save the buffer configuration even when the vault has no liquidity.
             await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
             log.success("IssuanceVault.setBuffer");
         }
