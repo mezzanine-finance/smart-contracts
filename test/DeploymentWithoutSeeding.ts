@@ -24,6 +24,7 @@ deploymentTest("deployment without seeding", function () {
             );
             delete config.seed;
             config.usdc.mock.initialMints = [];
+            config.roles.roleDelays.reservoirWithdraw = 86400;
             process.env.DEPLOY_CONFIG = path.join(directory, "config.json");
             process.env.DEPLOYMENTS_PATH = path.join(directory, "deployments.json");
             process.env.DEPLOYMENT_SCRIPT_IMPORT = "true";
@@ -35,6 +36,10 @@ deploymentTest("deployment without seeding", function () {
             const records = loadDeployments();
             const address = (key: string) => getLatestDeployment(records, "hardhat", key)!.address;
             const vault = await ethers.getContractAt("IssuanceVault", address("IssuanceVault"));
+            const accessManager = await ethers.getContractAt(
+                "AccessManager",
+                address("AccessManager")
+            );
             const usdc = await ethers.getContractAt("MockUSDC", address("MockUSDC"));
             const mzusd = await ethers.getContractAt("MZUSD", address("MZUSD"));
             expect(await vault.idleBufferUSDC()).to.equal(ethers.parseUnits("1000000", 6));
@@ -42,6 +47,16 @@ deploymentTest("deployment without seeding", function () {
             expect(await usdc.balanceOf(await vault.getAddress())).to.equal(0n);
             expect(await usdc.balanceOf(address("ReservoirUSDC"))).to.equal(0n);
             expect(await mzusd.totalSupply()).to.equal(0n);
+            const [, vaultWithdrawDelay] = await accessManager.hasRole(
+                config.roleIds.RESERVOIR_WITHDRAW_ROLE,
+                await vault.getAddress()
+            );
+            const [, humanWithdrawDelay] = await accessManager.hasRole(
+                config.roleIds.RESERVOIR_WITHDRAW_ROLE,
+                config.roles.admin
+            );
+            expect(vaultWithdrawDelay).to.equal(0n);
+            expect(humanWithdrawDelay).to.equal(86400n);
             // Exercise setBuffer too: the initial million-USDC / 5% config is already the default.
             config.vault.hysteresisBps = 400;
             fs.writeFileSync(process.env.DEPLOY_CONFIG, JSON.stringify(config));

@@ -138,11 +138,15 @@ export async function grantRoles() {
         ...(includeDev ? [config.dev.deployer] : []),
     ]);
     for (const addr of withdrawers) {
+        const executionDelay =
+            addr.toLowerCase() === vaultDeployment.address.toLowerCase()
+                ? 0
+                : (delays.reservoirWithdraw ?? 0);
         await ensureRoleMember(
             accessManager,
             config.roleIds.RESERVOIR_WITHDRAW_ROLE,
             addr,
-            delays.reservoirWithdraw ?? 0
+            executionDelay
         );
     }
 

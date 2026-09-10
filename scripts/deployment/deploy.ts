@@ -500,12 +500,12 @@ export async function main() {
 
     const finalizers: DeployResult<UmbrellaEpochFinalizer>[] = [];
     const finalizerByKey = new Map<string, DeployResult<UmbrellaEpochFinalizer>>();
+    const finalizerStartEpoch = BigInt(config.umbrellaFinalizer?.startEpoch ?? 1);
     if (config.umbrellaFinalizer?.enabled) {
         const FinalizerFactory = await ethers.getContractFactory(
             "UmbrellaEpochFinalizer",
             deployer
         );
-        const finalizerStartEpoch = BigInt(config.umbrellaFinalizer.startEpoch ?? 1);
         for (const tranche of config.tranches) {
             if (tranche.directWithdrawEnabled) continue;
             const trancheContract = trancheByKey.get(tranche.key)!;
@@ -1199,11 +1199,17 @@ export async function main() {
         withdrawers.add(devDeployer);
     }
     for (const addr of withdrawers) {
+        // The vault calls Reservoir.withdraw() synchronously during withdrawals and rebalancing.
+        // Human withdrawers keep the configured delay, while the vault must execute immediately.
+        const executionDelay =
+            addr.toLowerCase() === vault.address.toLowerCase()
+                ? 0
+                : (delays.reservoirWithdraw ?? 0);
         await ensureRoleMember(
             accessManagerAdmin,
             roleIds.RESERVOIR_WITHDRAW_ROLE,
             addr,
-            delays.reservoirWithdraw ?? 0
+            executionDelay
         );
     }
 
@@ -1362,6 +1368,16 @@ export async function main() {
         [lossManager.address, config.navOracle.vetoPeriodSec],
         shouldVerify
     );
+    for (const trancheConfig of config.tranches) {
+        if (trancheConfig.directWithdrawEnabled) continue;
+        const tranche = trancheByKey.get(trancheConfig.key)!;
+        const finalizer = finalizerByKey.get(trancheConfig.key)!;
+        await verifyContract(
+            finalizer.address,
+            [accessManager.address, tranche.address, finalizerStartEpoch],
+            shouldVerify
+        );
+    }
 
     saveDeployments(deployments);
     log.success("Deployments saved");
