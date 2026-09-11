@@ -23,6 +23,7 @@ const envs = process.env;
 const optimizerRuns = true;
 const optimizerRunNum = envs.OPTIMIZER_RUN_NUM ? +envs.OPTIMIZER_RUN_NUM : 200;
 const enableForking = isOptionTrue(envs.FORKING);
+const enableBuildBearVerification = process.argv.includes("buildbear");
 
 const config: HardhatUserConfig = {
     solidity: {
@@ -85,16 +86,18 @@ const config: HardhatUserConfig = {
     },
     etherscan: {
         apiKey: envs.ETHERSCAN_API_KEY ?? "",
-        customChains: [
-            {
-                network: "buildbear",
-                chainId: 1,
-                urls: {
-                    apiURL: "https://rpc.buildbear.io/verify/etherscan/mezzanine-dev",
-                    browserURL: "https://explorer.buildbear.io/mezzanine-dev",
-                },
-            },
-        ],
+        customChains: enableBuildBearVerification
+            ? [
+                  {
+                      network: "buildbear",
+                      chainId: 1,
+                      urls: {
+                          apiURL: "https://rpc.buildbear.io/verify/etherscan/mezzanine-dev",
+                          browserURL: "https://explorer.buildbear.io/mezzanine-dev",
+                      },
+                  },
+              ]
+            : [],
     },
     // sourcify: {
     //     enabled: true,

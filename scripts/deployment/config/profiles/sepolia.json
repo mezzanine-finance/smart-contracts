@@ -1,0 +1,56 @@
+{
+    "infrastructureId": "shared",
+    "version": 1,
+    "dev": {
+        "deployer": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "grantRoles": true
+    },
+    "roleIds": {
+        "PAUSER_ROLE": 1,
+        "UNPAUSER_ROLE": 2,
+        "UPGRADER_ROLE": 3,
+        "RESERVOIR_WITHDRAW_ROLE": 4,
+        "BURNER_ROLE": 5,
+        "ORACLE_ROLE": 6,
+        "KEEPER_ROLE": 7,
+        "ALLOWLISTER_ROLE": 8,
+        "FINALIZER_ROLE": 9,
+        "CHAINLINK_AUTOMATION": 10
+    },
+    "roles": {
+        "admin": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "pauser": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "unpauser": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "upgrader": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "reservoirWithdrawers": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
+        "keepers": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
+        "allowlisters": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
+        "oracles": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"],
+        "roleDelays": {
+            "unpauser": 0,
+            "upgrader": 0,
+            "keeper": 0
+        }
+    },
+    "usdc": {
+        "deployMock": true,
+        "mock": {
+            "name": "Mock USDC",
+            "symbol": "mUSDC",
+            "decimals": 6,
+            "initialMints": [
+                {
+                    "to": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+                    "amount": "1000000000"
+                }
+            ]
+        }
+    },
+    "allowlist": {},
+    "verify": {
+        "enabled": true
+    },
+    "postDeploy": {
+        "renounceDeployerRoles": false
+    }
+}

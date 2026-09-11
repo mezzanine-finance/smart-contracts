@@ -1,0 +1,69 @@
+{
+    "extends": "./profiles/sepolia.json",
+    "deploymentId": "vault-2",
+    "mzusd": {
+        "redemptionCapUSDC": "1000000",
+        "redemptionWindowDurationSec": 3600
+    },
+    "vault": {
+        "performanceFeeBps": 1000,
+        "protocolFeeBps": 1000,
+        "performanceFeeReceiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "protocolFeeReceiver": "0x1111111111111111111111111111111111111111",
+        "idleBufferUSDC": "1000000",
+        "hysteresisBps": 500,
+        "epochDurationSec": 3600
+    },
+    "seed": {
+        "mzusdDepositUSDC": "1000000",
+        "deadShares": [
+            {
+                "key": "senior",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "1"
+            }
+        ]
+    },
+    "tranches": [
+        {
+            "key": "senior",
+            "trancheId": 1,
+            "name": "Vault 2 Senior Tranche",
+            "symbol": "sMZ2",
+            "riskPremiumBps": 0,
+            "enabled": true,
+            "directWithdrawEnabled": true
+        },
+        {
+            "key": "junior",
+            "trancheId": 2,
+            "name": "Vault 2 Junior Tranche",
+            "symbol": "jMZ2",
+            "riskPremiumBps": 3000,
+            "enabled": true,
+            "directWithdrawEnabled": false,
+            "unstakeDelayEpochs": 1,
+            "unstakeYieldReductionBps": 0,
+            "depositLimits": {
+                "enabled": true,
+                "tvlBps": 4000
+            }
+        }
+    ],
+    "lossManager": {
+        "order": ["junior", "senior"],
+        "isPairedWithNext": [false, false],
+        "maxLossPerTxUSDC": "10000000"
+    },
+    "navOracle": {
+        "vetoPeriodSec": 0,
+        "deployMockFeeds": true,
+        "oracles": ["0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"]
+    },
+    "umbrellaFinalizer": {
+        "enabled": true
+    }
+}

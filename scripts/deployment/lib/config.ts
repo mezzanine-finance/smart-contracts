@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import {ethers} from "hardhat";
 import {assert, parseBps, parseMZUSD, parseUSDC, requireAddress} from "./helpers";
+import {readConfigProfile} from "./configProfiles";
+import {resolveDeploymentScope} from "./deploymentScope";
 
 export interface RoleIdsConfig {
     PAUSER_ROLE: number;
@@ -59,7 +61,7 @@ export interface UsdcConfig {
 }
 
 export interface AllowlistConfig {
-    sanctionsList: string;
+    sanctionsList?: string;
 }
 
 export interface MZUSDConfig {
@@ -106,6 +108,7 @@ export interface LossManagerConfig {
 export interface NavOracleConfig {
     vetoPeriodSec: number;
     oracles: string[];
+    deployMockFeeds?: boolean;
     navFeed?: string;
     totalSupplyFeed?: string;
     maxAnswerStalenessSec?: number;
@@ -146,6 +149,8 @@ export interface SeedConfig {
 
 export interface DeployConfig {
     version: number;
+    deploymentId?: string;
+    infrastructureId?: string;
     dev: DevConfig;
     roleIds: RoleIdsConfig;
     roles: RolesConfig;
@@ -174,14 +179,21 @@ export function loadConfig(networkName: string, overridePath?: string): DeployCo
     if (!fs.existsSync(filePath)) {
         throw new Error(`Config file not found: ${filePath}`);
     }
-    const raw = fs.readFileSync(filePath, "utf8");
-    const config = JSON.parse(raw) as DeployConfig;
+    const config = readConfigProfile(filePath) as unknown as DeployConfig;
     validateConfig(config, filePath);
     return config;
 }
 
 function validateConfig(config: DeployConfig, filePath: string) {
+    resolveDeploymentScope(config);
     assert(typeof config.version === "number", `Missing version in ${filePath}`);
+    if (config.deploymentId !== undefined) {
+        assert(
+            /^[a-z0-9][a-z0-9-]*$/.test(config.deploymentId),
+            "deploymentId must contain only lowercase letters, numbers, and hyphens"
+        );
+        assert(config.deploymentId !== "shared", 'deploymentId "shared" is reserved');
+    }
     const roleIds = config.roleIds;
     assert(roleIds !== undefined, `Missing roleIds in ${filePath}`);
     const seenRoleIds = new Set<number>();
@@ -211,10 +223,6 @@ function validateConfig(config: DeployConfig, filePath: string) {
     for (const addr of roles.allowlisters ?? []) {
         requireAddress(addr, "roles.allowlisters");
     }
-
-    const allowlistCfg = config.allowlist;
-    assert(allowlistCfg !== undefined, `Missing allowlist in ${filePath}`);
-    requireAddress(allowlistCfg.sanctionsList, "allowlist.sanctionsListAddress");
 
     const usdc = config.usdc;
     if (usdc.deployMock) {
@@ -322,6 +330,14 @@ function validateConfig(config: DeployConfig, filePath: string) {
     if (!!config.navOracle.navFeed !== !!config.navOracle.totalSupplyFeed) {
         throw new Error(
             "navOracle.navFeed and navOracle.totalSupplyFeed must be configured together"
+        );
+    }
+    if (
+        config.navOracle.deployMockFeeds &&
+        (config.navOracle.navFeed !== undefined || config.navOracle.totalSupplyFeed !== undefined)
+    ) {
+        throw new Error(
+            "navOracle.deployMockFeeds cannot be combined with explicit navFeed or totalSupplyFeed"
         );
     }
     if (config.navOracle.maxAnswerStalenessSec !== undefined) {
