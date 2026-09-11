@@ -14,7 +14,7 @@ import {writeUpkeepReport} from "./write";
 
 export interface UpkeepReadiness {
     vaultId: string;
-    tranche: "senior" | "junior";
+    tranche: string;
     target: Address;
     upkeepNeeded: boolean;
     performData: Hex;

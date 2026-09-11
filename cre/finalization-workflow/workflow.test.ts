@@ -93,6 +93,17 @@ describe("Finalization workflow", () => {
         });
     });
 
+    test("accepts a mezzanine tranche key", () => {
+        const withMezzanine = structuredClone(stagingConfig);
+        withMezzanine.vaults[0].finalizers.push({
+            tranche: "mezzanine",
+            address: "0x3333333333333333333333333333333333333333",
+        });
+
+        const parsed = configSchema.parse(withMezzanine);
+        expect(parsed.vaults[0].finalizers.at(-1)?.tranche).toBe("mezzanine");
+    });
+
     test("uses the same vault and receiver wiring as the NAV workflow", () => {
         const navVaults = new Map(
             navStagingConfig.vaults.map(({id, issuanceVault, receiver}) => [

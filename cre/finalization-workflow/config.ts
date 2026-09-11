@@ -2,6 +2,7 @@
 import {z} from "zod";
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
+const trancheKeySchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
 export const configSchema = z.object({
     schedule: z.string().min(1),
@@ -13,9 +14,7 @@ export const configSchema = z.object({
             id: z.string().min(1),
             issuanceVault: addressSchema,
             receiver: addressSchema.optional(),
-            finalizers: z.array(
-                z.object({tranche: z.enum(["senior", "junior"]), address: addressSchema})
-            ),
+            finalizers: z.array(z.object({tranche: trancheKeySchema, address: addressSchema})),
         })
     ),
 });
