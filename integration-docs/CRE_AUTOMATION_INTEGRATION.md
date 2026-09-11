@@ -1,6 +1,8 @@
 # CRE Automation Flows
 
-This page is a visual reference for the planned Chainlink CRE integration.
+This page is a visual reference for the Chainlink CRE integration. Operational commands,
+configuration changes and organization migration are documented in
+[`cre/README.md`](../cre/README.md).
 
 ## Components
 
@@ -33,6 +35,10 @@ After that, the CRE workflow calls `NavOracleAutomation.checkUpkeep(0x)` every f
 It does not submit a NAV. If it returns `true`, CRE requests `performUpkeep(0x)`, which applies the
 pending NAV and advances the epoch. `rejectPendingNav()` also stays outside CRE and is called by the
 client manually when needed.
+
+Sepolia also has a separate test-only NAV submitter workflow. It calls the deployed mock submitter,
+which reads deterministic feeds and invokes `submitNav()`. It exists to exercise the full test flow
+and must not be deployed to mainnet.
 
 ## Flow 2: processing both NAV targets
 
@@ -73,6 +79,10 @@ Each receiver will:
 - allow only the `performUpkeep(bytes)` selector.
 
 The receivers need `CHAINLINK_AUTOMATION` for their allowed `performUpkeep(bytes)` calls.
+
+For every contract automated by CRE, add its address to the workflow configuration and to
+the list of contracts that the vault's receiver is allowed to call. Use the same vault ID
+in all configuration files.
 
 ## Related code
 
