@@ -25,6 +25,18 @@
                 "key": "junior",
                 "amountMZUSD": "1"
             }
+        ],
+        "trancheDeposits": [
+            {
+                "key": "senior",
+                "amountMZUSD": "599999",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "399999",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            }
         ]
     },
     "tranches": [
@@ -42,7 +54,7 @@
             "trancheId": 2,
             "name": "Vault 2 Junior Tranche",
             "symbol": "jMZ2",
-            "riskPremiumBps": 3000,
+            "riskPremiumBps": 2000,
             "enabled": true,
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 1,

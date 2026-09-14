@@ -25,6 +25,18 @@
                 "key": "junior",
                 "amountMZUSD": "1"
             }
+        ],
+        "trancheDeposits": [
+            {
+                "key": "senior",
+                "amountMZUSD": "699999",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "299999",
+                "receiver": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B"
+            }
         ]
     },
     "tranches": [
@@ -44,7 +56,7 @@
             "trancheId": 2,
             "name": "Vault 1 Junior Tranche",
             "symbol": "jMZ1",
-            "riskPremiumBps": 2000,
+            "riskPremiumBps": 1200,
             "enabled": true,
             "directWithdrawEnabled": false,
             "unstakeDelayEpochs": 2,
