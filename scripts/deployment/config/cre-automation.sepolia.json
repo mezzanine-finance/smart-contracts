@@ -7,31 +7,33 @@
     "workflowPermissions": [
         {
             "name": "nav-submitter-test-staging",
-            "id": "0x002cce75a49d5f9e7db8443e1632b50419dab58cb73916645f55e0c69390f2e2"
+            "id": "0x00af5ca1ba2534fc77ef99b6d305b93be0feff07219344de4351bca6421f8dcf"
         },
         {
             "name": "nav-staging",
-            "id": "0x0070c59e63c4e364b5c94264dec25dd5e0dcc042d26f8e31304f9510a7bc99e5"
+            "id": "0x00c2b8063fedc628cee02016aca4bf048cd71c8ac56475e8d7fbf53bb5b3acb0"
         },
         {
             "name": "finalization-staging",
-            "id": "0x00846757c2787b7ab0077cf4e1ef89c024b59bd9d6910fc6b7f144f4d0aee22d"
+            "id": "0x00ad15cf399e203ed83745ab38838a1e5877434fce833dbf7e55f978b0ba43b8"
         }
     ],
     "vaults": [
         {
             "id": "vault-1",
             "targets": [
-                "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4",
-                "0xE5ead599d1c550CD1d860FaD781239c144CEa682",
-                "0xc6ae58178335be8AB541bfdC2B30188Ac4b5BB8D"
+                "0xB86149abe3dE887A63D269Fcd470a90EC64c805f",
+                "0x5Aa0B57c03b1a4c1bcf1C7C4025Cc400cfF88dC0",
+                "0xb4dBbFE4216636d846092AdFdA7ebaf91E782A79",
+                "0xBB9341a473DDC55C24271E30DCE53771284121d4"
             ]
         },
         {
             "id": "vault-2",
             "targets": [
-                "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e",
-                "0x8C6874ee655C019Cf346fB22e9cc4812d4CB87d9"
+                "0x08d44B4c244456C738B3c0DcD78C8eac5B0be0e4",
+                "0x4F150FDA9A400883C8e627E418a2d8E993BcF1D7",
+                "0x6C8fAB81d59C9511d37b825A55D91902f5Ca6e21"
             ]
         }
     ]

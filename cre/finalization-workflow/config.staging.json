@@ -1,34 +1,34 @@
 {
-  "schedule": "0 */5 * * * *",
-  "chainName": "ethereum-testnet-sepolia",
-  "isTestnet": true,
-  "gasLimit": "500000",
-  "vaults": [
-    {
-      "id": "vault-1",
-      "issuanceVault": "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
-      "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
-      "finalizers": [
+    "schedule": "0 */5 * * * *",
+    "chainName": "ethereum-testnet-sepolia",
+    "isTestnet": true,
+    "gasLimit": "500000",
+    "vaults": [
         {
-          "tranche": "senior",
-          "address": "0xE5ead599d1c550CD1d860FaD781239c144CEa682"
+            "id": "vault-1",
+            "issuanceVault": "0xd95d5319E98E2583fB2c15A196CEA58fAbf8e07a",
+            "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
+            "finalizers": [
+                {
+                    "tranche": "senior",
+                    "address": "0x5Aa0B57c03b1a4c1bcf1C7C4025Cc400cfF88dC0"
+                },
+                {
+                    "tranche": "junior",
+                    "address": "0xb4dBbFE4216636d846092AdFdA7ebaf91E782A79"
+                }
+            ]
         },
         {
-          "tranche": "junior",
-          "address": "0xc6ae58178335be8AB541bfdC2B30188Ac4b5BB8D"
+            "id": "vault-2",
+            "issuanceVault": "0xFF16B689C6E79a6dBAE70fF4a67a0B06B6E040f3",
+            "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
+            "finalizers": [
+                {
+                    "tranche": "junior",
+                    "address": "0x4F150FDA9A400883C8e627E418a2d8E993BcF1D7"
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "vault-2",
-      "issuanceVault": "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
-      "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
-      "finalizers": [
-        {
-          "tranche": "junior",
-          "address": "0x8C6874ee655C019Cf346fB22e9cc4812d4CB87d9"
-        }
-      ]
-    }
-  ]
+    ]
 }

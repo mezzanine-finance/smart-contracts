@@ -1,20 +1,20 @@
 {
-  "schedule": "0 */5 * * * *",
-  "chainName": "ethereum-testnet-sepolia",
-  "isTestnet": true,
-  "gasLimit": "500000",
-  "vaults": [
-    {
-      "id": "vault-1",
-      "issuanceVault": "0xbE0F5B09932a29ac244D8ac776Ce1917313882F1",
-      "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
-      "navOracleAutomation": "0x268cE58e8974F8BF7CB472CbBEE4Aeb6e45706E4"
-    },
-    {
-      "id": "vault-2",
-      "issuanceVault": "0xfE36122E7c9a55BcDb78Bc9CbFc4b2c1740FC259",
-      "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
-      "navOracleAutomation": "0x5c614041Cab67d3a598aA0Ab29775eE0Ad2BBf6e"
-    }
-  ]
+    "schedule": "0 */5 * * * *",
+    "chainName": "ethereum-testnet-sepolia",
+    "isTestnet": true,
+    "gasLimit": "500000",
+    "vaults": [
+        {
+            "id": "vault-1",
+            "issuanceVault": "0xd95d5319E98E2583fB2c15A196CEA58fAbf8e07a",
+            "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F",
+            "navOracleAutomation": "0xB86149abe3dE887A63D269Fcd470a90EC64c805f"
+        },
+        {
+            "id": "vault-2",
+            "issuanceVault": "0xFF16B689C6E79a6dBAE70fF4a67a0B06B6E040f3",
+            "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D",
+            "navOracleAutomation": "0x08d44B4c244456C738B3c0DcD78C8eac5B0be0e4"
+        }
+    ]
 }
