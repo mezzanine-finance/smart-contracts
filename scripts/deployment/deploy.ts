@@ -25,15 +25,7 @@ import {
     getLatestDeployment,
 } from "./lib/deployments";
 import {log, format} from "./lib/logger";
-import {
-    assert,
-    getArg,
-    hasFlag,
-    isLocalNetwork,
-    parseMZUSD,
-    parseUSDC,
-    requireAddress,
-} from "./lib/helpers";
+import {assert, isLocalNetwork, parseMZUSD, parseUSDC, requireAddress} from "./lib/helpers";
 import {GasTracker} from "./lib/gas-tracker";
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
@@ -159,13 +151,13 @@ async function ensureProxyDeployment<T extends BaseContract>(
 }
 
 export async function main() {
-    const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
-    const requestedDeploymentId = getArg("--deployment-id") ?? process.env.DEPLOYMENT_ID;
-    const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
-    const freshShared = hasFlag("--fresh-shared") || isEnvFlagEnabled("DEPLOY_FRESH_SHARED");
-    const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
-    const forceRenounce = hasFlag("--renounce") || isEnvFlagEnabled("DEPLOY_RENOUNCE");
-    const skipRenounce = hasFlag("--no-renounce") || isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
+    const configPath = process.env.DEPLOY_CONFIG;
+    const requestedDeploymentId = process.env.DEPLOYMENT_ID;
+    const fresh = isEnvFlagEnabled("DEPLOY_FRESH");
+    const freshShared = isEnvFlagEnabled("DEPLOY_FRESH_SHARED");
+    const skipVerify = isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
+    const forceRenounce = isEnvFlagEnabled("DEPLOY_RENOUNCE");
+    const skipRenounce = isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
 
     const config = loadConfig(network.name, configPath);
     const deploymentId = requestedDeploymentId ?? config.deploymentId;
@@ -183,7 +175,7 @@ export async function main() {
         fresh,
         freshShared,
     });
-    if (hasFlag("--plan") || isEnvFlagEnabled("DEPLOY_PLAN")) {
+    if (isEnvFlagEnabled("DEPLOY_PLAN")) {
         console.log(JSON.stringify(plan, null, 2));
         return;
     }
