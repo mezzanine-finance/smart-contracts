@@ -309,6 +309,60 @@ describe("IssuanceVault Yield Allocation Math", () => {
     // ── Risk Premium Sheet scenarios ─────────────────────────────────
 
     describe("Risk Premium Sheet scenarios", () => {
+        it("distributes 80% base rewards with 0% Senior and 20% Junior risk premium", async () => {
+            const TOTAL_USDC = to6(1_000_000);
+            const YIELD_USDC = to6(100_000);
+
+            await vault.setTrancheConfig(
+                [
+                    {tranche: senior.target, riskPremiumBps: 0, enabled: true},
+                    {tranche: mezzanine.target, riskPremiumBps: 0, enabled: false},
+                    {tranche: junior.target, riskPremiumBps: 2000, enabled: true},
+                    {tranche: juniorPol.target, riskPremiumBps: 0, enabled: false},
+                ],
+                [false, false, false, false],
+                8000
+            );
+            await vault.setFeeRates(1000, 1000);
+
+            await depositIntoTranches(TOTAL_USDC, [
+                {tranche: senior, user: alice, pct: 60},
+                {tranche: junior, user: carol, pct: 40},
+            ]);
+
+            const seniorTVL = await senior.totalAssets();
+            const juniorTVL = await junior.totalAssets();
+            expect(seniorTVL).to.equal(to18(600_000));
+            expect(juniorTVL).to.equal(to18(400_000));
+            expect(await vault.baseRewardBps()).to.equal(8000);
+
+            await time.increase(DAY);
+            await fundYieldUSDC(YIELD_USDC);
+            await vault.connect(navOracleSigner).distributeYield(YIELD_USDC);
+
+            // 100,000 gross yield - 10% performance fee - 10% protocol fee = 80,000.
+            // Base pool: 80,000 * 80% = 64,000, split by the 60/40 tranche TVL.
+            // Junior additionally receives 80,000 * 20% = 16,000 risk premium.
+            const allocatableYield = to18(80_000);
+            const basePool = (allocatableYield * 8000n) / BPS;
+            const seniorYield = (basePool * seniorTVL) / (seniorTVL + juniorTVL);
+            const juniorBaseYield = (basePool * juniorTVL) / (seniorTVL + juniorTVL);
+            const juniorRiskPremium = (allocatableYield * 2000n) / BPS;
+            const juniorYield = juniorBaseYield + juniorRiskPremium;
+
+            // Expected allocation: Senior = 64,000 * 60% + 0% premium = 38,400;
+            // Junior = 64,000 * 40% + 80,000 * 20% premium = 41,600.
+            expect(basePool).to.equal(to18(64_000));
+            expect(seniorYield).to.equal(to18(38_400));
+            expect(juniorBaseYield).to.equal(to18(25_600));
+            expect(juniorRiskPremium).to.equal(to18(16_000));
+            expect(juniorYield).to.equal(to18(41_600));
+            expect(seniorYield + juniorYield).to.equal(allocatableYield);
+
+            expect(await senior.yieldStreamingAmount()).to.equal(seniorYield);
+            expect(await junior.yieldStreamingAmount()).to.equal(juniorYield);
+        });
+
         it("Scenario 1: 30/30/10 TVL split, senior 0% / mezz 12% / junior 18% risk premium, 10% protocol fee", async () => {
             const TOTAL_USDC = to6(1_000_000);
             const YIELD_USDC = to6(100_000);
