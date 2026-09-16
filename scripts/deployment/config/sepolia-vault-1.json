@@ -63,7 +63,7 @@
             "unstakeYieldReductionBps": 0,
             "depositLimits": {
                 "enabled": true,
-                "tvlBps": 3000
+                "tvlBps": 3050
             }
         }
     ],
