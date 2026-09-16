@@ -2,7 +2,7 @@
     "schedule": "0 */5 * * * *",
     "chainName": "ethereum-testnet-sepolia",
     "isTestnet": true,
-    "gasLimit": "500000",
+    "gasLimit": "1000000",
     "vaults": [
         {
             "id": "vault-1",

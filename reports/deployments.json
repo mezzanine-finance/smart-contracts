@@ -2312,7 +2312,7 @@
           "deployedAt": "2026-09-02T12:55:00.889Z",
           "replaces": "0xEE9C7AeB533D514a588c70DB754FA5f2D112E8b9",
           "workflowIds": [
-            "0x00af5ca1ba2534fc77ef99b6d305b93be0feff07219344de4351bca6421f8dcf",
+            "0x002b40911526b05357effa165df8de14f67077d36f33014e502de874674f9571",
             "0x00c2b8063fedc628cee02016aca4bf048cd71c8ac56475e8d7fbf53bb5b3acb0",
             "0x00ad15cf399e203ed83745ab38838a1e5877434fce833dbf7e55f978b0ba43b8"
           ]
@@ -2504,7 +2504,7 @@
           "deployedAt": "2026-09-02T12:55:13.088Z",
           "replaces": "0x561B79a1a69B1813C8d3eF56DAc2ef3b87E1A282",
           "workflowIds": [
-            "0x00af5ca1ba2534fc77ef99b6d305b93be0feff07219344de4351bca6421f8dcf",
+            "0x002b40911526b05357effa165df8de14f67077d36f33014e502de874674f9571",
             "0x00c2b8063fedc628cee02016aca4bf048cd71c8ac56475e8d7fbf53bb5b3acb0",
             "0x00ad15cf399e203ed83745ab38838a1e5877434fce833dbf7e55f978b0ba43b8"
           ]
