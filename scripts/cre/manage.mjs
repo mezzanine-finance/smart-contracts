@@ -12,14 +12,30 @@ const network = process.argv[3] ?? "sepolia";
 const action = process.argv[2];
 const expectedOrganizationId = process.argv[4];
 
-if (network !== "sepolia") {
+const environments = {
+    sepolia: {
+        label: "Sepolia",
+        target: "staging-settings",
+        permissionNames: ["nav-staging", "finalization-staging"],
+    },
+    mainnet: {
+        label: "Ethereum mainnet",
+        target: "production-settings",
+        permissionNames: ["nav-production", "finalization-production"],
+    },
+};
+const environment = environments[network];
+if (!environment) {
     throw new Error(`Unsupported CRE environment: ${network}`);
 }
 
 const configPath = path.join(
     repositoryRoot,
-    "scripts/deployment/config/cre-automation.sepolia.json"
+    `scripts/deployment/config/cre-automation.${network}.json`
 );
+if (!fs.existsSync(configPath)) {
+    throw new Error(`Missing CRE automation config: ${configPath}`);
+}
 const deploymentConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const bunDirectory = path.join(os.homedir(), ".bun/bin");
 const commandEnvironment = {
@@ -79,7 +95,7 @@ function readWorkflowIdentity(folder, permissionName) {
             "hash",
             `./${folder}`,
             "--target",
-            "staging-settings",
+            environment.target,
             "--non-interactive",
             "--verbose",
         ],
@@ -103,8 +119,8 @@ function readWorkflowIdentity(folder, permissionName) {
 
 function readIdentities() {
     const identities = [
-        readWorkflowIdentity("nav-workflow", "nav-staging"),
-        readWorkflowIdentity("finalization-workflow", "finalization-staging"),
+        readWorkflowIdentity("nav-workflow", environment.permissionNames[0]),
+        readWorkflowIdentity("finalization-workflow", environment.permissionNames[1]),
     ];
     const owners = new Set(identities.map(({owner}) => owner));
     if (owners.size !== 1)
@@ -140,7 +156,7 @@ function assertWorkflowOwnerMatchesConfig(owner) {
 function assertMigrationOrganization(expectedId) {
     if (!expectedId) {
         throw new Error(
-            "Pass the expected CRE organization ID: npm run cre:migrate-organization:sepolia -- org_..."
+            `Pass the expected CRE organization ID: npm run cre:migrate-organization:${network} -- org_...`
         );
     }
     const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
@@ -226,8 +242,8 @@ function runWorkflow(folder, broadcast) {
     console.log(`\n[${mode}] ${folder}`);
     console.log(
         broadcast
-            ? "Real Sepolia writes are enabled. Successful writes should return a transaction hash."
-            : "Using live Sepolia reads, but reports and writes are simulated; on-chain state will not change."
+            ? `Real ${environment.label} writes are enabled. Successful writes should return a transaction hash.`
+            : `Using live ${environment.label} reads, but reports and writes are simulated; on-chain state will not change.`
     );
     const args = [
         "-e",
@@ -236,7 +252,7 @@ function runWorkflow(folder, broadcast) {
         "simulate",
         `./${folder}`,
         "--target",
-        "staging-settings",
+        environment.target,
         "--trigger-index",
         "0",
         "--non-interactive",
@@ -271,7 +287,7 @@ function deployWorkflow(folder) {
             "deploy",
             `./${folder}`,
             "--target",
-            "staging-settings",
+            environment.target,
             "--non-interactive",
             "--yes",
         ],
@@ -288,7 +304,7 @@ function deployWorkflow(folder) {
                 "get",
                 `./${folder}`,
                 "--target",
-                "staging-settings",
+                environment.target,
                 "--all-registries",
             ],
             {cwd: creRoot, capture: true, quietFailure: true}
@@ -297,25 +313,25 @@ function deployWorkflow(folder) {
     } catch {
         // Deployment can succeed before the registry's read API exposes the workflow.
         console.warn(
-            `[STATUS] ${folder} was deployed, but registry indexing is still pending. Retry with: cre -e .env workflow get ./${folder} --target staging-settings --all-registries`
+            `[STATUS] ${folder} was deployed, but registry indexing is still pending. Retry with: cre -e .env workflow get ./${folder} --target ${environment.target} --all-registries`
         );
     }
 }
 
 switch (action) {
     case "check": {
-        console.log("=== CRE preflight — Sepolia ===");
+        console.log(`=== CRE preflight — ${environment.label} ===`);
         const identity = readIdentities();
         assertIdentityMatchesConfig(identity);
         printIdentity(identity);
         runValidation();
         commandEnvironment.CRE_STATUS_STRICT = "true";
         runOnchainStatus(true);
-        console.log("CRE Sepolia preflight passed.");
+        console.log(`CRE ${environment.label} preflight passed.`);
         break;
     }
     case "setup": {
-        console.log("=== CRE setup — Sepolia ===");
+        console.log(`=== CRE setup — ${environment.label} ===`);
         const initialIdentity = readIdentities();
         assertWorkflowOwnerMatchesConfig(initialIdentity.owner);
         printIdentity(initialIdentity);
@@ -332,13 +348,13 @@ switch (action) {
         run("npm", ["run", `deploy:cre-receivers:${network}`]);
         commandEnvironment.CRE_STATUS_STRICT = "true";
         runOnchainStatus(true);
-        console.log("CRE Sepolia setup is synchronized and complete.");
+        console.log(`CRE ${environment.label} setup is synchronized and complete.`);
         break;
     }
     case "migrate-organization": {
-        console.log("=== CRE organization migration — Sepolia ===");
+        console.log(`=== CRE organization migration — ${environment.label} ===`);
         console.log(
-            "This command updates the configured CRE identity and changes receiver permissions on Sepolia."
+            `This command updates the configured CRE identity and changes receiver permissions on ${environment.label}.`
         );
         assertMigrationOrganization(expectedOrganizationId);
         const identity = readIdentities();
@@ -350,33 +366,33 @@ switch (action) {
         run("npm", ["run", `deploy:cre-receivers:${network}`]);
         commandEnvironment.CRE_STATUS_STRICT = "true";
         runOnchainStatus(true);
-        console.log("CRE Sepolia organization migration is complete.");
+        console.log(`CRE ${environment.label} organization migration is complete.`);
         break;
     }
     case "deploy-nav":
-        console.log("=== CRE NAV workflow deploy — Sepolia ===");
+        console.log(`=== CRE NAV workflow deploy — ${environment.label} ===`);
         runDeployPreflight();
         deployWorkflow("nav-workflow");
         break;
     case "deploy-finalization":
-        console.log("=== CRE finalization workflow deploy — Sepolia ===");
+        console.log(`=== CRE finalization workflow deploy — ${environment.label} ===`);
         runDeployPreflight();
         deployWorkflow("finalization-workflow");
         break;
     case "deploy":
-        console.log("=== CRE workflow deploy — Sepolia ===");
+        console.log(`=== CRE workflow deploy — ${environment.label} ===`);
         runDeployPreflight();
         deployWorkflow("nav-workflow");
         deployWorkflow("finalization-workflow");
         break;
     case "simulate":
-        console.log("=== CRE local simulation against Sepolia ===");
+        console.log(`=== CRE local simulation against ${environment.label} ===`);
         runWorkflow("nav-workflow", false);
         runWorkflow("finalization-workflow", false);
         break;
     case "broadcast": {
-        console.log("=== CRE BROADCAST — Sepolia ===");
-        console.log("This command can change Sepolia contract state.");
+        console.log(`=== CRE BROADCAST — ${environment.label} ===`);
+        console.log(`This command can change ${environment.label} contract state.`);
         const identity = readIdentities();
         assertIdentityMatchesConfig(identity);
         commandEnvironment.CRE_STATUS_STRICT = "true";
@@ -386,7 +402,7 @@ switch (action) {
         break;
     }
     case "status": {
-        console.log("=== CRE status — Sepolia ===");
+        console.log(`=== CRE status — ${environment.label} ===`);
         const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
         const accountLines = account
             .split("\n")
@@ -411,6 +427,6 @@ switch (action) {
     }
     default:
         throw new Error(
-            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|deploy-nav|deploy-finalization|deploy|simulate|broadcast|status> sepolia"
+            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|deploy-nav|deploy-finalization|deploy|simulate|broadcast|status> <sepolia|mainnet>"
         );
 }

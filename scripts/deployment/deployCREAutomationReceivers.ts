@@ -36,13 +36,25 @@ interface CREAutomationConfig {
 }
 
 const PERFORM_UPKEEP_SELECTOR = ethers.id("performUpkeep(bytes)").slice(0, 10);
-const SEPOLIA_WORKFLOW_CONFIG_PATHS = [
-    path.resolve(__dirname, "../../cre/nav-workflow/config.staging.json"),
-    path.resolve(__dirname, "../../cre/finalization-workflow/config.staging.json"),
-];
+function workflowConfigPaths(networkName: string): string[] {
+    const configName =
+        networkName === "sepolia"
+            ? "config.staging.json"
+            : networkName === "mainnet"
+              ? "config.production.json"
+              : undefined;
+    if (!configName) throw new Error(`Unsupported CRE network: ${networkName}`);
+    return [
+        path.resolve(__dirname, `../../cre/nav-workflow/${configName}`),
+        path.resolve(__dirname, `../../cre/finalization-workflow/${configName}`),
+    ];
+}
 
-function syncWorkflowConfigFiles(receivers: ReadonlyMap<string, string>): void {
-    for (const workflowConfigPath of SEPOLIA_WORKFLOW_CONFIG_PATHS) {
+function syncWorkflowConfigFiles(
+    networkName: string,
+    receivers: ReadonlyMap<string, string>
+): void {
+    for (const workflowConfigPath of workflowConfigPaths(networkName)) {
         const workflowConfig = JSON.parse(
             fs.readFileSync(workflowConfigPath, "utf8")
         ) as CREWorkflowConfig;
@@ -343,7 +355,7 @@ async function main() {
         ]);
     }
 
-    if (network.name === "sepolia") syncWorkflowConfigFiles(selectedReceivers);
+    syncWorkflowConfigFiles(network.name, selectedReceivers);
 
     if (prepareOnly || preparedReceiverCount > 0) {
         console.log(

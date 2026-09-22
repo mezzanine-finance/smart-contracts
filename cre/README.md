@@ -26,15 +26,15 @@ with `cre whoami`; deploying to DON requires deploy access.
 - `project.yaml`: RPCs for `staging-settings` (Sepolia) and `production-settings` (mainnet).
 - Each `workflow.yaml`: workflow name, registry and artifact paths.
 - Each `config.staging.json`: Sepolia targets, receivers, schedule and write gas limit.
-- Each `config.production.json`: mainnet template with no configured vaults yet.
+- Each `config.production.json`: mainnet vaults and receiver addresses.
 - `../scripts/deployment/config/cre-automation.sepolia.json`: receiver permissions and CRE identity.
+- `../scripts/deployment/config/cre-automation.mainnet.json`: mainnet receiver permissions and CRE identity; create it after the protocol addresses are deployed.
 - `../reports/deployments.json`: deployment history for all protocol and CRE contracts,
   grouped by network and vault. CRE receiver records also contain managed workflow IDs.
 
 Hardhat transactions use the root `.env` configuration. Local CRE simulation uses
 `cre/.env` (see `.env.example`); its private key is for the simulator, not the
-organization owner. Never commit keys or `.env` files. The wrapper commands below
-currently support Sepolia only.
+organization owner. Never commit keys or `.env` files.
 
 ## Commands
 
@@ -49,6 +49,13 @@ Run these from the **repository root**:
 | `cre:deploy:sepolia`                                         | Preflight, then deploy both workflows to DON. Does not deploy receivers.                                                     |
 | `cre:deploy:nav:sepolia` / `cre:deploy:finalization:sepolia` | Deploy one workflow after preflight.                                                                                         |
 | `cre:broadcast:sepolia`                                      | Local simulation with real Sepolia writes enabled; not a DON deployment.                                                     |
+
+The same read, setup, simulation and deployment commands are available for mainnet with
+the `:mainnet` suffix: `cre:status:mainnet`, `cre:check:mainnet`,
+`cre:setup:mainnet`, `cre:simulate:mainnet`, `cre:deploy:mainnet`,
+`cre:deploy:nav:mainnet` and `cre:deploy:finalization:mainnet`. Mainnet uses
+`production-settings` and the production workflow configs. There is deliberately no
+`cre:broadcast:mainnet` shortcut.
 
 Normal setup order: review configs and organization → `setup` → `check` →
 `simulate` → `deploy`. An active DON workflow runs without a local terminal.
@@ -69,9 +76,9 @@ This verifies the organization and deploy access, updates the configured identit
 and applies receiver permissions with the canonical forwarder. It does not move
 or stop workflows in the old organization; manage their lifecycle separately.
 
-The lower-level `deploy:cre-receivers:sepolia:plan` prints the receiver plan;
-`:validate` also checks target bytecode and role mappings. Prefer `cre:setup:sepolia`
-for complete receiver/config/ID synchronization.
+The lower-level `deploy:cre-receivers:<network>:plan` prints the receiver plan;
+`:validate` also checks target bytecode and role mappings. Prefer
+`cre:setup:<network>` for complete receiver/config/ID synchronization.
 
 ## Sources of truth
 
