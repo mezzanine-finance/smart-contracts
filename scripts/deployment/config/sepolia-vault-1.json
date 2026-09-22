@@ -3,7 +3,8 @@
     "deploymentId": "vault-1",
     "mzusd": {
         "redemptionCapUSDC": "1000000",
-        "redemptionWindowDurationSec": 3600
+        "redemptionWindowDurationSec": 3600,
+        "withdrawalFeeBps": 1
     },
     "vault": {
         "performanceFeeBps": 1000,
