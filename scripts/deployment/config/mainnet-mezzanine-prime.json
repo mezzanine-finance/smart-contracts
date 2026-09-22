@@ -1,0 +1,114 @@
+{
+    "deploymentId": "mezzanine-prime",
+    "infrastructureId": "mezzanine-mainnet-shared",
+    "version": 1,
+    "dev": {
+        "deployer": "0x92405F3A35F19C8AB4c7892da0250A4ded886E8B",
+        "grantRoles": true
+    },
+    "roleIds": {
+        "PAUSER_ROLE": 1,
+        "UNPAUSER_ROLE": 2,
+        "UPGRADER_ROLE": 3,
+        "RESERVOIR_WITHDRAW_ROLE": 4,
+        "BURNER_ROLE": 5,
+        "ORACLE_ROLE": 6,
+        "KEEPER_ROLE": 7,
+        "ALLOWLISTER_ROLE": 8,
+        "FINALIZER_ROLE": 9,
+        "CHAINLINK_AUTOMATION": 10
+    },
+    "roles": {
+        "admin": "0x0b61220A0d0aFd11da63B2931EE368E34E60d122",
+        "pauser": "0x44662082524A14cEAc3961d5e28694AfFC8242b5",
+        "unpauser": "0xbf2f8527B05aACAB58B1F35E3e00697F265B2F85",
+        "upgrader": "0x0b61220A0d0aFd11da63B2931EE368E34E60d122",
+        "reservoirWithdrawers": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
+        "keepers": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
+        "oracles": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
+        "roleDelays": {
+            "pauser": 0,
+            "unpauser": 86400,
+            "upgrader": 172800,
+            "reservoirWithdraw": 86400,
+            "keeper": 0,
+            "burner": 0,
+            "oracle": 0
+        }
+    },
+    "usdc": {
+        "deployMock": false,
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    },
+    "allowlist": {},
+    "mzusd": {
+        "redemptionCapUSDC": "1000000",
+        "redemptionWindowDurationSec": 3600,
+        "withdrawalFeeBps": 1
+    },
+    "vault": {
+        "performanceFeeBps": 1000,
+        "protocolFeeBps": 250,
+        "performanceFeeReceiver": "0x83e5EbE91E5926FBE283A0791311147855b12044",
+        "protocolFeeReceiver": "0x18c1a0Fca55e9D842c47a2Ad988a1B6078daF770",
+        "idleBufferUSDC": "1",
+        "hysteresisBps": 500,
+        "epochDurationSec": 604800
+    },
+    "seed": {
+        "mzusdDepositUSDC": "2",
+        "deadShares": [
+            {
+                "key": "senior",
+                "amountMZUSD": "1"
+            },
+            {
+                "key": "junior",
+                "amountMZUSD": "1"
+            }
+        ]
+    },
+    "tranches": [
+        {
+            "key": "senior",
+            "trancheId": 1,
+            "name": "Senior PRIME",
+            "symbol": "msPRIME",
+            "riskPremiumBps": 0,
+            "enabled": true,
+            "directWithdrawEnabled": false,
+            "unstakeDelayEpochs": 1,
+            "unstakeYieldReductionBps": 5000
+        },
+        {
+            "key": "junior",
+            "trancheId": 2,
+            "name": "Junior PRIME",
+            "symbol": "mjPRIME",
+            "riskPremiumBps": 2000,
+            "enabled": true,
+            "directWithdrawEnabled": false,
+            "unstakeDelayEpochs": 2,
+            "unstakeYieldReductionBps": 5000
+        }
+    ],
+    "lossManager": {
+        "order": ["junior", "senior"],
+        "isPairedWithNext": [false, false],
+        "maxLossPerTxUSDC": "1000000"
+    },
+    "navOracle": {
+        "vetoPeriodSec": 86400,
+        "deployMockFeeds": false,
+        "oracles": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"]
+    },
+    "umbrellaFinalizer": {
+        "enabled": true
+    },
+    "postDeploy": {
+        "renounceDeployerRoles": true
+    },
+    "verify": {
+        "enabled": true
+    }
+}
