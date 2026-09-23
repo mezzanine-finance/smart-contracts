@@ -26,6 +26,7 @@
         "reservoirWithdrawers": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
         "keepers": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
         "oracles": ["0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd"],
+        "allowlisters": ["0x0b61220A0d0aFd11da63B2931EE368E34E60d122"],
         "roleDelays": {
             "pauser": 0,
             "unpauser": 86400,
