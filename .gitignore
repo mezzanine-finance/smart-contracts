@@ -50,3 +50,7 @@ docs/errors/
 docs/interfaces/
 
 .VSCodeCounter
+
+# CRE build artifacts.
+cre/**/binary.wasm.br.b64
+cre/**/.cre_build_tmp.js

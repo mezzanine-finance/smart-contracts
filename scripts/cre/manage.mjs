@@ -1,0 +1,432 @@
+// Operator commands coordinating CRE identity, receiver setup and workflow execution.
+import {spawnSync} from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {fileURLToPath} from "node:url";
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(scriptDirectory, "../..");
+const creRoot = path.join(repositoryRoot, "cre");
+const network = process.argv[3] ?? "sepolia";
+const action = process.argv[2];
+const expectedOrganizationId = process.argv[4];
+
+const environments = {
+    sepolia: {
+        label: "Sepolia",
+        target: "staging-settings",
+        permissionNames: ["nav-staging", "finalization-staging"],
+    },
+    mainnet: {
+        label: "Ethereum mainnet",
+        target: "production-settings",
+        permissionNames: ["nav-production", "finalization-production"],
+    },
+};
+const environment = environments[network];
+if (!environment) {
+    throw new Error(`Unsupported CRE environment: ${network}`);
+}
+
+const configPath = path.join(
+    repositoryRoot,
+    `scripts/deployment/config/cre-automation.${network}.json`
+);
+if (!fs.existsSync(configPath)) {
+    throw new Error(`Missing CRE automation config: ${configPath}`);
+}
+const deploymentConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+const bunDirectory = path.join(os.homedir(), ".bun/bin");
+const commandEnvironment = {
+    ...process.env,
+    PATH: fs.existsSync(bunDirectory)
+        ? `${bunDirectory}${path.delimiter}${process.env.PATH ?? ""}`
+        : process.env.PATH,
+};
+
+function resolveCreCommand() {
+    const candidates = [process.env.CRE_CLI, "cre", path.join(os.homedir(), ".cre/bin/cre")].filter(
+        Boolean
+    );
+    for (const candidate of candidates) {
+        const result = spawnSync(candidate, ["version"], {
+            env: commandEnvironment,
+            stdio: "ignore",
+        });
+        if (!result.error) return candidate;
+    }
+    throw new Error("CRE CLI was not found. Install it or set CRE_CLI to its executable path.");
+}
+
+const cre = resolveCreCommand();
+
+function run(command, args, options = {}) {
+    const result = spawnSync(command, args, {
+        cwd: options.cwd ?? repositoryRoot,
+        env: {...commandEnvironment, ...options.env},
+        encoding: "utf8",
+        stdio: options.capture ? "pipe" : "inherit",
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+        if (options.capture && !options.quietFailure) {
+            process.stderr.write(result.stderr || result.stdout || "");
+        }
+        throw new Error(`${command} exited with status ${result.status}`);
+    }
+    return `${result.stdout ?? ""}${result.stderr ?? ""}`;
+}
+
+function workflowPermission(name) {
+    const permission = deploymentConfig.workflowPermissions.find((entry) => entry.name === name);
+    if (!permission) throw new Error(`Missing ${name} permission in ${configPath}`);
+    return permission;
+}
+
+// Let the CLI derive identity from the active organization and current artifacts.
+function readWorkflowIdentity(folder, permissionName) {
+    const output = run(
+        cre,
+        [
+            "-e",
+            ".env",
+            "workflow",
+            "hash",
+            `./${folder}`,
+            "--target",
+            environment.target,
+            "--non-interactive",
+            "--verbose",
+        ],
+        {cwd: creRoot, capture: true}
+    );
+    const workflowHash = output.match(/Workflow hash:\s*([0-9a-fA-F]{64})/)?.[1];
+    const derivedOwner = output.match(/derivedWorkflowOwners[^\n]*?([0-9a-fA-F]{40})/)?.[1];
+    if (!workflowHash || !derivedOwner) {
+        throw new Error(`Could not derive CRE identity for ${folder}`);
+    }
+
+    const actualId = `0x${workflowHash}`.toLowerCase();
+    const expected = workflowPermission(permissionName);
+    return {
+        name: permissionName,
+        id: actualId,
+        expectedId: expected.id.toLowerCase(),
+        owner: `0x${derivedOwner}`.toLowerCase(),
+    };
+}
+
+function readIdentities() {
+    const identities = [
+        readWorkflowIdentity("nav-workflow", environment.permissionNames[0]),
+        readWorkflowIdentity("finalization-workflow", environment.permissionNames[1]),
+    ];
+    const owners = new Set(identities.map(({owner}) => owner));
+    if (owners.size !== 1)
+        throw new Error("CRE workflows resolved to different organization owners");
+    return {identities, owner: identities[0].owner};
+}
+
+function assertIdentityMatchesConfig({identities, owner}) {
+    const errors = [];
+    if (owner !== deploymentConfig.workflowOwner.toLowerCase()) {
+        errors.push(
+            `CRE organization owner mismatch: config=${deploymentConfig.workflowOwner}, actual=${owner}`
+        );
+    }
+    for (const identity of identities) {
+        if (identity.id !== identity.expectedId) {
+            errors.push(
+                `${identity.name} ID mismatch: config=${identity.expectedId}, actual=${identity.id}`
+            );
+        }
+    }
+    if (errors.length > 0) throw new Error(errors.join("\n"));
+}
+
+function assertWorkflowOwnerMatchesConfig(owner) {
+    if (owner !== deploymentConfig.workflowOwner.toLowerCase()) {
+        throw new Error(
+            `CRE organization owner mismatch: config=${deploymentConfig.workflowOwner}, actual=${owner}`
+        );
+    }
+}
+
+function assertMigrationOrganization(expectedId) {
+    if (!expectedId) {
+        throw new Error(
+            `Pass the expected CRE organization ID: npm run cre:migrate-organization:${network} -- org_...`
+        );
+    }
+    const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+    const actualId = account.match(/Organization ID:\s*(org_[A-Za-z0-9]+)/)?.[1];
+    if (!actualId) throw new Error("Could not read the active CRE organization ID");
+    if (actualId !== expectedId) {
+        throw new Error(
+            `Active CRE organization mismatch: expected=${expectedId}, actual=${actualId}`
+        );
+    }
+    if (!/Deploy Access:\s*Enabled/i.test(account)) {
+        throw new Error("The active CRE organization does not have workflow deploy access");
+    }
+    console.log(`Active CRE organization: ${actualId}`);
+}
+
+function assertDeployAccess() {
+    const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+    if (!/Deploy Access:\s*Enabled/i.test(account)) {
+        throw new Error("The active CRE organization does not have workflow deploy access");
+    }
+}
+
+function syncOrganizationIdentity({identities, owner}) {
+    let changed = false;
+    if (deploymentConfig.workflowOwner.toLowerCase() !== owner) {
+        console.log(`Workflow owner: ${deploymentConfig.workflowOwner} -> ${owner}`);
+        deploymentConfig.workflowOwner = owner;
+        changed = true;
+    }
+    for (const identity of identities) {
+        const permission = workflowPermission(identity.name);
+        if (permission.id.toLowerCase() === identity.id) continue;
+        console.log(`${identity.name}: ${permission.id} -> ${identity.id}`);
+        permission.id = identity.id;
+        changed = true;
+    }
+    if (changed) {
+        fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
+        console.log(`Updated CRE organization identity in ${configPath}`);
+    } else {
+        console.log("Configured CRE organization identity is already current.");
+    }
+}
+
+// Ordinary setup may rotate IDs, but changing organization requires explicit migration.
+function syncWorkflowIds({identities, owner}) {
+    assertWorkflowOwnerMatchesConfig(owner);
+    let changed = false;
+    for (const identity of identities) {
+        const permission = workflowPermission(identity.name);
+        if (permission.id.toLowerCase() === identity.id) continue;
+        console.log(`Updating ${identity.name} ID: ${permission.id} -> ${identity.id}`);
+        permission.id = identity.id;
+        changed = true;
+    }
+    if (changed) {
+        fs.writeFileSync(configPath, `${JSON.stringify(deploymentConfig, null, 4)}\n`);
+        console.log(`Updated workflow IDs in ${configPath}`);
+    } else {
+        console.log("Configured workflow IDs are already current.");
+    }
+}
+
+function printIdentity({identities, owner}) {
+    console.log(`CRE organization owner: ${owner}`);
+    for (const identity of identities) console.log(`${identity.name}: ${identity.id}`);
+}
+
+function runOnchainStatus(strict) {
+    run("npx", ["hardhat", "run", "scripts/cre/statusCREAutomation.ts", "--network", network], {
+        cwd: repositoryRoot,
+        ...(strict ? {env: undefined} : {}),
+    });
+}
+
+function runValidation() {
+    run("npm", ["run", `deploy:cre-receivers:${network}:validate`]);
+}
+
+function runWorkflow(folder, broadcast) {
+    const mode = broadcast ? "BROADCAST" : "SIMULATION";
+    console.log(`\n[${mode}] ${folder}`);
+    console.log(
+        broadcast
+            ? `Real ${environment.label} writes are enabled. Successful writes should return a transaction hash.`
+            : `Using live ${environment.label} reads, but reports and writes are simulated; on-chain state will not change.`
+    );
+    const args = [
+        "-e",
+        ".env",
+        "workflow",
+        "simulate",
+        `./${folder}`,
+        "--target",
+        environment.target,
+        "--trigger-index",
+        "0",
+        "--non-interactive",
+    ];
+    if (broadcast) args.push("--broadcast");
+    run(cre, args, {cwd: creRoot});
+    console.log(
+        broadcast
+            ? `[${mode}] ${folder} completed. Review each ready target's [SUCCESS], [FAILED], or [UNCONFIRMED] result above.`
+            : `[${mode}] ${folder} finished without broadcasting transactions.`
+    );
+}
+
+function runDeployPreflight() {
+    assertDeployAccess();
+    const identity = readIdentities();
+    assertIdentityMatchesConfig(identity);
+    printIdentity(identity);
+    runValidation();
+    commandEnvironment.CRE_STATUS_STRICT = "true";
+    runOnchainStatus(true);
+}
+
+function deployWorkflow(folder) {
+    console.log(`\n[DEPLOY] ${folder}`);
+    run(
+        cre,
+        [
+            "-e",
+            ".env",
+            "workflow",
+            "deploy",
+            `./${folder}`,
+            "--target",
+            environment.target,
+            "--non-interactive",
+            "--yes",
+        ],
+        {cwd: creRoot}
+    );
+    console.log(`\n[STATUS] ${folder}`);
+    try {
+        const status = run(
+            cre,
+            [
+                "-e",
+                ".env",
+                "workflow",
+                "get",
+                `./${folder}`,
+                "--target",
+                environment.target,
+                "--all-registries",
+            ],
+            {cwd: creRoot, capture: true, quietFailure: true}
+        );
+        process.stdout.write(status);
+    } catch {
+        // Deployment can succeed before the registry's read API exposes the workflow.
+        console.warn(
+            `[STATUS] ${folder} was deployed, but registry indexing is still pending. Retry with: cre -e .env workflow get ./${folder} --target ${environment.target} --all-registries`
+        );
+    }
+}
+
+switch (action) {
+    case "check": {
+        console.log(`=== CRE preflight — ${environment.label} ===`);
+        const identity = readIdentities();
+        assertIdentityMatchesConfig(identity);
+        printIdentity(identity);
+        runValidation();
+        commandEnvironment.CRE_STATUS_STRICT = "true";
+        runOnchainStatus(true);
+        console.log(`CRE ${environment.label} preflight passed.`);
+        break;
+    }
+    case "setup": {
+        console.log(`=== CRE setup — ${environment.label} ===`);
+        const initialIdentity = readIdentities();
+        assertWorkflowOwnerMatchesConfig(initialIdentity.owner);
+        printIdentity(initialIdentity);
+        console.log("Deploying receivers and synchronizing their workflow config addresses...");
+        run("npm", ["run", `deploy:cre-receivers:${network}`], {
+            env: {CRE_RECEIVERS_PREPARE: "true"},
+        });
+        console.log("Recomputing workflow IDs from the synchronized configs...");
+        // Receiver addresses are part of the config, so hash only after synchronizing them.
+        const finalIdentity = readIdentities();
+        syncWorkflowIds(finalIdentity);
+        printIdentity(finalIdentity);
+        console.log("Applying final workflow permissions...");
+        run("npm", ["run", `deploy:cre-receivers:${network}`]);
+        commandEnvironment.CRE_STATUS_STRICT = "true";
+        runOnchainStatus(true);
+        console.log(`CRE ${environment.label} setup is synchronized and complete.`);
+        break;
+    }
+    case "migrate-organization": {
+        console.log(`=== CRE organization migration — ${environment.label} ===`);
+        console.log(
+            `This command updates the configured CRE identity and changes receiver permissions on ${environment.label}.`
+        );
+        assertMigrationOrganization(expectedOrganizationId);
+        const identity = readIdentities();
+        printIdentity(identity);
+        syncOrganizationIdentity(identity);
+        console.log(
+            "Restoring the canonical forwarder and applying the new owner and workflow IDs..."
+        );
+        run("npm", ["run", `deploy:cre-receivers:${network}`]);
+        commandEnvironment.CRE_STATUS_STRICT = "true";
+        runOnchainStatus(true);
+        console.log(`CRE ${environment.label} organization migration is complete.`);
+        break;
+    }
+    case "deploy-nav":
+        console.log(`=== CRE NAV workflow deploy — ${environment.label} ===`);
+        runDeployPreflight();
+        deployWorkflow("nav-workflow");
+        break;
+    case "deploy-finalization":
+        console.log(`=== CRE finalization workflow deploy — ${environment.label} ===`);
+        runDeployPreflight();
+        deployWorkflow("finalization-workflow");
+        break;
+    case "deploy":
+        console.log(`=== CRE workflow deploy — ${environment.label} ===`);
+        runDeployPreflight();
+        deployWorkflow("nav-workflow");
+        deployWorkflow("finalization-workflow");
+        break;
+    case "simulate":
+        console.log(`=== CRE local simulation against ${environment.label} ===`);
+        runWorkflow("nav-workflow", false);
+        runWorkflow("finalization-workflow", false);
+        break;
+    case "broadcast": {
+        console.log(`=== CRE BROADCAST — ${environment.label} ===`);
+        console.log(`This command can change ${environment.label} contract state.`);
+        const identity = readIdentities();
+        assertIdentityMatchesConfig(identity);
+        commandEnvironment.CRE_STATUS_STRICT = "true";
+        runOnchainStatus(true);
+        runWorkflow("nav-workflow", true);
+        runWorkflow("finalization-workflow", true);
+        break;
+    }
+    case "status": {
+        console.log(`=== CRE status — ${environment.label} ===`);
+        const account = run(cre, ["whoami"], {cwd: creRoot, capture: true});
+        const accountLines = account
+            .split("\n")
+            .filter((line) => /Organization|Deploy Access/.test(line));
+        for (const line of accountLines) console.log(line.trim());
+        try {
+            const identity = readIdentities();
+            printIdentity(identity);
+            for (const item of identity.identities) {
+                console.log(
+                    `${item.name} config: ${item.id === item.expectedId ? "OK" : "MISMATCH"}`
+                );
+            }
+            console.log(
+                `organization owner config: ${identity.owner === deploymentConfig.workflowOwner.toLowerCase() ? "OK" : "MISMATCH"}`
+            );
+        } catch (error) {
+            console.log(`Workflow identity: unavailable (${error.message})`);
+        }
+        runOnchainStatus(false);
+        break;
+    }
+    default:
+        throw new Error(
+            "Usage: node scripts/cre/manage.mjs <check|setup|migrate-organization|deploy-nav|deploy-finalization|deploy|simulate|broadcast|status> <sepolia|mainnet>"
+        );
+}

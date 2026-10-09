@@ -1,0 +1,40 @@
+{
+    "accessManager": "0xf9eDd373D4C3C65888b5e49bA30f517D5e21A564",
+    "chainSelector": "16015286601757825753",
+    "chainlinkAutomationRole": 10,
+    "forwarder": "0xF8344CFd5c43616a4366C34E3EEE75af79a74482",
+    "workflowOwner": "0x2b8c480c73ef7846a73260f882632c6e1782437f",
+    "workflowPermissions": [
+        {
+            "name": "nav-submitter-test-staging",
+            "id": "0x002b40911526b05357effa165df8de14f67077d36f33014e502de874674f9571"
+        },
+        {
+            "name": "nav-staging",
+            "id": "0x00c2b8063fedc628cee02016aca4bf048cd71c8ac56475e8d7fbf53bb5b3acb0"
+        },
+        {
+            "name": "finalization-staging",
+            "id": "0x00ad15cf399e203ed83745ab38838a1e5877434fce833dbf7e55f978b0ba43b8"
+        }
+    ],
+    "vaults": [
+        {
+            "id": "vault-1",
+            "targets": [
+                "0xB86149abe3dE887A63D269Fcd470a90EC64c805f",
+                "0x5Aa0B57c03b1a4c1bcf1C7C4025Cc400cfF88dC0",
+                "0xb4dBbFE4216636d846092AdFdA7ebaf91E782A79",
+                "0xBB9341a473DDC55C24271E30DCE53771284121d4"
+            ]
+        },
+        {
+            "id": "vault-2",
+            "targets": [
+                "0x08d44B4c244456C738B3c0DcD78C8eac5B0be0e4",
+                "0x4F150FDA9A400883C8e627E418a2d8E993BcF1D7",
+                "0x6C8fAB81d59C9511d37b825A55D91902f5Ca6e21"
+            ]
+        }
+    ]
+}

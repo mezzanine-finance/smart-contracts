@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant Cron as CRE Cron
+    participant WF as Finalization Workflow
+    participant FIN as UmbrellaEpochFinalizer
+    participant Vault as IssuanceVault
+    participant Path as CRE Write Path
+    participant Tranche
+
+    Cron->>WF: Run every 5 minutes
+    loop Vault 1 Senior, Vault 1 Junior, Vault 2 Junior
+        WF->>FIN: checkUpkeep(0x)
+        FIN->>Vault: currentEpochId()
+        alt Completed epoch is waiting
+            FIN-->>WF: upkeepNeeded is true
+            WF->>Path: Separate report for this ready finalizer
+            Path->>FIN: performUpkeep(0x)
+            FIN->>FIN: Advance cursor by one epoch
+            opt Epoch contains withdrawal shares
+                FIN->>Tranche: finalizeEpoch(epochId)
+            end
+        else Finalizer is caught up
+            FIN-->>WF: upkeepNeeded is false
+            WF-->>Cron: Finish without transaction
+        end
+    end
+    Note over WF,FIN: At most one epoch per finalizer per run

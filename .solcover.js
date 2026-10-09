@@ -8,24 +8,18 @@ module.exports = {
     },
     // measureStatementCoverage: false,
     // measureFunctionCoverage: false,
-    irMinimum: !!process.env.VIA_IR, // Comment this line if "stack too deep" with `VIA_IR=true`.
+    // irMinimum causes a Yul stack-too-deep error in IssuanceVault after instrumentation.
+    irMinimum: false,
     // Work around "stack too deep".
     configureYulOptimizer: true,
     solcOptimizerDetails: {
-        yul: true,
-        yulDetails: {
-            optimizerSteps: "",
-        },
+        peephole: false,
+        inliner: false,
+        jumpdestRemover: false,
+        orderLiterals: true,
+        deduplicate: false,
+        cse: false,
+        constantOptimizer: false,
+        yul: false,
     },
-    // Alternative configuration for the Yul optimizer. Try to use it if "stack too deep" errors with the previous one.
-    // solcOptimizerDetails: {
-    //     peephole: false,
-    //     inliner: false,
-    //     jumpdestRemover: false,
-    //     orderLiterals: true,
-    //     deduplicate: false,
-    //     cse: false,
-    //     constantOptimizer: false,
-    //     yul: false
-    // }
 };

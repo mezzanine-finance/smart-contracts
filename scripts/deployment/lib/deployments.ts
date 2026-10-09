@@ -7,12 +7,17 @@ export interface DeploymentRecord {
     implementation?: string;
     txHash?: string;
     deployedAt?: string;
+    workflowIds?: string[];
+    replaces?: string;
 }
 
-export type NetworkDeployments = Record<string, DeploymentRecord[]>;
+export type DeploymentNamespace = Record<string, DeploymentRecord[]>;
+export type NetworkDeployments = Record<string, DeploymentRecord[] | DeploymentNamespace>;
 export type DeploymentsFile = Record<string, NetworkDeployments>;
 
-const DEPLOYMENTS_PATH = path.join(__dirname, "..", "..", "..", "reports", "deployments.json");
+const DEPLOYMENTS_PATH = process.env.DEPLOYMENTS_PATH
+    ? path.resolve(process.env.DEPLOYMENTS_PATH)
+    : path.join(__dirname, "..", "..", "..", "reports", "deployments.json");
 
 export function loadDeployments(): DeploymentsFile {
     if (!fs.existsSync(DEPLOYMENTS_PATH)) return {};
@@ -29,12 +34,15 @@ export function recordDeployment(
     data: DeploymentsFile,
     networkName: string,
     key: string,
-    info: Omit<DeploymentRecord, "version">
+    info: Omit<DeploymentRecord, "version">,
+    namespace?: string
 ): DeploymentRecord {
     if (!data[networkName]) data[networkName] = {};
-    if (!data[networkName][key]) data[networkName][key] = [];
 
-    const arr = data[networkName][key];
+    const deployments = resolveNamespace(data[networkName], namespace, true);
+    if (!deployments[key]) deployments[key] = [];
+
+    const arr = deployments[key];
     const record: DeploymentRecord = {
         version: arr.length + 1,
         ...info,
@@ -46,11 +54,33 @@ export function recordDeployment(
 export function getLatestDeployment(
     data: DeploymentsFile,
     networkName: string,
-    key: string
+    key: string,
+    namespace?: string
 ): DeploymentRecord | undefined {
     const net = data[networkName];
     if (!net) return undefined;
-    const arr = net[key];
+
+    const deployments = resolveNamespace(net, namespace, false);
+    const arr = deployments[key];
     if (!arr || arr.length === 0) return undefined;
     return arr[arr.length - 1];
+}
+
+function resolveNamespace(
+    networkDeployments: NetworkDeployments,
+    namespace: string | undefined,
+    create: boolean
+): DeploymentNamespace {
+    if (!namespace) return networkDeployments as DeploymentNamespace;
+
+    const existing = networkDeployments[namespace];
+    if (Array.isArray(existing)) {
+        throw new Error(`Deployment namespace conflicts with legacy contract key: ${namespace}`);
+    }
+    if (existing) return existing;
+    if (!create) return {};
+
+    const deployments: DeploymentNamespace = {};
+    networkDeployments[namespace] = deployments;
+    return deployments;
 }

@@ -2,9 +2,11 @@ import {ethers, network, upgrades} from "hardhat";
 import {BaseContract} from "ethers";
 import type {
     AccessManager,
-    Allowlist,
+    AllowlistStub,
     LossManager,
     MZUSD,
+    MockNavOracle,
+    MockTotalSupplyOracle,
     MockUSDC,
     NavOracleAutomation,
     PauseManager,
@@ -14,6 +16,8 @@ import type {
     IssuanceVault,
 } from "../../typechain-types";
 import {loadConfig} from "./lib/config";
+import {resolveDeploymentScope} from "./lib/deploymentScope";
+import {buildDeploymentPlan} from "./lib/deploymentPlan";
 import {
     loadDeployments,
     saveDeployments,
@@ -21,15 +25,7 @@ import {
     getLatestDeployment,
 } from "./lib/deployments";
 import {log, format} from "./lib/logger";
-import {
-    assert,
-    getArg,
-    hasFlag,
-    isLocalNetwork,
-    parseMZUSD,
-    parseUSDC,
-    requireAddress,
-} from "./lib/helpers";
+import {assert, isLocalNetwork, parseMZUSD, parseUSDC, requireAddress} from "./lib/helpers";
 import {GasTracker} from "./lib/gas-tracker";
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
@@ -38,6 +34,7 @@ interface DeployResult<T extends BaseContract> {
     contract: T;
     address: string;
     implementation?: string;
+    deployed: boolean;
 }
 
 const MZUSD_SCALE = 1_000_000_000_000n;
@@ -60,16 +57,18 @@ async function ensureDeployment<T extends BaseContract>(
     factory: {attach: (address: string) => unknown},
     deploy: () => Promise<T>,
     fresh: boolean,
-    deployments: ReturnType<typeof loadDeployments>
+    deployments: ReturnType<typeof loadDeployments>,
+    namespace?: string
 ): Promise<DeployResult<T>> {
     if (!fresh) {
-        const existing = getLatestDeployment(deployments, network.name, name);
+        const existing = getLatestDeployment(deployments, network.name, name, namespace);
         if (existing && (await hasCode(existing.address))) {
             log.info(`Reusing ${name} at ${existing.address}`);
             return {
                 contract: factory.attach(existing.address) as T,
                 address: existing.address,
                 implementation: existing.implementation,
+                deployed: false,
             };
         }
     }
@@ -80,14 +79,21 @@ async function ensureDeployment<T extends BaseContract>(
     const tx = contract.deploymentTransaction();
     await contract.waitForDeployment();
 
-    recordDeployment(deployments, network.name, name, {
-        address,
-        txHash: tx?.hash,
-        deployedAt: new Date().toISOString(),
-    });
+    recordDeployment(
+        deployments,
+        network.name,
+        name,
+        {
+            address,
+            txHash: tx?.hash,
+            deployedAt: new Date().toISOString(),
+        },
+        namespace
+    );
+    saveDeployments(deployments);
 
     log.success(`${name} deployed at ${address}`);
-    return {contract, address};
+    return {contract, address, deployed: true};
 }
 
 async function ensureProxyDeployment<T extends BaseContract>(
@@ -95,10 +101,11 @@ async function ensureProxyDeployment<T extends BaseContract>(
     factory: {attach: (address: string) => unknown},
     deploy: () => Promise<T>,
     fresh: boolean,
-    deployments: ReturnType<typeof loadDeployments>
+    deployments: ReturnType<typeof loadDeployments>,
+    namespace?: string
 ): Promise<DeployResult<T>> {
     if (!fresh) {
-        const existing = getLatestDeployment(deployments, network.name, name);
+        const existing = getLatestDeployment(deployments, network.name, name, namespace);
         if (existing && (await hasCode(existing.address))) {
             try {
                 const impl = await upgrades.erc1967.getImplementationAddress(existing.address);
@@ -107,6 +114,7 @@ async function ensureProxyDeployment<T extends BaseContract>(
                     contract: factory.attach(existing.address) as T,
                     address: existing.address,
                     implementation: impl,
+                    deployed: false,
                 };
             } catch (error) {
                 log.warn(
@@ -124,25 +132,53 @@ async function ensureProxyDeployment<T extends BaseContract>(
     const address = await contract.getAddress();
     const impl = await upgrades.erc1967.getImplementationAddress(address);
 
-    recordDeployment(deployments, network.name, name, {
-        address,
-        implementation: impl,
-        txHash: tx?.hash,
-        deployedAt: new Date().toISOString(),
-    });
+    recordDeployment(
+        deployments,
+        network.name,
+        name,
+        {
+            address,
+            implementation: impl,
+            txHash: tx?.hash,
+            deployedAt: new Date().toISOString(),
+        },
+        namespace
+    );
+    saveDeployments(deployments);
 
     log.success(`${name} proxy deployed at ${address}`);
-    return {contract, address, implementation: impl};
+    return {contract, address, implementation: impl, deployed: true};
 }
 
-async function main() {
-    const configPath = getArg("--config") ?? process.env.DEPLOY_CONFIG;
-    const fresh = hasFlag("--fresh") || isEnvFlagEnabled("DEPLOY_FRESH");
-    const skipVerify = hasFlag("--skip-verify") || isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
-    const forceRenounce = hasFlag("--renounce") || isEnvFlagEnabled("DEPLOY_RENOUNCE");
-    const skipRenounce = hasFlag("--no-renounce") || isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
+export async function main() {
+    const configPath = process.env.DEPLOY_CONFIG;
+    const requestedDeploymentId = process.env.DEPLOYMENT_ID;
+    const fresh = isEnvFlagEnabled("DEPLOY_FRESH");
+    const freshShared = isEnvFlagEnabled("DEPLOY_FRESH_SHARED");
+    const skipVerify = isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
+    const forceRenounce = isEnvFlagEnabled("DEPLOY_RENOUNCE");
+    const skipRenounce = isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
 
     const config = loadConfig(network.name, configPath);
+    const deploymentId = requestedDeploymentId ?? config.deploymentId;
+    if (deploymentId) {
+        assert(
+            /^[a-z0-9][a-z0-9-]*$/.test(deploymentId),
+            "deploymentId must contain only lowercase letters, numbers, and hyphens"
+        );
+        assert(deploymentId !== "shared", 'deploymentId "shared" is reserved');
+    }
+    const {sharedNamespace, vaultNamespace} = resolveDeploymentScope(config, deploymentId);
+    const deployments = loadDeployments();
+    const plan = buildDeploymentPlan(config, network.name, deployments, {
+        deploymentId,
+        fresh,
+        freshShared,
+    });
+    if (isEnvFlagEnabled("DEPLOY_PLAN")) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+    }
     upgrades.silenceWarnings();
 
     const gasTracker = new GasTracker();
@@ -156,7 +192,10 @@ async function main() {
     log.info(`Deployer: ${format.addr(deployerAddress)}`);
     log.info(`Dev deployer: ${format.addr(devDeployer)}`);
     log.info(`Final admin: ${format.addr(config.roles.admin)}`);
+    log.info(`Deployment ID: ${deploymentId ?? "legacy"}`);
+    log.info(`Infrastructure ID: ${sharedNamespace ?? "legacy"}`);
     log.info(`Fresh deploy: ${fresh}`);
+    log.info(`Fresh shared contracts: ${freshShared}`);
     log.info(
         `Config: ${format.addr(configPath ?? `scripts/deployment/config/${network.name}.json`)}`
     );
@@ -188,7 +227,29 @@ async function main() {
     const shouldVerify =
         config.verify?.enabled !== false && !skipVerify && !isLocalNetwork(network.name);
 
-    const deployments = loadDeployments();
+    // A vault cannot be reattached to another AccessManager by changing its config.
+    if (!fresh) {
+        const existingMzusd = getLatestDeployment(
+            deployments,
+            network.name,
+            "MZUSD",
+            vaultNamespace
+        );
+        if (existingMzusd && (await hasCode(existingMzusd.address))) {
+            const recordedManager = getLatestDeployment(
+                deployments,
+                network.name,
+                "AccessManager",
+                sharedNamespace
+            );
+            assert(recordedManager, "Existing vault requires its recorded infrastructure");
+            const token = await ethers.getContractAt("MZUSD", existingMzusd.address);
+            assert(
+                (await token.authority()).toLowerCase() === recordedManager.address.toLowerCase(),
+                "Selected infrastructure does not match the existing vault's AccessManager"
+            );
+        }
+    }
 
     // === Deploy core contracts ===
     const AccessManagerFactory = await ethers.getContractFactory("AccessManager", deployer);
@@ -196,8 +257,9 @@ async function main() {
         "AccessManager",
         AccessManagerFactory,
         async () => AccessManagerFactory.deploy(devDeployer),
-        fresh,
-        deployments
+        freshShared,
+        deployments,
+        sharedNamespace
     );
 
     const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
@@ -210,8 +272,9 @@ async function main() {
                 initializer: "initialize",
                 unsafeAllow: ["constructor"],
             }),
-        fresh,
-        deployments
+        freshShared,
+        deployments,
+        sharedNamespace
     );
 
     let mockUsdc: DeployResult<MockUSDC> | undefined;
@@ -226,16 +289,19 @@ async function main() {
             "MockUSDC",
             MockUSDCFactory,
             async () => MockUSDCFactory.deploy(),
-            fresh,
-            deployments
+            freshShared,
+            deployments,
+            sharedNamespace
         );
 
-        const mockUsdcAdmin = mockUsdc.contract.connect(adminSigner);
-        for (const mint of mock.initialMints ?? []) {
-            const amount = parseUSDC(mint.amount);
-            log.info(`Minting ${mint.amount} USDC to ${mint.to}`);
-            const tx = await mockUsdcAdmin.mint(mint.to, amount);
-            await tx.wait();
+        if (mockUsdc.deployed) {
+            const mockUsdcAdmin = mockUsdc.contract.connect(adminSigner);
+            for (const mint of mock.initialMints ?? []) {
+                const amount = parseUSDC(mint.amount);
+                log.info(`Minting ${mint.amount} USDC to ${mint.to}`);
+                const tx = await mockUsdcAdmin.mint(mint.to, amount);
+                await tx.wait();
+            }
         }
 
         usdcAddress = mockUsdc.address;
@@ -257,22 +323,18 @@ async function main() {
                 constructorArgs: [usdcAddress],
             }),
         fresh,
-        deployments
+        deployments,
+        vaultNamespace
     );
 
-    const sanctionsListAddress = config.allowlist.sanctionsList;
-    const AllowlistFactory = await ethers.getContractFactory("Allowlist", deployer);
-    const allowlist = await ensureProxyDeployment<Allowlist>(
-        "Allowlist",
+    const AllowlistFactory = await ethers.getContractFactory("AllowlistStub", deployer);
+    const allowlist = await ensureDeployment<AllowlistStub>(
+        "AllowlistStub",
         AllowlistFactory,
-        async () =>
-            upgrades.deployProxy(AllowlistFactory, [accessManager.address, sanctionsListAddress], {
-                kind: "uups",
-                initializer: "initialize",
-                unsafeAllow: ["constructor"],
-            }),
-        fresh,
-        deployments
+        async () => AllowlistFactory.deploy(),
+        freshShared,
+        deployments,
+        sharedNamespace
     );
 
     const MZUSDFactory = await ethers.getContractFactory("MZUSD", deployer);
@@ -296,8 +358,41 @@ async function main() {
                 }
             ),
         fresh,
-        deployments
+        deployments,
+        vaultNamespace
     );
+
+    let mockNavFeed: DeployResult<MockNavOracle> | undefined;
+    let mockTotalSupplyFeed: DeployResult<MockTotalSupplyOracle> | undefined;
+    let navFeedAddress = config.navOracle.navFeed;
+    let totalSupplyFeedAddress = config.navOracle.totalSupplyFeed;
+    if (config.navOracle.deployMockFeeds) {
+        const MockNavOracleFactory = await ethers.getContractFactory("MockNavOracle", deployer);
+        mockNavFeed = await ensureDeployment<MockNavOracle>(
+            "MockNavOracle",
+            MockNavOracleFactory,
+            async () => MockNavOracleFactory.deploy(mzusd.address),
+            fresh,
+            deployments,
+            vaultNamespace
+        );
+
+        const MockTotalSupplyOracleFactory = await ethers.getContractFactory(
+            "MockTotalSupplyOracle",
+            deployer
+        );
+        mockTotalSupplyFeed = await ensureDeployment<MockTotalSupplyOracle>(
+            "MockTotalSupplyOracle",
+            MockTotalSupplyOracleFactory,
+            async () => MockTotalSupplyOracleFactory.deploy(mzusd.address),
+            fresh,
+            deployments,
+            vaultNamespace
+        );
+
+        navFeedAddress = mockNavFeed.address;
+        totalSupplyFeedAddress = mockTotalSupplyFeed.address;
+    }
 
     const IssuanceVaultFactory = await ethers.getContractFactory("IssuanceVault", deployer);
     const vault = await ensureProxyDeployment<IssuanceVault>(
@@ -321,7 +416,8 @@ async function main() {
                 }
             ),
         fresh,
-        deployments
+        deployments,
+        vaultNamespace
     );
 
     // === Deploy tranches ===
@@ -346,7 +442,8 @@ async function main() {
                     }
                 ),
             fresh,
-            deployments
+            deployments,
+            vaultNamespace
         );
         trancheByKey.set(tranche.key, result);
     }
@@ -373,7 +470,8 @@ async function main() {
                 }
             ),
         fresh,
-        deployments
+        deployments,
+        vaultNamespace
     );
 
     const NavFactory = await ethers.getContractFactory("NavOracleAutomation", deployer);
@@ -382,7 +480,8 @@ async function main() {
         NavFactory,
         async () => NavFactory.deploy(lossManager.address, config.navOracle.vetoPeriodSec),
         fresh,
-        deployments
+        deployments,
+        vaultNamespace
     );
 
     const accessManagerAdmin = accessManager.contract.connect(adminSigner);
@@ -393,12 +492,12 @@ async function main() {
 
     const finalizers: DeployResult<UmbrellaEpochFinalizer>[] = [];
     const finalizerByKey = new Map<string, DeployResult<UmbrellaEpochFinalizer>>();
+    const finalizerStartEpoch = BigInt(config.umbrellaFinalizer?.startEpoch ?? 1);
     if (config.umbrellaFinalizer?.enabled) {
         const FinalizerFactory = await ethers.getContractFactory(
             "UmbrellaEpochFinalizer",
             deployer
         );
-        const finalizerStartEpoch = BigInt(config.umbrellaFinalizer.startEpoch ?? 1);
         for (const tranche of config.tranches) {
             if (tranche.directWithdrawEnabled) continue;
             const trancheContract = trancheByKey.get(tranche.key)!;
@@ -413,7 +512,8 @@ async function main() {
                         finalizerStartEpoch
                     ),
                 fresh,
-                deployments
+                deployments,
+                vaultNamespace
             );
             finalizers.push(finalizer);
             finalizerByKey.set(tranche.key, finalizer);
@@ -645,9 +745,17 @@ async function main() {
         const mzusdSeeder = mzusd.contract.connect(seedSigner);
         const reservoirSeeder = reservoir.contract.connect(seedSigner);
 
-        const seedMzusdUsdc = parseUSDC(seed.mzusdDepositUSDC ?? "0");
-        const seedVaultUsdc = parseUSDC(seed.vaultUSDC ?? "0");
-        const seedReservoirUsdc = parseUSDC(seed.reservoirUSDC ?? "0");
+        // Initial funding only: never infer whether to repeat transfers from current balances.
+        // Reused contracts may have spent their seed legitimately. Interrupted seeding requires
+        // explicit reconciliation, not another automatic transfer on the next deployment run.
+        const seedMzusdUsdc = mzusd.deployed ? parseUSDC(seed.mzusdDepositUSDC ?? "0") : 0n;
+        const seedVaultUsdc = vault.deployed ? parseUSDC(seed.vaultUSDC ?? "0") : 0n;
+        const seedReservoirUsdc = reservoir.deployed ? parseUSDC(seed.reservoirUSDC ?? "0") : 0n;
+        if (!mzusd.deployed || !vault.deployed || !reservoir.deployed) {
+            log.info(
+                "Skipping initial funding for reused contracts; reconcile interrupted seeding separately"
+            );
+        }
         const totalSeedUsdc = seedMzusdUsdc + seedVaultUsdc + seedReservoirUsdc;
 
         if (totalSeedUsdc > 0n) {
@@ -659,11 +767,6 @@ async function main() {
         }
 
         if (seedMzusdUsdc > 0n) {
-            const allowlistSeeder = allowlist.contract.connect(seedSigner);
-            if (!(await allowlist.contract.isAllowlisted(seedAddress))) {
-                await (await allowlistSeeder.add(seedAddress)).wait();
-                log.success(`Allowlist.add deployer for seeding`);
-            }
             await (await usdcSeeder.approve(mzusd.address, seedMzusdUsdc)).wait();
             await (await mzusdSeeder.deposit(seedMzusdUsdc)).wait();
             log.success(`MZUSD.deposit ${seed.mzusdDepositUSDC}`);
@@ -687,6 +790,10 @@ async function main() {
                     tranche !== undefined,
                     `Unknown tranche key in deadShares: ${deadShare.key}`
                 );
+                if (!tranche.deployed) {
+                    log.info(`Skipping Tranche.deadShares ${deadShare.key}: reused contract`);
+                    continue;
+                }
 
                 const trancheSupply = await tranche.contract.totalSupply();
                 if (trancheSupply > 0n) {
@@ -713,6 +820,10 @@ async function main() {
             for (const deposit of seed.trancheDeposits) {
                 const tranche = trancheByKey.get(deposit.key);
                 assert(tranche !== undefined, `Unknown tranche key in seed: ${deposit.key}`);
+                if (!tranche.deployed) {
+                    log.info(`Skipping Tranche.seed ${deposit.key}: reused contract`);
+                    continue;
+                }
                 const amountMzusd =
                     deposit.amountMZUSD !== undefined
                         ? parseMZUSD(deposit.amountMZUSD)
@@ -800,14 +911,7 @@ async function main() {
         const desiredHysteresis = BigInt(config.vault.hysteresisBps ?? 0);
         assert(desiredBuffer > 0n, "vault.idleBufferUSDC must be > 0");
         if (currentBuffer !== desiredBuffer || currentHysteresis !== desiredHysteresis) {
-            const vaultUsdc = await usdcToken.balanceOf(vault.address);
-            const reservoirUsdc = await usdcToken.balanceOf(reservoir.address);
-            const low = (desiredBuffer * (BPS - desiredHysteresis)) / BPS;
-            if (vaultUsdc < low && reservoirUsdc === 0n) {
-                throw new Error(
-                    "IssuanceVault.setBuffer requires seeded USDC in IssuanceVault or Reservoir before rebalance"
-                );
-            }
+            // Save the buffer configuration even when the vault has no liquidity.
             await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
             log.success("IssuanceVault.setBuffer");
         }
@@ -827,14 +931,14 @@ async function main() {
         await (await navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)).wait();
         log.success("NavOracleAutomation.setVetoPeriod");
     }
-    const hasNavFeed = config.navOracle.navFeed !== undefined;
-    const hasSupplyFeed = config.navOracle.totalSupplyFeed !== undefined;
+    const hasNavFeed = navFeedAddress !== undefined;
+    const hasSupplyFeed = totalSupplyFeedAddress !== undefined;
     if (hasNavFeed != hasSupplyFeed) {
         throw new Error("navOracle.navFeed and navOracle.totalSupplyFeed must be set together");
     }
     if (hasNavFeed) {
-        const navFeed = config.navOracle.navFeed!;
-        const totalSupplyFeed = config.navOracle.totalSupplyFeed!;
+        const navFeed = navFeedAddress!;
+        const totalSupplyFeed = totalSupplyFeedAddress!;
         const currentNavFeed = await navOracle.contract.navOracle();
         const currentTotalSupplyFeed = await navOracle.contract.totalSupplyOracle();
         if (
@@ -939,24 +1043,6 @@ async function main() {
         accessManagerAdmin,
         mzusd.address,
         [mzusd.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
-    );
-
-    await ensureTargetRole(
-        accessManagerAdmin,
-        allowlist.address,
-        [
-            allowlist.contract.interface.getFunction("add").selector,
-            allowlist.contract.interface.getFunction("remove").selector,
-            allowlist.contract.interface.getFunction("addBatch").selector,
-            allowlist.contract.interface.getFunction("removeBatch").selector,
-        ],
-        roleIds.ALLOWLISTER_ROLE
-    );
-    await ensureTargetRole(
-        accessManagerAdmin,
-        allowlist.address,
-        [allowlist.contract.interface.getFunction("upgradeToAndCall").selector],
         roleIds.UPGRADER_ROLE
     );
 
@@ -1105,11 +1191,17 @@ async function main() {
         withdrawers.add(devDeployer);
     }
     for (const addr of withdrawers) {
+        // The vault calls Reservoir.withdraw() synchronously during withdrawals and rebalancing.
+        // Human withdrawers keep the configured delay, while the vault must execute immediately.
+        const executionDelay =
+            addr.toLowerCase() === vault.address.toLowerCase()
+                ? 0
+                : (delays.reservoirWithdraw ?? 0);
         await ensureRoleMember(
             accessManagerAdmin,
             roleIds.RESERVOIR_WITHDRAW_ROLE,
             addr,
-            delays.reservoirWithdraw ?? 0
+            executionDelay
         );
     }
 
@@ -1161,6 +1253,14 @@ async function main() {
         "MZUSD.vault mismatch"
     );
     assert(
+        (await mzusd.contract.allowlist()).toLowerCase() === allowlist.address.toLowerCase(),
+        "MZUSD.allowlist mismatch"
+    );
+    assert(
+        await allowlist.contract.verifyAccount(deployerAddress),
+        "AllowlistStub rejected deployer"
+    );
+    assert(
         (await vault.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
         "IssuanceVault.lossManager mismatch"
     );
@@ -1168,6 +1268,40 @@ async function main() {
         (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
         "IssuanceVault.navOracle mismatch"
     );
+    if (mockNavFeed && mockTotalSupplyFeed) {
+        assert((await mockNavFeed.contract.decimals()) === 8n, "MockNavOracle must use 8 decimals");
+        assert(
+            (await mockTotalSupplyFeed.contract.decimals()) === 8n,
+            "MockTotalSupplyOracle must use 8 decimals"
+        );
+        assert(
+            (await mockNavFeed.contract.mzUSD()).toLowerCase() === mzusd.address.toLowerCase(),
+            "MockNavOracle.mzUSD mismatch"
+        );
+        assert(
+            (await mockTotalSupplyFeed.contract.mzUSD()).toLowerCase() ===
+                mzusd.address.toLowerCase(),
+            "MockTotalSupplyOracle.mzUSD mismatch"
+        );
+        assert(
+            (await navOracle.contract.navOracle()).toLowerCase() ===
+                mockNavFeed.address.toLowerCase(),
+            "NavOracleAutomation.navOracle mismatch"
+        );
+        assert(
+            (await navOracle.contract.totalSupplyOracle()).toLowerCase() ===
+                mockTotalSupplyFeed.address.toLowerCase(),
+            "NavOracleAutomation.totalSupplyOracle mismatch"
+        );
+        const [, navAnswer] = await mockNavFeed.contract.latestRoundData();
+        const [, totalSupplyAnswer] = await mockTotalSupplyFeed.contract.latestRoundData();
+        const expectedTotalSupplyAnswer = (await mzusd.contract.totalSupply()) / 10_000_000_000n;
+        assert(navAnswer > 0n, "MockNavOracle answer must be positive after seeding");
+        assert(
+            totalSupplyAnswer === expectedTotalSupplyAnswer,
+            "MockTotalSupplyOracle answer is not scaled to 8 decimals"
+        );
+    }
 
     for (const tranche of trancheByKey.values()) {
         const trancheVault = await tranche.contract.vault();
@@ -1185,9 +1319,7 @@ async function main() {
     if (mockUsdc) {
         await verifyContract(mockUsdc.address, [], shouldVerify);
     }
-    if (allowlist.implementation) {
-        await verifyContract(allowlist.implementation, [], shouldVerify);
-    }
+    await verifyContract(allowlist.address, [], shouldVerify);
     if (pauseManager.implementation) {
         await verifyContract(pauseManager.implementation, [], shouldVerify);
     }
@@ -1203,6 +1335,12 @@ async function main() {
     }
     if (mzusd.implementation) {
         await verifyContract(mzusd.implementation, [usdcAddress], shouldVerify);
+    }
+    if (mockNavFeed) {
+        await verifyContract(mockNavFeed.address, [mzusd.address], shouldVerify);
+    }
+    if (mockTotalSupplyFeed) {
+        await verifyContract(mockTotalSupplyFeed.address, [mzusd.address], shouldVerify);
     }
     for (const trancheConfig of config.tranches) {
         const tranche = trancheByKey.get(trancheConfig.key);
@@ -1222,6 +1360,16 @@ async function main() {
         [lossManager.address, config.navOracle.vetoPeriodSec],
         shouldVerify
     );
+    for (const trancheConfig of config.tranches) {
+        if (trancheConfig.directWithdrawEnabled) continue;
+        const tranche = trancheByKey.get(trancheConfig.key)!;
+        const finalizer = finalizerByKey.get(trancheConfig.key)!;
+        await verifyContract(
+            finalizer.address,
+            [accessManager.address, tranche.address, finalizerStartEpoch],
+            shouldVerify
+        );
+    }
 
     saveDeployments(deployments);
     log.success("Deployments saved");
@@ -1231,10 +1379,14 @@ async function main() {
     log.info(`AccessManager: ${accessManager.address}`);
     log.info(`PauseManager (proxy): ${pauseManager.address}`);
     log.info(`USDC: ${usdcAddress}`);
-    log.info(`Allowlist (proxy): ${allowlist.address}`);
+    log.info(`AllowlistStub: ${allowlist.address}`);
     log.info(`ReservoirUSDC (proxy): ${reservoir.address}`);
     log.info(`IssuanceVault (proxy): ${vault.address}`);
     log.info(`MZUSD (proxy): ${mzusd.address}`);
+    if (mockNavFeed && mockTotalSupplyFeed) {
+        log.info(`MockNavOracle: ${mockNavFeed.address}`);
+        log.info(`MockTotalSupplyOracle: ${mockTotalSupplyFeed.address}`);
+    }
     for (const [key, tranche] of trancheByKey.entries()) {
         log.info(`Tranche ${key}: ${tranche.address}`);
     }
@@ -1255,7 +1407,9 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    log.error(err?.message ?? err);
-    process.exitCode = 1;
-});
+if (process.env.DEPLOYMENT_SCRIPT_IMPORT !== "true") {
+    main().catch((err) => {
+        log.error(err?.message ?? err);
+        process.exitCode = 1;
+    });
+}

@@ -1,0 +1,27 @@
+{
+    "accessManager": "0x60A64B9F10fA2C9CacD3EC701e6f3D226d5792Cd",
+    "chainSelector": "5009297550715157269",
+    "chainlinkAutomationRole": 10,
+    "forwarder": "0x0b93082D9b3C7C97fAcd250082899BAcf3af3885",
+    "workflowOwner": "0x2b8c480c73ef7846a73260f882632c6e1782437f",
+    "workflowPermissions": [
+        {
+            "name": "nav-production",
+            "id": "0x009438e6e483da287529fd1d1592d910acf3d29de1b0c4ec0b88d47fd14a24af"
+        },
+        {
+            "name": "finalization-production",
+            "id": "0x00ae8da0a29ba3ea9c03706404455647cee92e458d05bba946ad36a01d4fc629"
+        }
+    ],
+    "vaults": [
+        {
+            "id": "mezzanine-prime",
+            "targets": [
+                "0x1A20a4cEB256Be24cEb0cc4f7fE491dd6396E703",
+                "0x214Ba03264a9534941a1cF21C2b8E6c88864f703",
+                "0xfDD3B1BA60d6620D12d13C0cddE318e182054778"
+            ]
+        }
+    ]
+}

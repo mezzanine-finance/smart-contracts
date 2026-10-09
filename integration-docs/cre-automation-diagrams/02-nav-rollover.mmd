@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    participant Client as Client or oracle submitter
+    participant Cron as CRE Cron
+    participant WF as Pending NAV Workflow
+    participant NAV as NavOracleAutomation
+    participant Receiver as Receiver for target vault
+    participant Vault as IssuanceVault
+
+    Note over Client,NAV: Outside current CRE scope
+    Client->>NAV: submitNav()
+    alt vetoPeriod is zero
+        NAV->>Vault: Apply NAV immediately and advance epoch
+        Note over Cron,WF: CRE has no pending NAV to apply
+    else vetoPeriod is positive
+        NAV->>NAV: Store pending NAV until readyAt
+    end
+
+    Cron->>WF: Run every 5 minutes
+    loop Each vault
+        WF->>NAV: checkUpkeep(0x)
+        alt Pending NAV is ready
+            NAV-->>WF: upkeepNeeded is true
+            WF->>Receiver: Signed report for performUpkeep(0x)
+            Receiver->>NAV: performUpkeep(0x)
+            NAV->>Vault: Apply pending NAV and advance epoch
+        else No ready pending NAV
+            NAV-->>WF: upkeepNeeded is false
+            WF-->>Cron: Finish without transaction
+        end
+    end
+
+    Note over Client,NAV: rejectPendingNav() is also outside CRE scope
