@@ -2857,6 +2857,98 @@
           ]
         }
       ]
+    },
+    "mezzanine-hastra": {
+      "ReservoirUSDC": [
+        {
+          "version": 1,
+          "address": "0x43bC5fB52A618F0F2efb0d68Cf900Bb2FbD8a501",
+          "implementation": "0xA0f9CFfb237d5Ad7Bd1b4d221177F4ad917e6DD2",
+          "txHash": "0xfdeaa6dde13021808a7dd0ce78c2cf5770c86173088bf8e51250289e8e5dfbf4",
+          "deployedAt": "2026-10-12T12:18:24.824Z"
+        }
+      ],
+      "MZUSD": [
+        {
+          "version": 1,
+          "address": "0x1BBa049d3869E8d467F38E52AcA8E99D64E310a6",
+          "implementation": "0xB801a47cbB431f9a3234DA136bc4D75aBB5c7d88",
+          "txHash": "0x2503cc5a453ca625ed7b185216e9d12f18396cd02dcd5423e0c7fc866b90a642",
+          "deployedAt": "2026-10-12T12:18:49.147Z"
+        }
+      ],
+      "IssuanceVault": [
+        {
+          "version": 1,
+          "address": "0xBB03549117e38103589774AE1D6338D1B237FFA2",
+          "implementation": "0xB27788F6ABF1148fa6dab2FADd1Ab0B67b80b1Ee",
+          "txHash": "0xe37ed0a812d3c0e8b4f0492fb20be2d1db85122872c73e3c56b7f1eea0ab39ad",
+          "deployedAt": "2026-10-12T12:19:14.225Z"
+        }
+      ],
+      "Tranche.senior": [
+        {
+          "version": 1,
+          "address": "0x0e246e5FA94E90ab784b03961C35AaD9999b6649",
+          "implementation": "0xA46716FA7054b49D448DA446263F3d712Cc8Ce23",
+          "txHash": "0x488b842a46ed40c1d3cc6853ab242d3f6c454ea5599916351d12e026ccbd72fd",
+          "deployedAt": "2026-10-12T12:19:38.918Z"
+        }
+      ],
+      "Tranche.junior": [
+        {
+          "version": 1,
+          "address": "0x6F5d94Dc0c8bBf052aBF024259d087dA45AD96A1",
+          "implementation": "0xA46716FA7054b49D448DA446263F3d712Cc8Ce23",
+          "txHash": "0x5820ed6e8bff22c64e4bedd009ffe08a3c4bebf31c792b22eb19850403af9237",
+          "deployedAt": "2026-10-12T12:19:49.720Z"
+        }
+      ],
+      "LossManager": [
+        {
+          "version": 1,
+          "address": "0xD068f54EC22726ba7102Aa425B7845752BEd46E4",
+          "implementation": "0x8BbD6b15F8026d54BBa43Cf801392d3a6d0E0905",
+          "txHash": "0xce1e40f3a079844e75f3009569ff7091ca4c6d5cf85b332bcfa0b5b36c5a43e4",
+          "deployedAt": "2026-10-12T12:20:13.011Z"
+        }
+      ],
+      "NavOracleAutomation": [
+        {
+          "version": 1,
+          "address": "0x9994BC2eCdFd7BDeB5423f5e48E285b91e6a69A7",
+          "txHash": "0x52e38d2d70e3c59a232c4c4b6a942fa4d1fb78ea6332d47b263eb97d70788a6b",
+          "deployedAt": "2026-10-12T12:20:25.242Z"
+        }
+      ],
+      "UmbrellaEpochFinalizer.senior": [
+        {
+          "version": 1,
+          "address": "0x8E070D0977AD7FE597B24132518D19971cE17c51",
+          "txHash": "0x96f2e59f78055bc6fb70897ad15405eb2cda895848ed90bf8d7e18f8d3b8f47d",
+          "deployedAt": "2026-10-12T12:20:37.326Z"
+        }
+      ],
+      "UmbrellaEpochFinalizer.junior": [
+        {
+          "version": 1,
+          "address": "0x0630e23e0c2D2147b64Ca493f656fE2514D2027B",
+          "txHash": "0x11d1e1663631f46f4793a67a2a4a018baf4d82b96ade944bd089a416506130b2",
+          "deployedAt": "2026-10-12T12:20:48.730Z"
+        }
+      ],
+      "AutomationReceiver": [
+        {
+          "version": 1,
+          "address": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+          "txHash": "0x28773adc8d84a527542fb31a09a5498e52305d65c31049acbe09edef3ac926a7",
+          "deployedAt": "2026-10-12T12:53:25.003Z",
+          "workflowIds": [
+            "0x00bd94ff722e91d9ce1f7e024c9cfe3ea9c7f15b5b947bce4558cc80b22fbb95",
+            "0x008aba4f5cdc207643eb0fa3d6b5428fe7a5e200244f32f12d8de75126c22434"
+          ]
+        }
+      ]
     }
   }
 }
