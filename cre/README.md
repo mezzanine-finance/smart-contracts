@@ -336,3 +336,64 @@ npx hardhat test test/AutomationReceiver.ts test/CREWorkflowConfig.ts test/CREWo
 
 Unit tests use mocked capabilities. A DON write test additionally needs a ready
 on-chain target; a successful read-only run does not cover that path.
+
+## Hastra client Safe handoff (mainnet)
+
+Hastra uses dedicated `hastra-settings` targets in the NAV and finalization
+workflow YAML files, with `config.hastra.json` files. The PRIME production
+artifacts and workflow IDs are preserved. These are two additional workflows
+and require available deployment capacity in the existing CRE organization.
+
+Prepare the receiver and append its role grant to the existing client batch:
+
+```bash
+npx hardhat run scripts/deployment/prepareHastraCRE.ts --network mainnet
+```
+
+This deploys/reuses only the Hastra receiver, derives workflow IDs from the
+logged-in organization, configures receiver permissions, verifies the contract,
+and appends an idempotent `grantRole(10, receiver, 0)` transaction to
+`reports/safe-mainnet-mezzanine-hastra-setup.json`. It checks that the client
+batch already contains the required target selector mappings. It does not
+execute AccessManager admin calls or deploy/activate DON workflows. Receiver
+ownership remains with the deployer until the separate client handoff.
+
+From `cre/`, simulate without broadcasting:
+
+```bash
+cre -e .env workflow simulate ./nav-workflow --target hastra-settings --non-interactive --trigger-index 0
+cre -e .env workflow simulate ./finalization-workflow --target hastra-settings --non-interactive --trigger-index 0
+```
+
+The client must execute the full Safe setup batch before DON deployment.
+Verify all receiver permissions, target mappings and seeded balances afterward.
+Use `hastra-settings` for both workflow deployments, and inspect real execution
+receipts when upkeep becomes ready. A read-only simulation with
+`upkeepNeeded=false` does not validate an actual write.
+
+The fork handoff test executes the actual generated batch and checks role
+permissions, wiring and dead shares:
+
+```bash
+TEST_MAINNET_HASTRA_CRE=true FORKING=true FORKING_BLOCK_NUMBER= npx hardhat test test/MainnetHastraCREHandoffFork.ts
+```
+
+Set `FORKING_URL` to a mainnet RPC. Clear any pinned block number so the fork
+includes the newly deployed contracts and receiver permission transactions.
+
+Hastra handoff completed on October 13, 2026: the client executed the full setup
+batch, both dedicated workflows are ACTIVE, and receiver ownership was transferred
+to the client administrator. See `reports/hastra-cre-handoff.json` for transaction
+hashes, workflow IDs and first-execution evidence. The preparation script is intended
+for the pre-handoff phase; it refuses to configure a receiver owned by the client.
+Future receiver permission changes must be executed by that client owner.
+
+The ownership transfer script is idempotent and verifies role/target permissions:
+
+```bash
+npx hardhat run scripts/deployment/handoffHastraCREReceiver.ts --network mainnet
+```
+
+Successful initial CRE runs reported `upkeepNeeded=false`. Live upkeep writes have
+not yet been observed. The client still needs to configure the real NAV and total
+supply feeds before NAV submission.

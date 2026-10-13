@@ -118,10 +118,11 @@ describe("Finalization workflow", () => {
         });
     });
 
-    test("does not configure targets in production yet", () => {
+    test("configures valid mainnet targets", () => {
         expect(productionConfig.chainName).toBe("ethereum-mainnet");
         expect(productionConfig.isTestnet).toBe(false);
-        expect(productionConfig.vaults).toEqual([]);
+        expect(productionConfig.vaults.length).toBeGreaterThan(0);
+        expect(configSchema.parse(productionConfig)).toEqual(productionConfig);
     });
 
     test("reports readiness for every finalizer", () => {
