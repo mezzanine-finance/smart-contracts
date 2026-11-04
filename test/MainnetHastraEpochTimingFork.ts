@@ -1,4 +1,5 @@
 import {expect} from "chai";
+import fs from "fs";
 import {ethers, network} from "hardhat";
 import {time} from "@nomicfoundation/hardhat-network-helpers";
 
@@ -50,6 +51,32 @@ forkTest("Hastra epoch timing transition on a pinned mainnet fork", function () 
         await vault.setEpochConfig(STEADY_DURATION);
         expect(await vault.pendingEpochDuration()).to.equal(STEADY_DURATION);
         expect(await vault.epochDuration()).to.equal(WEEK);
+    });
+
+    it("executes the exported single-call Safe batch and only queues the temporary duration", async () => {
+        const batch = JSON.parse(
+            fs.readFileSync("reports/safe-mainnet-mezzanine-hastra-epoch-temporary.json", "utf8")
+        );
+        expect(batch.chainId).to.equal("1");
+        expect(batch.meta.createdFromSafeAddress).to.equal(SAFE);
+        expect(batch.transactions).to.have.length(1);
+        const tx = batch.transactions[0];
+        const vault = await ethers.getContractAt("IssuanceVault", VAULT);
+        expect(tx.to).to.equal(VAULT);
+        expect(tx.value).to.equal("0");
+        expect(tx.data).to.equal(
+            vault.interface.encodeFunctionData("setEpochConfig", [TEMPORARY_DURATION])
+        );
+        const start = await vault.epochStart();
+        const epoch = await vault.currentEpochId();
+        const duration = await vault.epochDuration();
+        await expect(await (await ethers.getSigner(SAFE)).sendTransaction(tx))
+            .to.emit(vault, "EpochDurationQueued")
+            .withArgs(TEMPORARY_DURATION);
+        expect(await vault.pendingEpochDuration()).to.equal(TEMPORARY_DURATION);
+        expect(await vault.epochStart()).to.equal(start);
+        expect(await vault.currentEpochId()).to.equal(epoch);
+        expect(await vault.epochDuration()).to.equal(duration);
     });
 
     it("respects the late NAV veto, recovers on November 12, and keeps November 19 at 14:00 UTC", async () => {
