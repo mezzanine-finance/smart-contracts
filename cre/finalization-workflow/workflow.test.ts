@@ -15,6 +15,7 @@ import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
 import {initWorkflow, onCronTrigger, WorkflowExecutionError} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
+import hastraConfig from "./config.hastra.json";
 import navStagingConfig from "../nav-workflow/config.staging.json";
 
 describe("Finalization workflow", () => {
@@ -92,6 +93,12 @@ describe("Finalization workflow", () => {
         expect(handlers).toHaveLength(1);
         expect(config.schedule).toBe("0 */5 * * * *");
         expect(config.gasLimit).toBe("500000");
+    });
+
+    test("keeps Hastra finalization running every five minutes throughout the week", () => {
+        const config = configSchema.parse(hastraConfig);
+        expect(config.schedule).toBe("0 */5 * * * *");
+        expect(config.vaults.map(({id}) => id)).toEqual(["mezzanine-hastra"]);
     });
 
     test("requires deterministic cron execution time", () => {

@@ -1,7 +1,13 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {bytesToHex, getNetwork, hexToBase64, type CronPayload} from "@chainlink/cre-sdk";
+import {
+    bytesToHex,
+    CronCapability,
+    getNetwork,
+    hexToBase64,
+    type CronPayload,
+} from "@chainlink/cre-sdk";
 import {
     addContractMock,
     EvmMock,
@@ -15,6 +21,7 @@ import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
 import {initWorkflow, onCronTrigger, WorkflowExecutionError} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
+import hastraConfig from "./config.hastra.json";
 
 describe("NAV workflow", () => {
     const failedTxHash: Hex = `0x${"ab".repeat(32)}`;
@@ -91,6 +98,22 @@ describe("NAV workflow", () => {
         expect(handlers).toHaveLength(1);
         expect(config.schedule).toBe("0 */5 * * * *");
         expect(config.gasLimit).toBe("500000");
+    });
+
+    test("registers the Hastra Thursday window without changing Prime or staging schedules", () => {
+        const config = configSchema.parse(hastraConfig);
+        const [handler] = initWorkflow(config);
+        const expectedSchedule = "0 */5 14-21 * * 4";
+
+        expect(config.schedule).toBe(expectedSchedule);
+        expect(handler.trigger.configAsAny()).toEqual(
+            new CronCapability().trigger({schedule: expectedSchedule}).configAsAny()
+        );
+        expect(config.chainName).toBe("ethereum-mainnet");
+        expect(config.isTestnet).toBe(false);
+        expect(config.vaults.map(({id}) => id)).toEqual(["mezzanine-hastra"]);
+        expect(productionConfig.schedule).toBe("0 */5 * * * *");
+        expect(stagingConfig.schedule).toBe("0 */5 * * * *");
     });
 
     test("requires deterministic cron execution time", () => {
