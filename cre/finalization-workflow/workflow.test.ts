@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 
 import {describe, expect} from "bun:test";
-import {bytesToHex, getNetwork, type CronPayload} from "@chainlink/cre-sdk";
+import {bytesToHex, getNetwork, hexToBase64, type CronPayload} from "@chainlink/cre-sdk";
 import {
     addContractMock,
     EvmMock,
@@ -12,12 +12,13 @@ import {
 import {decodeAbiParameters, decodeFunctionData, type Address, type Hex} from "viem";
 import {configSchema, type Config} from "./config";
 import {CHECK_UPKEEP_ABI, PERFORM_UPKEEP_ABI} from "./contracts";
-import {initWorkflow, onCronTrigger} from "./workflow";
+import {initWorkflow, onCronTrigger, WorkflowExecutionError} from "./workflow";
 import productionConfig from "./config.production.json";
 import stagingConfig from "./config.staging.json";
 import navStagingConfig from "../nav-workflow/config.staging.json";
 
 describe("Finalization workflow", () => {
+    const failedTxHash: Hex = `0x${"ab".repeat(32)}`;
     const scheduledAt = 1_800_000_000n;
     const cronPayload = () =>
         ({scheduledExecutionTime: {seconds: scheduledAt, nanos: 0}}) as CronPayload;
@@ -50,6 +51,33 @@ describe("Finalization workflow", () => {
             runtime: newTestRuntime<Config>(null, undefined, runtimeConfig),
             evmMock: EvmMock.testInstance(network.chainSelector.selector),
         };
+    };
+
+    const failedResults = (runtime: ReturnType<typeof setup>["runtime"]) => {
+        try {
+            onCronTrigger(runtime, cronPayload());
+        } catch (error) {
+            expect(error).toBeInstanceOf(WorkflowExecutionError);
+            if (!(error instanceof WorkflowExecutionError)) throw error;
+            expect(error.message).toContain("workflow failed for");
+            for (const result of error.results.filter((result) => result.error !== undefined)) {
+                expect(error.message).toContain(result.target);
+                if (result.txHash) {
+                    expect(error.message).toContain(result.txHash);
+                    const failureLog = runtime
+                        .getLogs()
+                        .find((log) => log.includes("[FAILED]") && log.includes(result.target));
+                    expect(failureLog).toContain(`txHash=${result.txHash}`);
+                    expect(failureLog).toContain(`txStatus=${result.txStatus}`);
+                    if (result.receiverExecutionStatus !== undefined)
+                        expect(failureLog).toContain(
+                            `receiverExecutionStatus=${result.receiverExecutionStatus}`
+                        );
+                }
+            }
+            return error.results;
+        }
+        throw new Error("Expected the workflow to fail after processing all targets");
     };
 
     const reportPayload = (rawReport: Uint8Array): Hex => {
@@ -259,7 +287,7 @@ describe("Finalization workflow", () => {
             };
         });
 
-        const results = onCronTrigger(runtime, cronPayload());
+        const results = failedResults(runtime);
 
         expect(results[0]).toMatchObject({
             writeAttempted: true,
@@ -296,15 +324,20 @@ describe("Finalization workflow", () => {
             receiver.writeReport = () => ({
                 txStatus: "TX_STATUS_SUCCESS",
                 receiverContractExecutionStatus: "RECEIVER_CONTRACT_EXECUTION_STATUS_REVERTED",
+                errorMessage: "target reverted",
+                txHash: hexToBase64(failedTxHash),
             });
         });
 
-        const [result] = onCronTrigger(runtime, cronPayload());
+        const [result] = failedResults(runtime);
 
         expect(result).toMatchObject({
             writeAttempted: true,
             writeOutcome: "FAILED",
-            error: "Receiver execution failed with status 1",
+            error: "Receiver execution failed with status 1: target reverted",
+            txStatus: 2,
+            receiverExecutionStatus: 1,
+            txHash: failedTxHash,
         });
     });
 
@@ -328,14 +361,17 @@ describe("Finalization workflow", () => {
         receiver.writeReport = () => ({
             txStatus: "TX_STATUS_REVERTED",
             errorMessage: "forwarder transaction reverted",
+            txHash: hexToBase64(failedTxHash),
         });
 
-        const [result] = onCronTrigger(runtime, cronPayload());
+        const [result] = failedResults(runtime);
 
         expect(result).toMatchObject({
             writeAttempted: true,
             writeOutcome: "FAILED",
             error: "writeReport transaction failed with status 1: forwarder transaction reverted",
+            txStatus: 1,
+            txHash: failedTxHash,
         });
     });
 
@@ -353,7 +389,7 @@ describe("Finalization workflow", () => {
             target.checkUpkeep = () => [index === 0, index === 0 ? "0xabcd" : "0x"];
         });
 
-        const [result] = onCronTrigger(runtime, cronPayload());
+        const [result] = failedResults(runtime);
 
         expect(result).toMatchObject({
             vaultId: "vault-1",
@@ -383,7 +419,7 @@ describe("Finalization workflow", () => {
             };
         });
 
-        const results = onCronTrigger(runtime, cronPayload());
+        const results = failedResults(runtime);
 
         expect(results[0]).toMatchObject({
             vaultId: "vault-1",

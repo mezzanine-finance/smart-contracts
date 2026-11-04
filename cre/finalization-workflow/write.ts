@@ -18,6 +18,16 @@ export interface WriteReportResult {
     txHash?: Hex;
 }
 
+export class WriteReportError extends Error {
+    constructor(
+        message: string,
+        readonly result: WriteReportResult
+    ) {
+        super(message);
+        this.name = "WriteReportError";
+    }
+}
+
 export const writeUpkeepReport = (
     runtime: Runtime<Config>,
     evmClient: EVMClient,
@@ -43,9 +53,17 @@ export const writeUpkeepReport = (
         .writeReport(runtime, {receiver, report, gasConfig: {gasLimit}})
         .result();
 
+    const result: WriteReportResult = {
+        txStatus: reply.txStatus,
+        ...(reply.receiverContractExecutionStatus === undefined
+            ? {}
+            : {receiverExecutionStatus: Number(reply.receiverContractExecutionStatus)}),
+        ...(reply.txHash && reply.txHash.length > 0 ? {txHash: bytesToHex(reply.txHash)} : {}),
+    };
     if (reply.txStatus !== TxStatus.SUCCESS) {
-        throw new Error(
-            `writeReport transaction failed with status ${reply.txStatus}: ${reply.errorMessage ?? "no error message"}`
+        throw new WriteReportError(
+            `writeReport transaction failed with status ${reply.txStatus}: ${reply.errorMessage ?? "no error message"}`,
+            result
         );
     }
     // A successful outer transaction does not guarantee that the receiver succeeded.
@@ -53,15 +71,10 @@ export const writeUpkeepReport = (
         reply.receiverContractExecutionStatus !== undefined &&
         Number(reply.receiverContractExecutionStatus) !== RECEIVER_EXECUTION_SUCCESS
     ) {
-        throw new Error(
-            `Receiver execution failed with status ${reply.receiverContractExecutionStatus}`
+        throw new WriteReportError(
+            `Receiver execution failed with status ${reply.receiverContractExecutionStatus}: ${reply.errorMessage ?? "no error message"}`,
+            result
         );
     }
-    return {
-        txStatus: reply.txStatus,
-        ...(reply.receiverContractExecutionStatus === undefined
-            ? {}
-            : {receiverExecutionStatus: Number(reply.receiverContractExecutionStatus)}),
-        ...(reply.txHash && reply.txHash.length > 0 ? {txHash: bytesToHex(reply.txHash)} : {}),
-    };
+    return result;
 };

@@ -10,7 +10,7 @@ import {
 import {type Address, type Hex} from "viem";
 import type {Config} from "./config";
 import {readUpkeep} from "./read";
-import {writeUpkeepReport} from "./write";
+import {WriteReportError, writeUpkeepReport, type WriteReportResult} from "./write";
 
 export interface UpkeepReadiness {
     vaultId: string;
@@ -23,6 +23,16 @@ export interface UpkeepReadiness {
     txHash?: Hex;
     writeOutcome?: "SUCCESS" | "FAILED" | "UNCONFIRMED";
     error?: string;
+}
+
+export class WorkflowExecutionError extends Error {
+    constructor(readonly results: UpkeepReadiness[]) {
+        const failures = results.filter((result) => result.error !== undefined);
+        super(
+            `NAV workflow failed for ${failures.length}/${results.length} targets: ${JSON.stringify(failures)}`
+        );
+        this.name = "WorkflowExecutionError";
+    }
 }
 
 const errorMessage = (error: unknown): string =>
@@ -48,7 +58,7 @@ export const onCronTrigger = (
     const evmClient = new EVMClient(network.chainSelector.selector);
     const scheduledAt = scheduledExecutionTime(trigger);
 
-    return vaults.map(({id, navOracleAutomation, receiver}) => {
+    const results: UpkeepReadiness[] = vaults.map(({id, navOracleAutomation, receiver}) => {
         const target = navOracleAutomation as Address;
         let readiness: UpkeepReadiness;
         try {
@@ -79,15 +89,29 @@ export const onCronTrigger = (
             const writeOutcome =
                 writeResult.receiverExecutionStatus === undefined ? "UNCONFIRMED" : "SUCCESS";
             runtime.log(
-                `[${writeOutcome}] NAV target ${id}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not broadcast"}`
+                `[${writeOutcome}] NAV target ${id}: receiver=${receiver}, target=${target}, action=performUpkeep(bytes), txStatus=${writeResult.txStatus}, receiverExecutionStatus=${writeResult.receiverExecutionStatus ?? "not returned"}, txHash=${writeResult.txHash ?? "not returned"}`
             );
             return {...readiness, writeAttempted, ...writeResult, writeOutcome};
         } catch (error) {
             const message = errorMessage(error);
-            runtime.log(`[FAILED] NAV target ${id} (${target}) write failed: ${message}`);
-            return {...readiness, writeAttempted, writeOutcome: "FAILED", error: message};
+            const details: Partial<WriteReportResult> =
+                error instanceof WriteReportError ? error.result : {};
+            runtime.log(
+                `[FAILED] NAV target ${id}: receiver=${receiver ?? "not configured"}, target=${target}, txStatus=${details.txStatus ?? "not returned"}, receiverExecutionStatus=${details.receiverExecutionStatus ?? "not returned"}, txHash=${details.txHash ?? "not returned"}, error=${message}`
+            );
+            return {
+                ...readiness,
+                writeAttempted,
+                ...details,
+                writeOutcome: "FAILED",
+                error: message,
+            };
         }
     });
+    // Finish independent targets before surfacing any failure to CRE.
+    if (results.some((result) => result.error !== undefined))
+        throw new WorkflowExecutionError(results);
+    return results;
 };
 
 export const initWorkflow = (config: Config) => {
