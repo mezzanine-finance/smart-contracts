@@ -13,6 +13,17 @@ const RECEIVER = "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77";
 const OPERATOR = "0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd";
 const VAULT = "0xBB03549117e38103589774AE1D6338D1B237FFA2";
 const NAV = "0x9994BC2eCdFd7BDeB5423f5e48E285b91e6a69A7";
+const WORKFLOW_OWNER = "0x2b8c480c73ef7846a73260f882632c6e1782437f";
+const WORKFLOW_PERMISSIONS = [
+    {
+        oldId: "0x00bd94ff722e91d9ce1f7e024c9cfe3ea9c7f15b5b947bce4558cc80b22fbb95",
+        id: "0x008ca7aea435f0630fb06144ae9281d51aebbdc603795efeb31eed43bf5c0694",
+    },
+    {
+        oldId: "0x008aba4f5cdc207643eb0fa3d6b5428fe7a5e200244f32f12d8de75126c22434",
+        id: "0x00b9d33deea21930509aa82b7a3087adf0fdd9f5384470df39af034a11e48268",
+    },
+];
 const TRANCHES = [
     "0x0e246e5FA94E90ab784b03961C35AaD9999b6649",
     "0x6F5d94Dc0c8bBf052aBF024259d087dA45AD96A1",
@@ -53,13 +64,16 @@ forkTest("Hastra epoch timing transition on a pinned mainnet fork", function () 
         expect(await vault.epochDuration()).to.equal(WEEK);
     });
 
-    it("executes the exported single-call Safe batch and only queues the temporary duration", async () => {
+    it("executes the exported Safe calls, queues the temporary duration, and permits both new workflow IDs", async () => {
         const batch = JSON.parse(
-            fs.readFileSync("reports/safe-mainnet-mezzanine-hastra-epoch-temporary.json", "utf8")
+            fs.readFileSync(
+                "reports/safe-mainnet-mezzanine-hastra-epoch-and-workflows.json",
+                "utf8"
+            )
         );
         expect(batch.chainId).to.equal("1");
         expect(batch.meta.createdFromSafeAddress).to.equal(SAFE);
-        expect(batch.transactions).to.have.length(1);
+        expect(batch.transactions).to.have.length(3);
         const tx = batch.transactions[0];
         const vault = await ethers.getContractAt("IssuanceVault", VAULT);
         expect(tx.to).to.equal(VAULT);
@@ -77,6 +91,28 @@ forkTest("Hastra epoch timing transition on a pinned mainnet fork", function () 
         expect(await vault.epochStart()).to.equal(start);
         expect(await vault.currentEpochId()).to.equal(epoch);
         expect(await vault.epochDuration()).to.equal(duration);
+
+        const receiver = await ethers.getContractAt("AutomationReceiver", RECEIVER);
+        expect(await receiver.owner()).to.equal(SAFE);
+        expect((await receiver.workflowOwner()).toLowerCase()).to.equal(WORKFLOW_OWNER);
+        expect(new Set(WORKFLOW_PERMISSIONS.map(({id}) => id)).size).to.equal(2);
+        for (const [index, workflow] of WORKFLOW_PERMISSIONS.entries()) {
+            const permission = batch.transactions[index + 1];
+            expect(permission.to).to.equal(RECEIVER);
+            expect(permission.value).to.equal("0");
+            expect(workflow.id).not.to.equal(workflow.oldId);
+            expect(permission.data).to.equal(
+                receiver.interface.encodeFunctionData("setWorkflowPermission", [workflow.id, true])
+            );
+            expect(await receiver.allowedWorkflowIds(workflow.id)).to.equal(false);
+            await expect(await (await ethers.getSigner(SAFE)).sendTransaction(permission))
+                .to.emit(receiver, "WorkflowPermissionUpdated")
+                .withArgs(workflow.id, true);
+            expect(await receiver.allowedWorkflowIds(workflow.id)).to.equal(true);
+            expect(await receiver.allowedWorkflowIds(workflow.oldId)).to.equal(true);
+        }
+        expect(await receiver.owner()).to.equal(SAFE);
+        expect(await vault.pendingEpochDuration()).to.equal(TEMPORARY_DURATION);
     });
 
     it("respects the late NAV veto, recovers on November 12, and keeps November 19 at 14:00 UTC", async () => {
