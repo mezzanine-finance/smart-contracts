@@ -42,6 +42,7 @@ export interface RolesConfig {
 export interface DevConfig {
     deployer: string;
     grantRoles?: boolean;
+    reconcileSharedRoles?: boolean;
 }
 
 export interface UsdcMockMint {

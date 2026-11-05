@@ -123,7 +123,7 @@ async function loadTarget(
     deployments: ReturnType<typeof loadDeployments>
 ): Promise<Target> {
     const address = resolveTargetAddress(deploymentKey, explicitAddress, deployments);
-    const tranche = (await ethers.getContractAt("Tranche", address));
+    const tranche = await ethers.getContractAt("Tranche", address);
     const vault = await tranche.vault();
     const directWithdrawEnabled = await tranche.directWithdrawEnabled();
     const beforeImpl = await upgrades.erc1967.getImplementationAddress(address);

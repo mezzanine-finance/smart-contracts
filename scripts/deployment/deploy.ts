@@ -29,6 +29,7 @@ import {assert, isLocalNetwork, parseMZUSD, parseUSDC, requireAddress} from "./l
 import {GasTracker} from "./lib/gas-tracker";
 import {ensureRoleMember, ensureTargetRole} from "./lib/roles";
 import {verifyContract} from "./lib/verify";
+import {SafeBatchBuilder} from "./lib/safeBatch";
 
 interface DeployResult<T extends BaseContract> {
     contract: T;
@@ -158,6 +159,7 @@ export async function main() {
     const skipVerify = isEnvFlagEnabled("DEPLOY_SKIP_VERIFY");
     const forceRenounce = isEnvFlagEnabled("DEPLOY_RENOUNCE");
     const skipRenounce = isEnvFlagEnabled("DEPLOY_NO_RENOUNCE");
+    const safeHandoff = isEnvFlagEnabled("DEPLOY_SAFE_HANDOFF");
 
     const config = loadConfig(network.name, configPath);
     const deploymentId = requestedDeploymentId ?? config.deploymentId;
@@ -186,6 +188,31 @@ export async function main() {
     gasTracker.wrapSigner(deployer);
     const deployerAddress = await deployer.getAddress();
     const devDeployer = config.dev.deployer;
+    const chainId = (await ethers.provider.getNetwork()).chainId.toString();
+    const safeBatch = safeHandoff
+        ? new SafeBatchBuilder(
+              chainId,
+              config.roles.admin,
+              `${deploymentId ?? "Mezzanine"} setup`,
+              "Configure the newly deployed vault and its roles in the shared AccessManager"
+          )
+        : undefined;
+
+    const executeAdminAction = async (
+        label: string,
+        target: string,
+        data: string,
+        send: () => Promise<{wait: () => Promise<unknown>}>
+    ) => {
+        if (safeBatch) {
+            safeBatch.add(target, data);
+            log.info(`Queued for Safe: ${label}`);
+            return;
+        }
+        const tx = await send();
+        await tx.wait();
+        log.success(label);
+    };
 
     log.step("Deployment preflight");
     log.info(`Network: ${network.name}`);
@@ -261,6 +288,12 @@ export async function main() {
         deployments,
         sharedNamespace
     );
+    if (safeHandoff) {
+        assert(
+            !accessManager.deployed,
+            "Safe handoff mode requires an existing shared AccessManager"
+        );
+    }
 
     const PauseManagerFactory = await ethers.getContractFactory("PauseManager", deployer);
     const pauseManager = await ensureProxyDeployment<PauseManager>(
@@ -557,23 +590,40 @@ export async function main() {
     // === Wire core references ===
     log.step("Wiring core references");
     if ((await mzusd.contract.vault()) === ethers.ZeroAddress) {
-        await (await mzusdAdmin.setVault(vault.address)).wait();
-        log.success("MZUSD.setVault wired");
+        await executeAdminAction(
+            "MZUSD.setVault wired",
+            mzusd.address,
+            mzusd.contract.interface.encodeFunctionData("setVault", [vault.address]),
+            () => mzusdAdmin.setVault(vault.address)
+        );
     }
 
     if ((await reservoir.contract.vault()) === ethers.ZeroAddress) {
-        await (await reservoir.contract.connect(adminSigner).setVault(vault.address)).wait();
-        log.success("ReservoirUSDC.setVault wired");
+        const reservoirAdmin = reservoir.contract.connect(adminSigner);
+        await executeAdminAction(
+            "ReservoirUSDC.setVault wired",
+            reservoir.address,
+            reservoir.contract.interface.encodeFunctionData("setVault", [vault.address]),
+            () => reservoirAdmin.setVault(vault.address)
+        );
     }
 
     if ((await vault.contract.lossManager()) === ethers.ZeroAddress) {
-        await (await vaultAdmin.setLossManager(lossManager.address)).wait();
-        log.success("IssuanceVault.setLossManager wired");
+        await executeAdminAction(
+            "IssuanceVault.setLossManager wired",
+            vault.address,
+            vault.contract.interface.encodeFunctionData("setLossManager", [lossManager.address]),
+            () => vaultAdmin.setLossManager(lossManager.address)
+        );
     }
 
     if ((await vault.contract.navOracle()) !== navOracle.address) {
-        await (await vaultAdmin.setNavOracle(navOracle.address)).wait();
-        log.success("IssuanceVault.setNavOracle wired");
+        await executeAdminAction(
+            "IssuanceVault.setNavOracle wired",
+            vault.address,
+            vault.contract.interface.encodeFunctionData("setNavOracle", [navOracle.address]),
+            () => vaultAdmin.setNavOracle(navOracle.address)
+        );
     }
 
     // === Register tranches ===
@@ -593,8 +643,14 @@ export async function main() {
 
         const isRegistered = await vault.contract.isTranche(trancheContract.address);
         if (!isRegistered) {
-            await (await vaultAdmin.registerTranche(trancheContract.address)).wait();
-            log.success(`IssuanceVault.registerTranche ${tranche.key}`);
+            await executeAdminAction(
+                `IssuanceVault.registerTranche ${tranche.key}`,
+                vault.address,
+                vault.contract.interface.encodeFunctionData("registerTranche", [
+                    trancheContract.address,
+                ]),
+                () => vaultAdmin.registerTranche(trancheContract.address)
+            );
         }
     }
 
@@ -664,14 +720,21 @@ export async function main() {
     }
 
     if (trancheConfigNeedsUpdate) {
-        await (
-            await vaultAdmin.setTrancheConfig(
+        await executeAdminAction(
+            "IssuanceVault.setTrancheConfig",
+            vault.address,
+            vault.contract.interface.encodeFunctionData("setTrancheConfig", [
                 trancheInfos,
                 config.lossManager.isPairedWithNext,
-                baseRewardBps
-            )
-        ).wait();
-        log.success("IssuanceVault.setTrancheConfig");
+                baseRewardBps,
+            ]),
+            () =>
+                vaultAdmin.setTrancheConfig(
+                    trancheInfos,
+                    config.lossManager.isPairedWithNext,
+                    baseRewardBps
+                )
+        );
     }
 
     // === Apply tranche parameters ===
@@ -682,17 +745,29 @@ export async function main() {
         if (tranche.unstakeDelayEpochs !== undefined) {
             const current = await trancheContract.contract.unstakeDelayEpochs();
             if (current !== BigInt(tranche.unstakeDelayEpochs)) {
-                await (await trancheAdmin.setUnstakeDelayEpochs(tranche.unstakeDelayEpochs)).wait();
-                log.success(`Tranche.setUnstakeDelayEpochs ${tranche.key}`);
+                await executeAdminAction(
+                    `Tranche.setUnstakeDelayEpochs ${tranche.key}`,
+                    trancheContract.address,
+                    trancheContract.contract.interface.encodeFunctionData("setUnstakeDelayEpochs", [
+                        tranche.unstakeDelayEpochs,
+                    ]),
+                    () => trancheAdmin.setUnstakeDelayEpochs(tranche.unstakeDelayEpochs!)
+                );
             }
         }
         if (tranche.unstakeYieldReductionBps !== undefined) {
             const current = await trancheContract.contract.unstakeYieldReductionBps();
             if (current !== BigInt(tranche.unstakeYieldReductionBps)) {
-                await (
-                    await trancheAdmin.setUnstakeYieldReductionBps(tranche.unstakeYieldReductionBps)
-                ).wait();
-                log.success(`Tranche.setUnstakeYieldReductionBps ${tranche.key}`);
+                await executeAdminAction(
+                    `Tranche.setUnstakeYieldReductionBps ${tranche.key}`,
+                    trancheContract.address,
+                    trancheContract.contract.interface.encodeFunctionData(
+                        "setUnstakeYieldReductionBps",
+                        [tranche.unstakeYieldReductionBps]
+                    ),
+                    () =>
+                        trancheAdmin.setUnstakeYieldReductionBps(tranche.unstakeYieldReductionBps!)
+                );
             }
         }
 
@@ -715,21 +790,49 @@ export async function main() {
 
             if (targetEnabled) {
                 if (configNeedsUpdate) {
-                    await (await trancheAdmin.setDepositLimits(targetCap, targetTvl)).wait();
-                    log.success(`Tranche.setDepositLimits ${tranche.key}`);
+                    await executeAdminAction(
+                        `Tranche.setDepositLimits ${tranche.key}`,
+                        trancheContract.address,
+                        trancheContract.contract.interface.encodeFunctionData("setDepositLimits", [
+                            targetCap,
+                            targetTvl,
+                        ]),
+                        () => trancheAdmin.setDepositLimits(targetCap, targetTvl)
+                    );
                 }
                 if (enabledNeedsUpdate) {
-                    await (await trancheAdmin.setDepositLimitEnabled(targetEnabled)).wait();
-                    log.success(`Tranche.setDepositLimitEnabled ${tranche.key}`);
+                    await executeAdminAction(
+                        `Tranche.setDepositLimitEnabled ${tranche.key}`,
+                        trancheContract.address,
+                        trancheContract.contract.interface.encodeFunctionData(
+                            "setDepositLimitEnabled",
+                            [targetEnabled]
+                        ),
+                        () => trancheAdmin.setDepositLimitEnabled(targetEnabled)
+                    );
                 }
             } else {
                 if (enabledNeedsUpdate) {
-                    await (await trancheAdmin.setDepositLimitEnabled(targetEnabled)).wait();
-                    log.success(`Tranche.setDepositLimitEnabled ${tranche.key}`);
+                    await executeAdminAction(
+                        `Tranche.setDepositLimitEnabled ${tranche.key}`,
+                        trancheContract.address,
+                        trancheContract.contract.interface.encodeFunctionData(
+                            "setDepositLimitEnabled",
+                            [targetEnabled]
+                        ),
+                        () => trancheAdmin.setDepositLimitEnabled(targetEnabled)
+                    );
                 }
                 if (configNeedsUpdate) {
-                    await (await trancheAdmin.setDepositLimits(targetCap, targetTvl)).wait();
-                    log.success(`Tranche.setDepositLimits ${tranche.key}`);
+                    await executeAdminAction(
+                        `Tranche.setDepositLimits ${tranche.key}`,
+                        trancheContract.address,
+                        trancheContract.contract.interface.encodeFunctionData("setDepositLimits", [
+                            targetCap,
+                            targetTvl,
+                        ]),
+                        () => trancheAdmin.setDepositLimits(targetCap, targetTvl)
+                    );
                 }
             }
         }
@@ -737,7 +840,7 @@ export async function main() {
 
     // === Optional seeding ===
     const seed = config.seed;
-    if (seed) {
+    if (seed && !safeHandoff) {
         log.step("Seeding balances");
         const seedSigner = adminSigner;
         const seedAddress = devDeployer;
@@ -841,6 +944,88 @@ export async function main() {
                 );
             }
         }
+    } else if (seed && safeBatch) {
+        log.step("Queuing seed transactions for Safe");
+        const seedMzusdUsdc = parseUSDC(seed.mzusdDepositUSDC ?? "0");
+        const seedVaultUsdc = parseUSDC(seed.vaultUSDC ?? "0");
+        const seedReservoirUsdc = parseUSDC(seed.reservoirUSDC ?? "0");
+
+        if (seedMzusdUsdc > 0n) {
+            safeBatch.add(
+                usdcAddress,
+                usdcToken.interface.encodeFunctionData("approve", [mzusd.address, seedMzusdUsdc])
+            );
+            safeBatch.add(
+                mzusd.address,
+                mzusd.contract.interface.encodeFunctionData("deposit", [seedMzusdUsdc])
+            );
+        }
+        if (seedVaultUsdc > 0n) {
+            safeBatch.add(
+                usdcAddress,
+                usdcToken.interface.encodeFunctionData("transfer", [vault.address, seedVaultUsdc])
+            );
+        }
+        if (seedReservoirUsdc > 0n) {
+            safeBatch.add(
+                usdcAddress,
+                usdcToken.interface.encodeFunctionData("approve", [
+                    reservoir.address,
+                    seedReservoirUsdc,
+                ])
+            );
+            safeBatch.add(
+                reservoir.address,
+                reservoir.contract.interface.encodeFunctionData("deposit", [seedReservoirUsdc])
+            );
+        }
+        for (const deadShare of seed.deadShares ?? []) {
+            const tranche = trancheByKey.get(deadShare.key);
+            assert(tranche !== undefined, `Unknown tranche key in deadShares: ${deadShare.key}`);
+            const amountMzusd = parseMZUSD(deadShare.amountMZUSD);
+            safeBatch.add(
+                mzusd.address,
+                mzusd.contract.interface.encodeFunctionData("approve", [
+                    tranche.address,
+                    amountMzusd,
+                ])
+            );
+            safeBatch.add(
+                tranche.address,
+                tranche.contract.interface.encodeFunctionData("deposit", [
+                    amountMzusd,
+                    DEAD_SHARES_RECEIVER,
+                ])
+            );
+        }
+        for (const deposit of seed.trancheDeposits ?? []) {
+            const tranche = trancheByKey.get(deposit.key);
+            assert(tranche !== undefined, `Unknown tranche key in seed: ${deposit.key}`);
+            const amountMzusd =
+                deposit.amountMZUSD !== undefined
+                    ? parseMZUSD(deposit.amountMZUSD)
+                    : parseUSDC(deposit.amountUSDC ?? "0") * MZUSD_SCALE;
+            safeBatch.add(
+                mzusd.address,
+                mzusd.contract.interface.encodeFunctionData("approve", [
+                    tranche.address,
+                    amountMzusd,
+                ])
+            );
+            safeBatch.add(
+                tranche.address,
+                tranche.contract.interface.encodeFunctionData("deposit", [
+                    amountMzusd,
+                    deposit.receiver,
+                ])
+            );
+        }
+        log.info(
+            `Safe must hold at least ${ethers.formatUnits(
+                seedMzusdUsdc + seedVaultUsdc + seedReservoirUsdc,
+                6
+            )} units of the configured asset before executing the batch`
+        );
     }
 
     // === Apply global protocol config ===
@@ -853,32 +1038,45 @@ export async function main() {
         currentPerfBps !== BigInt(config.vault.performanceFeeBps) ||
         currentProtBps !== BigInt(config.vault.protocolFeeBps)
     ) {
-        await (
-            await vaultAdmin.setFeeRates(
+        await executeAdminAction(
+            "IssuanceVault.setFeeRates",
+            vault.address,
+            vault.contract.interface.encodeFunctionData("setFeeRates", [
                 config.vault.performanceFeeBps,
-                config.vault.protocolFeeBps
-            )
-        ).wait();
-        log.success("IssuanceVault.setFeeRates");
+                config.vault.protocolFeeBps,
+            ]),
+            () =>
+                vaultAdmin.setFeeRates(config.vault.performanceFeeBps, config.vault.protocolFeeBps)
+        );
     }
     if (
         currentPerfReceiver.toLowerCase() !== config.vault.performanceFeeReceiver.toLowerCase() ||
         currentProtReceiver.toLowerCase() !== config.vault.protocolFeeReceiver.toLowerCase()
     ) {
-        await (
-            await vaultAdmin.setFeeReceivers(
+        await executeAdminAction(
+            "IssuanceVault.setFeeReceivers",
+            vault.address,
+            vault.contract.interface.encodeFunctionData("setFeeReceivers", [
                 config.vault.performanceFeeReceiver,
-                config.vault.protocolFeeReceiver
-            )
-        ).wait();
-        log.success("IssuanceVault.setFeeReceivers");
+                config.vault.protocolFeeReceiver,
+            ]),
+            () =>
+                vaultAdmin.setFeeReceivers(
+                    config.vault.performanceFeeReceiver,
+                    config.vault.protocolFeeReceiver
+                )
+        );
     }
 
     const cap = await mzusd.contract.globalRedemptionCapUSDC();
     const desiredCap = parseUSDC(config.mzusd.redemptionCapUSDC);
     if (cap !== desiredCap) {
-        await (await mzusdAdmin.setGlobalRedemptionCap(desiredCap)).wait();
-        log.success("MZUSD.setGlobalRedemptionCap");
+        await executeAdminAction(
+            "MZUSD.setGlobalRedemptionCap",
+            mzusd.address,
+            mzusd.contract.interface.encodeFunctionData("setGlobalRedemptionCap", [desiredCap]),
+            () => mzusdAdmin.setGlobalRedemptionCap(desiredCap)
+        );
     }
 
     if (config.mzusd.redemptionWindowDurationSec !== undefined) {
@@ -886,8 +1084,14 @@ export async function main() {
         const next = await mzusd.contract.nextRedemptionWindowDuration();
         const desired = config.mzusd.redemptionWindowDurationSec;
         if (current !== BigInt(desired) && next !== BigInt(desired)) {
-            await (await mzusdAdmin.setRedemptionWindowDuration(desired)).wait();
-            log.success("MZUSD.setRedemptionWindowDuration");
+            await executeAdminAction(
+                "MZUSD.setRedemptionWindowDuration",
+                mzusd.address,
+                mzusd.contract.interface.encodeFunctionData("setRedemptionWindowDuration", [
+                    desired,
+                ]),
+                () => mzusdAdmin.setRedemptionWindowDuration(desired)
+            );
         }
     }
 
@@ -895,8 +1099,14 @@ export async function main() {
         const current = await mzusd.contract.withdrawalFeeBps();
         const desired = BigInt(config.mzusd.withdrawalFeeBps);
         if (current !== desired) {
-            await (await mzusdAdmin.setWithdrawalFeeBps(config.mzusd.withdrawalFeeBps)).wait();
-            log.success("MZUSD.setWithdrawalFeeBps");
+            await executeAdminAction(
+                "MZUSD.setWithdrawalFeeBps",
+                mzusd.address,
+                mzusd.contract.interface.encodeFunctionData("setWithdrawalFeeBps", [
+                    config.mzusd.withdrawalFeeBps,
+                ]),
+                () => mzusdAdmin.setWithdrawalFeeBps(config.mzusd.withdrawalFeeBps!)
+            );
         }
     }
 
@@ -912,8 +1122,15 @@ export async function main() {
         assert(desiredBuffer > 0n, "vault.idleBufferUSDC must be > 0");
         if (currentBuffer !== desiredBuffer || currentHysteresis !== desiredHysteresis) {
             // Save the buffer configuration even when the vault has no liquidity.
-            await (await vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))).wait();
-            log.success("IssuanceVault.setBuffer");
+            await executeAdminAction(
+                "IssuanceVault.setBuffer",
+                vault.address,
+                vault.contract.interface.encodeFunctionData("setBuffer", [
+                    desiredBuffer,
+                    Number(desiredHysteresis),
+                ]),
+                () => vaultAdmin.setBuffer(desiredBuffer, Number(desiredHysteresis))
+            );
         }
     }
 
@@ -921,15 +1138,25 @@ export async function main() {
         const current = await lossManager.contract.maxLossPerTxUSDC();
         const desired = parseUSDC(config.lossManager.maxLossPerTxUSDC);
         if (current !== desired) {
-            await (await lossManagerAdmin.setMaxLossPerTxUSDC(desired)).wait();
-            log.success("LossManager.setMaxLossPerTxUSDC");
+            await executeAdminAction(
+                "LossManager.setMaxLossPerTxUSDC",
+                lossManager.address,
+                lossManager.contract.interface.encodeFunctionData("setMaxLossPerTxUSDC", [desired]),
+                () => lossManagerAdmin.setMaxLossPerTxUSDC(desired)
+            );
         }
     }
 
     const currentVeto = await navOracle.contract.vetoPeriod();
     if (currentVeto !== BigInt(config.navOracle.vetoPeriodSec)) {
-        await (await navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)).wait();
-        log.success("NavOracleAutomation.setVetoPeriod");
+        await executeAdminAction(
+            "NavOracleAutomation.setVetoPeriod",
+            navOracle.address,
+            navOracle.contract.interface.encodeFunctionData("setVetoPeriod", [
+                config.navOracle.vetoPeriodSec,
+            ]),
+            () => navOracleAdmin.setVetoPeriod(config.navOracle.vetoPeriodSec)
+        );
     }
     const hasNavFeed = navFeedAddress !== undefined;
     const hasSupplyFeed = totalSupplyFeedAddress !== undefined;
@@ -945,17 +1172,28 @@ export async function main() {
             currentNavFeed.toLowerCase() !== navFeed.toLowerCase() ||
             currentTotalSupplyFeed.toLowerCase() !== totalSupplyFeed.toLowerCase()
         ) {
-            await (await navOracleAdmin.setOracles(navFeed, totalSupplyFeed)).wait();
-            log.success("NavOracleAutomation.setOracles");
+            await executeAdminAction(
+                "NavOracleAutomation.setOracles",
+                navOracle.address,
+                navOracle.contract.interface.encodeFunctionData("setOracles", [
+                    navFeed,
+                    totalSupplyFeed,
+                ]),
+                () => navOracleAdmin.setOracles(navFeed, totalSupplyFeed)
+            );
         }
     }
     if (config.navOracle.maxAnswerStalenessSec !== undefined) {
         const currentStaleness = await navOracle.contract.maxAnswerStaleness();
         if (currentStaleness !== BigInt(config.navOracle.maxAnswerStalenessSec)) {
-            await (
-                await navOracleAdmin.setMaxAnswerStaleness(config.navOracle.maxAnswerStalenessSec)
-            ).wait();
-            log.success("NavOracleAutomation.setMaxAnswerStaleness");
+            await executeAdminAction(
+                "NavOracleAutomation.setMaxAnswerStaleness",
+                navOracle.address,
+                navOracle.contract.interface.encodeFunctionData("setMaxAnswerStaleness", [
+                    config.navOracle.maxAnswerStalenessSec,
+                ]),
+                () => navOracleAdmin.setMaxAnswerStaleness(config.navOracle.maxAnswerStalenessSec!)
+            );
         }
     }
 
@@ -965,6 +1203,7 @@ export async function main() {
     const delays = config.roles.roleDelays ?? {};
     const adminRole = Number(await accessManagerAdmin.ADMIN_ROLE());
     const grantDevRoles = config.dev.grantRoles !== false;
+    const reconcileSharedRoles = config.dev.reconcileSharedRoles !== false && !safeHandoff;
 
     const pauseSelectors = [
         pauseManager.contract.interface.getFunction("pauseGlobal").selector,
@@ -974,24 +1213,26 @@ export async function main() {
         pauseManager.contract.interface.getFunction("unpauseGlobal").selector,
         pauseManager.contract.interface.getFunction("unpauseContract").selector,
     ];
-    await ensureTargetRole(
-        accessManagerAdmin,
-        pauseManager.address,
-        pauseSelectors,
-        roleIds.PAUSER_ROLE
-    );
-    await ensureTargetRole(
-        accessManagerAdmin,
-        pauseManager.address,
-        unpauseSelectors,
-        roleIds.UNPAUSER_ROLE
-    );
-    await ensureTargetRole(
-        accessManagerAdmin,
-        pauseManager.address,
-        [pauseManager.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
-    );
+    if (reconcileSharedRoles) {
+        await ensureTargetRole(
+            accessManagerAdmin,
+            pauseManager.address,
+            pauseSelectors,
+            roleIds.PAUSER_ROLE
+        );
+        await ensureTargetRole(
+            accessManagerAdmin,
+            pauseManager.address,
+            unpauseSelectors,
+            roleIds.UNPAUSER_ROLE
+        );
+        await ensureTargetRole(
+            accessManagerAdmin,
+            pauseManager.address,
+            [pauseManager.contract.interface.getFunction("upgradeToAndCall").selector],
+            roleIds.UPGRADER_ROLE
+        );
+    }
 
     await ensureTargetRole(
         accessManagerAdmin,
@@ -1006,19 +1247,22 @@ export async function main() {
             vault.contract.interface.getFunction("registerTranche").selector,
             vault.contract.interface.getFunction("setTrancheConfig").selector,
         ],
-        adminRole
+        adminRole,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         vault.address,
         [vault.contract.interface.getFunction("rebalance").selector],
-        roleIds.KEEPER_ROLE
+        roleIds.KEEPER_ROLE,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         vault.address,
         [vault.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
+        roleIds.UPGRADER_ROLE,
+        safeBatch
     );
 
     await ensureTargetRole(
@@ -1031,51 +1275,59 @@ export async function main() {
             mzusd.contract.interface.getFunction("setWithdrawalFeeBps").selector,
             mzusd.contract.interface.getFunction("setAllowlist").selector,
         ],
-        adminRole
+        adminRole,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         mzusd.address,
         [mzusd.contract.interface.getFunction("burn").selector],
-        roleIds.BURNER_ROLE
+        roleIds.BURNER_ROLE,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         mzusd.address,
         [mzusd.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
+        roleIds.UPGRADER_ROLE,
+        safeBatch
     );
 
     await ensureTargetRole(
         accessManagerAdmin,
         reservoir.address,
         [reservoir.contract.interface.getFunction("withdraw").selector],
-        roleIds.RESERVOIR_WITHDRAW_ROLE
+        roleIds.RESERVOIR_WITHDRAW_ROLE,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         reservoir.address,
         [reservoir.contract.interface.getFunction("setVault").selector],
-        adminRole
+        adminRole,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         reservoir.address,
         [reservoir.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
+        roleIds.UPGRADER_ROLE,
+        safeBatch
     );
 
     await ensureTargetRole(
         accessManagerAdmin,
         lossManager.address,
         [lossManager.contract.interface.getFunction("setMaxLossPerTxUSDC").selector],
-        adminRole
+        adminRole,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         lossManager.address,
         [lossManager.contract.interface.getFunction("upgradeToAndCall").selector],
-        roleIds.UPGRADER_ROLE
+        roleIds.UPGRADER_ROLE,
+        safeBatch
     );
 
     for (const tranche of trancheByKey.values()) {
@@ -1088,19 +1340,22 @@ export async function main() {
                 tranche.contract.interface.getFunction("setDepositLimits").selector,
                 tranche.contract.interface.getFunction("setDepositLimitEnabled").selector,
             ],
-            adminRole
+            adminRole,
+            safeBatch
         );
         await ensureTargetRole(
             accessManagerAdmin,
             tranche.address,
             [tranche.contract.interface.getFunction("upgradeToAndCall").selector],
-            roleIds.UPGRADER_ROLE
+            roleIds.UPGRADER_ROLE,
+            safeBatch
         );
         await ensureTargetRole(
             accessManagerAdmin,
             tranche.address,
             [tranche.contract.interface.getFunction("finalizeEpoch").selector],
-            roleIds.FINALIZER_ROLE
+            roleIds.FINALIZER_ROLE,
+            safeBatch
         );
     }
 
@@ -1108,7 +1363,8 @@ export async function main() {
         accessManagerAdmin,
         navOracle.address,
         [navOracle.contract.interface.getFunction("submitNav").selector],
-        roleIds.ORACLE_ROLE
+        roleIds.ORACLE_ROLE,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
@@ -1119,13 +1375,15 @@ export async function main() {
             navOracle.contract.interface.getFunction("setOracles").selector,
             navOracle.contract.interface.getFunction("setMaxAnswerStaleness").selector,
         ],
-        adminRole
+        adminRole,
+        safeBatch
     );
     await ensureTargetRole(
         accessManagerAdmin,
         navOracle.address,
         [navOracle.contract.interface.getFunction("performUpkeep").selector],
-        roleIds.CHAINLINK_AUTOMATION
+        roleIds.CHAINLINK_AUTOMATION,
+        safeBatch
     );
 
     for (const fin of finalizers) {
@@ -1133,19 +1391,25 @@ export async function main() {
             accessManagerAdmin,
             fin.address,
             [fin.contract.interface.getFunction("performUpkeep").selector],
-            roleIds.CHAINLINK_AUTOMATION
+            roleIds.CHAINLINK_AUTOMATION,
+            safeBatch
         );
     }
 
-    await ensureRoleMember(accessManagerAdmin, adminRole, config.roles.admin, 0);
-
-    await ensureRoleMember(
-        accessManagerAdmin,
-        roleIds.PAUSER_ROLE,
-        config.roles.pauser,
-        delays.pauser ?? 0
-    );
-    if (grantDevRoles && config.roles.pauser.toLowerCase() !== devDeployer.toLowerCase()) {
+    if (reconcileSharedRoles) {
+        await ensureRoleMember(accessManagerAdmin, adminRole, config.roles.admin, 0);
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.PAUSER_ROLE,
+            config.roles.pauser,
+            delays.pauser ?? 0
+        );
+    }
+    if (
+        reconcileSharedRoles &&
+        grantDevRoles &&
+        config.roles.pauser.toLowerCase() !== devDeployer.toLowerCase()
+    ) {
         await ensureRoleMember(
             accessManagerAdmin,
             roleIds.PAUSER_ROLE,
@@ -1153,13 +1417,19 @@ export async function main() {
             delays.pauser ?? 0
         );
     }
-    await ensureRoleMember(
-        accessManagerAdmin,
-        roleIds.UNPAUSER_ROLE,
-        config.roles.unpauser,
-        delays.unpauser ?? 0
-    );
-    if (grantDevRoles && config.roles.unpauser.toLowerCase() !== devDeployer.toLowerCase()) {
+    if (reconcileSharedRoles) {
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.UNPAUSER_ROLE,
+            config.roles.unpauser,
+            delays.unpauser ?? 0
+        );
+    }
+    if (
+        reconcileSharedRoles &&
+        grantDevRoles &&
+        config.roles.unpauser.toLowerCase() !== devDeployer.toLowerCase()
+    ) {
         await ensureRoleMember(
             accessManagerAdmin,
             roleIds.UNPAUSER_ROLE,
@@ -1167,13 +1437,19 @@ export async function main() {
             delays.unpauser ?? 0
         );
     }
-    await ensureRoleMember(
-        accessManagerAdmin,
-        roleIds.UPGRADER_ROLE,
-        config.roles.upgrader,
-        delays.upgrader ?? 0
-    );
-    if (grantDevRoles && config.roles.upgrader.toLowerCase() !== devDeployer.toLowerCase()) {
+    if (reconcileSharedRoles) {
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.UPGRADER_ROLE,
+            config.roles.upgrader,
+            delays.upgrader ?? 0
+        );
+    }
+    if (
+        reconcileSharedRoles &&
+        grantDevRoles &&
+        config.roles.upgrader.toLowerCase() !== devDeployer.toLowerCase()
+    ) {
         await ensureRoleMember(
             accessManagerAdmin,
             roleIds.UPGRADER_ROLE,
@@ -1182,12 +1458,12 @@ export async function main() {
         );
     }
 
-    const withdrawers = new Set<string>([
-        config.roles.admin,
-        ...(config.roles.reservoirWithdrawers ?? []),
-        vault.address,
-    ]);
-    if (grantDevRoles) {
+    const withdrawers = new Set<string>(
+        !reconcileSharedRoles
+            ? [vault.address]
+            : [config.roles.admin, ...(config.roles.reservoirWithdrawers ?? []), vault.address]
+    );
+    if (grantDevRoles && reconcileSharedRoles) {
         withdrawers.add(devDeployer);
     }
     for (const addr of withdrawers) {
@@ -1201,33 +1477,54 @@ export async function main() {
             accessManagerAdmin,
             roleIds.RESERVOIR_WITHDRAW_ROLE,
             addr,
-            executionDelay
+            executionDelay,
+            safeBatch
         );
     }
 
-    const keeperMembers = new Set<string>(config.roles.keepers ?? []);
-    if (grantDevRoles) {
+    const keeperMembers = new Set<string>(reconcileSharedRoles ? (config.roles.keepers ?? []) : []);
+    if (grantDevRoles && reconcileSharedRoles) {
         keeperMembers.add(devDeployer);
     }
     for (const addr of keeperMembers) {
-        await ensureRoleMember(accessManagerAdmin, roleIds.KEEPER_ROLE, addr, delays.keeper ?? 0);
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.KEEPER_ROLE,
+            addr,
+            delays.keeper ?? 0,
+            safeBatch
+        );
     }
 
-    const oracleMembers = new Set<string>(config.navOracle.oracles);
-    if (grantDevRoles) {
+    const oracleMembers = new Set<string>(reconcileSharedRoles ? config.navOracle.oracles : []);
+    if (grantDevRoles && reconcileSharedRoles) {
         oracleMembers.add(devDeployer);
     }
     for (const addr of oracleMembers) {
-        await ensureRoleMember(accessManagerAdmin, roleIds.ORACLE_ROLE, addr, delays.oracle ?? 0);
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.ORACLE_ROLE,
+            addr,
+            delays.oracle ?? 0,
+            safeBatch
+        );
     }
 
     const burnerMembers = new Set<string>(Array.from(trancheByKey.values(), (t) => t.address));
     for (const addr of burnerMembers) {
-        await ensureRoleMember(accessManagerAdmin, roleIds.BURNER_ROLE, addr, delays.burner ?? 0);
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.BURNER_ROLE,
+            addr,
+            delays.burner ?? 0,
+            safeBatch
+        );
     }
 
-    const allowlisterMembers = new Set<string>(config.roles.allowlisters ?? []);
-    if (grantDevRoles) {
+    const allowlisterMembers = new Set<string>(
+        reconcileSharedRoles ? (config.roles.allowlisters ?? []) : []
+    );
+    if (grantDevRoles && reconcileSharedRoles) {
         allowlisterMembers.add(devDeployer);
     }
     for (const addr of allowlisterMembers) {
@@ -1235,83 +1532,112 @@ export async function main() {
             accessManagerAdmin,
             roleIds.ALLOWLISTER_ROLE,
             addr,
-            delays.allowlister ?? 0
+            delays.allowlister ?? 0,
+            safeBatch
         );
     }
     for (const fin of finalizers) {
-        await ensureRoleMember(accessManagerAdmin, roleIds.FINALIZER_ROLE, fin.address, 0);
+        await ensureRoleMember(
+            accessManagerAdmin,
+            roleIds.FINALIZER_ROLE,
+            fin.address,
+            0,
+            safeBatch
+        );
+    }
+
+    let safeBatchPath: string | undefined;
+    if (safeBatch) {
+        assert(
+            safeBatch.length > 0,
+            "Safe setup batch is empty; the vault may already be configured"
+        );
+        safeBatchPath = safeBatch.write(
+            process.env.DEPLOY_SAFE_BATCH_PATH ??
+                `reports/safe-${network.name}-${deploymentId ?? "deployment"}-setup.json`
+        );
+        log.success(`Safe setup batch written to ${safeBatchPath}`);
     }
 
     // === Post-deploy checks ===
-    log.step("Post-deploy checks");
-    assert(
-        (await vault.contract.mzusd()).toLowerCase() === mzusd.address.toLowerCase(),
-        "IssuanceVault.mzusd mismatch"
-    );
-    assert(
-        (await mzusd.contract.vault()).toLowerCase() === vault.address.toLowerCase(),
-        "MZUSD.vault mismatch"
-    );
-    assert(
-        (await mzusd.contract.allowlist()).toLowerCase() === allowlist.address.toLowerCase(),
-        "MZUSD.allowlist mismatch"
-    );
-    assert(
-        await allowlist.contract.verifyAccount(deployerAddress),
-        "AllowlistStub rejected deployer"
-    );
-    assert(
-        (await vault.contract.lossManager()).toLowerCase() === lossManager.address.toLowerCase(),
-        "IssuanceVault.lossManager mismatch"
-    );
-    assert(
-        (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
-        "IssuanceVault.navOracle mismatch"
-    );
-    if (mockNavFeed && mockTotalSupplyFeed) {
-        assert((await mockNavFeed.contract.decimals()) === 8n, "MockNavOracle must use 8 decimals");
+    if (safeHandoff) {
+        log.info("Deferring configured-state checks until the Safe setup batch has executed");
+    } else {
+        log.step("Post-deploy checks");
         assert(
-            (await mockTotalSupplyFeed.contract.decimals()) === 8n,
-            "MockTotalSupplyOracle must use 8 decimals"
+            (await vault.contract.mzusd()).toLowerCase() === mzusd.address.toLowerCase(),
+            "IssuanceVault.mzusd mismatch"
         );
         assert(
-            (await mockNavFeed.contract.mzUSD()).toLowerCase() === mzusd.address.toLowerCase(),
-            "MockNavOracle.mzUSD mismatch"
+            (await mzusd.contract.vault()).toLowerCase() === vault.address.toLowerCase(),
+            "MZUSD.vault mismatch"
         );
         assert(
-            (await mockTotalSupplyFeed.contract.mzUSD()).toLowerCase() ===
-                mzusd.address.toLowerCase(),
-            "MockTotalSupplyOracle.mzUSD mismatch"
+            (await mzusd.contract.allowlist()).toLowerCase() === allowlist.address.toLowerCase(),
+            "MZUSD.allowlist mismatch"
         );
         assert(
-            (await navOracle.contract.navOracle()).toLowerCase() ===
-                mockNavFeed.address.toLowerCase(),
-            "NavOracleAutomation.navOracle mismatch"
+            await allowlist.contract.verifyAccount(deployerAddress),
+            "AllowlistStub rejected deployer"
         );
         assert(
-            (await navOracle.contract.totalSupplyOracle()).toLowerCase() ===
-                mockTotalSupplyFeed.address.toLowerCase(),
-            "NavOracleAutomation.totalSupplyOracle mismatch"
+            (await vault.contract.lossManager()).toLowerCase() ===
+                lossManager.address.toLowerCase(),
+            "IssuanceVault.lossManager mismatch"
         );
-        const [, navAnswer] = await mockNavFeed.contract.latestRoundData();
-        const [, totalSupplyAnswer] = await mockTotalSupplyFeed.contract.latestRoundData();
-        const expectedTotalSupplyAnswer = (await mzusd.contract.totalSupply()) / 10_000_000_000n;
-        assert(navAnswer > 0n, "MockNavOracle answer must be positive after seeding");
         assert(
-            totalSupplyAnswer === expectedTotalSupplyAnswer,
-            "MockTotalSupplyOracle answer is not scaled to 8 decimals"
+            (await vault.contract.navOracle()).toLowerCase() === navOracle.address.toLowerCase(),
+            "IssuanceVault.navOracle mismatch"
         );
-    }
+        if (mockNavFeed && mockTotalSupplyFeed) {
+            assert(
+                (await mockNavFeed.contract.decimals()) === 8n,
+                "MockNavOracle must use 8 decimals"
+            );
+            assert(
+                (await mockTotalSupplyFeed.contract.decimals()) === 8n,
+                "MockTotalSupplyOracle must use 8 decimals"
+            );
+            assert(
+                (await mockNavFeed.contract.mzUSD()).toLowerCase() === mzusd.address.toLowerCase(),
+                "MockNavOracle.mzUSD mismatch"
+            );
+            assert(
+                (await mockTotalSupplyFeed.contract.mzUSD()).toLowerCase() ===
+                    mzusd.address.toLowerCase(),
+                "MockTotalSupplyOracle.mzUSD mismatch"
+            );
+            assert(
+                (await navOracle.contract.navOracle()).toLowerCase() ===
+                    mockNavFeed.address.toLowerCase(),
+                "NavOracleAutomation.navOracle mismatch"
+            );
+            assert(
+                (await navOracle.contract.totalSupplyOracle()).toLowerCase() ===
+                    mockTotalSupplyFeed.address.toLowerCase(),
+                "NavOracleAutomation.totalSupplyOracle mismatch"
+            );
+            const [, navAnswer] = await mockNavFeed.contract.latestRoundData();
+            const [, totalSupplyAnswer] = await mockTotalSupplyFeed.contract.latestRoundData();
+            const expectedTotalSupplyAnswer =
+                (await mzusd.contract.totalSupply()) / 10_000_000_000n;
+            assert(navAnswer > 0n, "MockNavOracle answer must be positive after seeding");
+            assert(
+                totalSupplyAnswer === expectedTotalSupplyAnswer,
+                "MockTotalSupplyOracle answer is not scaled to 8 decimals"
+            );
+        }
 
-    for (const tranche of trancheByKey.values()) {
-        const trancheVault = await tranche.contract.vault();
-        assert(
-            trancheVault.toLowerCase() === vault.address.toLowerCase(),
-            "Tranche.vault mismatch"
-        );
-    }
+        for (const tranche of trancheByKey.values()) {
+            const trancheVault = await tranche.contract.vault();
+            assert(
+                trancheVault.toLowerCase() === vault.address.toLowerCase(),
+                "Tranche.vault mismatch"
+            );
+        }
 
-    log.success("Deployment checks passed");
+        log.success("Deployment checks passed");
+    }
 
     // === Verification ===
     log.step("Verification");
