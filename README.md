@@ -1,4 +1,4 @@
-# Mezzanine Protocol
+# Smart contracts template
 
 Smart contract repository for Mezzanine. This repo includes the core
 contracts, automation, tests, and helper scripts for development and deployment.
