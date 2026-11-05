@@ -1,0 +1,14 @@
+{
+    "schedule": "0 */5 14-21 * * 4",
+    "chainName": "ethereum-mainnet",
+    "isTestnet": false,
+    "gasLimit": "1000000",
+    "vaults": [
+        {
+            "id": "mezzanine-hastra",
+            "issuanceVault": "0xBB03549117e38103589774AE1D6338D1B237FFA2",
+            "navOracleAutomation": "0x9994BC2eCdFd7BDeB5423f5e48E285b91e6a69A7",
+            "receiver": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77"
+        }
+    ]
+}

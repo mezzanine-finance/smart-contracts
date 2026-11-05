@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "chainId": "1",
+  "createdAt": 1793820677121,
+  "meta": {
+    "name": "Hastra epoch timing - temporary duration and new CRE workflow permissions",
+    "description": "REPLACES the earlier single-call epoch-temporary JSON; do not execute both. Three calls: queue 600300 seconds during epoch 3, then allow the new NAV and finalization workflow IDs. Keeps old IDs allowed for controlled cutover. Does not deploy or activate workflows. After the next epoch advance activates 600300, queue 603900 in a SEPARATE later transaction. Recheck on-chain epoch and permissions before signing.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x0b61220A0d0aFd11da63B2931EE368E34E60d122",
+    "createdFromOwnerAddress": "",
+    "checksum": ""
+  },
+  "transactions": [
+    {
+      "to": "0xBB03549117e38103589774AE1D6338D1B237FFA2",
+      "value": "0",
+      "data": "0x5e715deb00000000000000000000000000000000000000000000000000000000000928ec",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+      "value": "0",
+      "data": "0xfe0d2e2a008ca7aea435f0630fb06144ae9281d51aebbdc603795efeb31eed43bf5c06940000000000000000000000000000000000000000000000000000000000000001",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+      "value": "0",
+      "data": "0xfe0d2e2a00b9d33deea21930509aa82b7a3087adf0fdd9f5384470df39af034a11e482680000000000000000000000000000000000000000000000000000000000000001",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+    "accessManager": "0x60A64B9F10fA2C9CacD3EC701e6f3D226d5792Cd",
+    "chainSelector": "5009297550715157269",
+    "chainlinkAutomationRole": 10,
+    "forwarder": "0x0b93082D9b3C7C97fAcd250082899BAcf3af3885",
+    "workflowOwner": "0x2b8c480c73ef7846a73260f882632c6e1782437f",
+    "workflowPermissions": [
+        {
+            "name": "nav-hastra",
+            "id": "0x00bd94ff722e91d9ce1f7e024c9cfe3ea9c7f15b5b947bce4558cc80b22fbb95"
+        },
+        {
+            "name": "finalization-hastra",
+            "id": "0x008aba4f5cdc207643eb0fa3d6b5428fe7a5e200244f32f12d8de75126c22434"
+        }
+    ],
+    "vaults": [
+        {
+            "id": "mezzanine-hastra",
+            "targets": [
+                "0x9994BC2eCdFd7BDeB5423f5e48E285b91e6a69A7",
+                "0x8E070D0977AD7FE597B24132518D19971cE17c51",
+                "0x0630e23e0c2D2147b64Ca493f656fE2514D2027B"
+            ]
+        }
+    ]
+}

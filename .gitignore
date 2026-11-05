@@ -38,6 +38,10 @@ gas-report.txt
 # Output of `solc`.
 bin
 
+# Foundry files.
+cache_forge
+out-foundry
+
 # Docs
 docs/_*/
 docs/test/
@@ -45,5 +49,8 @@ docs/mocks/
 docs/errors/
 docs/interfaces/
 
-# ABI
-abi
+.VSCodeCounter
+
+# CRE build artifacts.
+cre/**/binary.wasm.br.b64
+cre/**/.cre_build_tmp.js

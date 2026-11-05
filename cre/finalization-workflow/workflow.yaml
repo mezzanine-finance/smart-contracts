@@ -1,0 +1,27 @@
+staging-settings:
+  user-workflow:
+    workflow-name: "mezzanine-finalization-workflow-staging"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.staging.json"
+    secrets-path: ""
+
+production-settings:
+  user-workflow:
+    workflow-name: "mezzanine-finalization-workflow-production"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""
+
+
+hastra-settings:
+  user-workflow:
+    workflow-name: "mezzanine-finalization-workflow-hastra"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.hastra.json"
+    secrets-path: ""

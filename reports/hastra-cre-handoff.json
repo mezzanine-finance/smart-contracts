@@ -1,0 +1,38 @@
+{
+  "network": "mainnet",
+  "deploymentId": "mezzanine-hastra",
+  "receiver": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+  "owner": "0x0b61220A0d0aFd11da63B2931EE368E34E60d122",
+  "ownershipTransferTx": "0xada01a3b47751c31726cfe006bb792e4a49c4c45521a79c95f7e744cd79689c2",
+  "ownershipTransferBlock": 26183482,
+  "clientSetupTx": "0x6a9a29ac2128ef8003b988a2dff70610b34711c2d2c5ff1b33576674b54bf27f",
+  "workflows": [
+    {
+      "name": "nav-hastra",
+      "id": "0x00bd94ff722e91d9ce1f7e024c9cfe3ea9c7f15b5b947bce4558cc80b22fbb95",
+      "status": "ACTIVE",
+      "firstExecutionStatus": "SUCCESS",
+      "firstExecutionId": "1cd1f4f9-04fc-4a58-b53f-6b6b8e3f9fc7",
+      "upkeepNeeded": false
+    },
+    {
+      "name": "finalization-hastra",
+      "id": "0x008aba4f5cdc207643eb0fa3d6b5428fe7a5e200244f32f12d8de75126c22434",
+      "status": "ACTIVE",
+      "firstExecutionStatus": "SUCCESS",
+      "firstExecutionId": "da776d14-d60d-4986-8c6e-d9d18c96ec46",
+      "upkeepNeeded": false
+    }
+  ],
+  "verifiedAt": "2026-10-13T12:11:49.926Z",
+  "stateBlock": 26183486,
+  "clientSetupBlock": 26177916,
+  "clientBatchCalls": 39,
+  "auditChecks": 221,
+  "auditFailures": [],
+  "assetBalances": {
+    "safe": "0",
+    "vault": "1000000",
+    "reservoir": "1000000"
+  }
+}

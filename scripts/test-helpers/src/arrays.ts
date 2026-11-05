@@ -11,4 +11,4 @@ function getArrayWithout<T>(array: T[], index: number): T[] {
     return array.filter((_, i) => i !== index);
 }
 
-export { shuffleArray, getArrayWithout };
+export {shuffleArray, getArrayWithout};

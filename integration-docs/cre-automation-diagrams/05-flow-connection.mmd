@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant User
+    participant Tranche
+    participant Submitter as External NAV submitter
+    participant NAV as Pending NAV Workflow
+    participant Vault as IssuanceVault
+    participant FIN as Finalization Workflow
+    participant Finalizer
+
+    User->>Tranche: Request delayed withdrawal
+    Tranche->>Tranche: Store request for target epoch
+    Submitter->>Vault: submitNav() through NavOracleAutomation
+    Note over NAV,Vault: Later, independent pending NAV workflow run
+    NAV->>Vault: performUpkeep() applies NAV and advances epoch
+    Vault->>Vault: currentEpochId increases
+    Note over Vault,FIN: Later, on a separate cron run
+    FIN->>Vault: currentEpochId()
+    Vault-->>FIN: Updated epoch ID
+    FIN->>Finalizer: checkUpkeep(0x)
+    Finalizer-->>FIN: Previous epoch is ready
+    FIN->>Finalizer: performUpkeep(0x) through CRE
+    Finalizer->>Tranche: finalizeEpoch(targetEpoch)
+    User->>Tranche: Claim withdrawal
+    Tranche-->>User: Transfer withdrawable MZUSD

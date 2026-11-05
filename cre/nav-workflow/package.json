@@ -1,0 +1,19 @@
+{
+  "name": "mezzanine-nav-workflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@chainlink/cre-sdk": "^1.19.0",
+    "viem": "^2.56.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "5.9.3"
+  }
+}

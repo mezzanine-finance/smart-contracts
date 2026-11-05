@@ -1,0 +1,18 @@
+{
+    "printWidth": 100,
+    "tabWidth": 4,
+    "useTabs": false,
+    "singleQuote": false,
+    "trailingComma": "es5",
+    "bracketSpacing": false,
+    "plugins": ["prettier-plugin-solidity"],
+    "overrides": [
+        {
+            "files": "*.sol",
+            "options": {
+                "parser": "slang",
+                "compiler": "0.8.30"
+            }
+        }
+    ]
+}

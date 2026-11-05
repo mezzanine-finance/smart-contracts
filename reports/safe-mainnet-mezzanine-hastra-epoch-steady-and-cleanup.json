@@ -1,0 +1,50 @@
+{
+    "version": "1.0",
+    "chainId": "1",
+    "createdAt": 1793877855420,
+    "meta": {
+        "name": "Hastra follow-up - steady epoch duration and obsolete CRE ID cleanup",
+        "description": "STAGE 2 ONLY. Execute AFTER the epoch advance has activated 600300 seconds (expected epoch 4), with pendingEpochDuration=0, and AFTER verifying both new Hastra workflow IDs and their operation. Do NOT execute while 600300 is still queued: this would overwrite the temporary correction. Queues 603900 seconds (7 days minus 15 minutes) for the FOLLOWING epoch advance; revokes two superseded Hastra IDs on its receiver and two deleted Prime IDs on the Prime receiver. Preserves both current Hastra IDs. These preconditions are operational checks, NOT enforced by this JSON or the called contracts.",
+        "txBuilderVersion": "1.18.0",
+        "createdFromSafeAddress": "0x0b61220A0d0aFd11da63B2931EE368E34E60d122",
+        "createdFromOwnerAddress": "",
+        "checksum": ""
+    },
+    "transactions": [
+        {
+            "to": "0xBB03549117e38103589774AE1D6338D1B237FFA2",
+            "value": "0",
+            "data": "0x5e715deb00000000000000000000000000000000000000000000000000000000000936fc",
+            "contractMethod": null,
+            "contractInputsValues": null
+        },
+        {
+            "to": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+            "value": "0",
+            "data": "0xfe0d2e2a00bd94ff722e91d9ce1f7e024c9cfe3ea9c7f15b5b947bce4558cc80b22fbb950000000000000000000000000000000000000000000000000000000000000000",
+            "contractMethod": null,
+            "contractInputsValues": null
+        },
+        {
+            "to": "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77",
+            "value": "0",
+            "data": "0xfe0d2e2a008aba4f5cdc207643eb0fa3d6b5428fe7a5e200244f32f12d8de75126c224340000000000000000000000000000000000000000000000000000000000000000",
+            "contractMethod": null,
+            "contractInputsValues": null
+        },
+        {
+            "to": "0x011b8dDF24AD0eE09CC198Cb0aC4f076f90BB81D",
+            "value": "0",
+            "data": "0xfe0d2e2a009438e6e483da287529fd1d1592d910acf3d29de1b0c4ec0b88d47fd14a24af0000000000000000000000000000000000000000000000000000000000000000",
+            "contractMethod": null,
+            "contractInputsValues": null
+        },
+        {
+            "to": "0x011b8dDF24AD0eE09CC198Cb0aC4f076f90BB81D",
+            "value": "0",
+            "data": "0xfe0d2e2a00ae8da0a29ba3ea9c03706404455647cee92e458d05bba946ad36a01d4fc6290000000000000000000000000000000000000000000000000000000000000000",
+            "contractMethod": null,
+            "contractInputsValues": null
+        }
+    ]
+}

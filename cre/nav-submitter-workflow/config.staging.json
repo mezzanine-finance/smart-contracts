@@ -1,0 +1,18 @@
+{
+    "schedule": "0 */5 * * * *",
+    "chainName": "ethereum-testnet-sepolia",
+    "isTestnet": true,
+    "gasLimit": "1000000",
+    "vaults": [
+        {
+            "id": "vault-1",
+            "submitter": "0xBB9341a473DDC55C24271E30DCE53771284121d4",
+            "receiver": "0x1EBA1C15D49688dc81058a4f5B1C0c0A2275388F"
+        },
+        {
+            "id": "vault-2",
+            "submitter": "0x6C8fAB81d59C9511d37b825A55D91902f5Ca6e21",
+            "receiver": "0x058817bfA8364B2d4330C3A720E7822A1152Bf0D"
+        }
+    ]
+}

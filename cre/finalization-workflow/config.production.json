@@ -1,0 +1,23 @@
+{
+    "schedule": "0 */5 * * * *",
+    "chainName": "ethereum-mainnet",
+    "isTestnet": false,
+    "gasLimit": "500000",
+    "vaults": [
+        {
+            "id": "mezzanine-prime",
+            "issuanceVault": "0x55a0cb0CACBaDD0fe92571768cc256E92F1b857d",
+            "finalizers": [
+                {
+                    "tranche": "senior",
+                    "address": "0x214Ba03264a9534941a1cF21C2b8E6c88864f703"
+                },
+                {
+                    "tranche": "junior",
+                    "address": "0xfDD3B1BA60d6620D12d13C0cddE318e182054778"
+                }
+            ],
+            "receiver": "0x011b8dDF24AD0eE09CC198Cb0aC4f076f90BB81D"
+        }
+    ]
+}

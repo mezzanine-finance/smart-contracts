@@ -1,0 +1,14 @@
+{
+    "schedule": "0 */5 * * * *",
+    "chainName": "ethereum-mainnet",
+    "isTestnet": false,
+    "gasLimit": "1000000",
+    "vaults": [
+        {
+            "id": "mezzanine-prime",
+            "issuanceVault": "0x55a0cb0CACBaDD0fe92571768cc256E92F1b857d",
+            "navOracleAutomation": "0x1A20a4cEB256Be24cEb0cc4f7fE491dd6396E703",
+            "receiver": "0x011b8dDF24AD0eE09CC198Cb0aC4f076f90BB81D"
+        }
+    ]
+}

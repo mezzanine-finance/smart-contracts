@@ -1,2 +1,2 @@
-export { randomInt, randomFloat } from "./src/random-numbers";
-export { shuffleArray, getArrayWithout } from "./src/arrays";
+export {randomInt, randomFloat} from "./src/random-numbers";
+export {shuffleArray, getArrayWithout} from "./src/arrays";

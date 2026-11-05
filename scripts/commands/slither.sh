@@ -12,11 +12,21 @@ if ! command -v slither > /dev/null 2>&1; then
     exit 1
 fi
 
-REPORT_PATH="./SLITHER_REPORT.md"
-TMP_OUTPUT_FILE="./slither-cmd-output.txt"
+REPORT_PATH="./reports/SLITHER_REPORT.md"
+TMP_OUTPUT_FILE="./reports/slither-cmd-output.txt"
 
 echo "Running Slither..."
-slither . --checklist > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE"
+mkdir -p ./reports
+SLITHER_STATUS=0
+slither . --checklist --config-file ./slither.config.json --foundry-out-directory out-foundry > "$REPORT_PATH" 2> "$TMP_OUTPUT_FILE" || SLITHER_STATUS=$?
+if [ "${SLITHER_STRICT:-false}" = "true" ] && [ "$SLITHER_STATUS" -ne 0 ]; then
+    echo "Slither strict mode: exiting with code $SLITHER_STATUS."
+    exit "$SLITHER_STATUS"
+fi
+if [ "$SLITHER_STATUS" -ne 0 ] && [ "$SLITHER_STATUS" -ne 255 ]; then
+    echo "Slither failed with exit code $SLITHER_STATUS."
+    exit "$SLITHER_STATUS"
+fi
 
 echo "Preparing the Slither report..."
 echo "* * *" >> "$REPORT_PATH"
