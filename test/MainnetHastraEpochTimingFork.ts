@@ -10,6 +10,11 @@ const TEMPORARY_DURATION = WEEK - 75n * 60n;
 const STEADY_DURATION = WEEK - 15n * 60n;
 const SAFE = "0x0b61220A0d0aFd11da63B2931EE368E34E60d122";
 const RECEIVER = "0xFAf5012Ee1d9344cf388281e67982Efa75a0bC77";
+const PRIME_RECEIVER = "0x011b8dDF24AD0eE09CC198Cb0aC4f076f90BB81D";
+const PRIME_WORKFLOW_IDS = [
+    "0x009438e6e483da287529fd1d1592d910acf3d29de1b0c4ec0b88d47fd14a24af",
+    "0x00ae8da0a29ba3ea9c03706404455647cee92e458d05bba946ad36a01d4fc629",
+];
 const OPERATOR = "0x816dd023C90eDfb751EEfdCCe064AeBB3Bb2AaEd";
 const VAULT = "0xBB03549117e38103589774AE1D6338D1B237FFA2";
 const NAV = "0x9994BC2eCdFd7BDeB5423f5e48E285b91e6a69A7";
@@ -113,6 +118,87 @@ forkTest("Hastra epoch timing transition on a pinned mainnet fork", function () 
         }
         expect(await receiver.owner()).to.equal(SAFE);
         expect(await vault.pendingEpochDuration()).to.equal(TEMPORARY_DURATION);
+    });
+
+    it("applies the follow-up Safe calls after temporary activation and preserves current Hastra IDs", async () => {
+        const signer = await ethers.getSigner(SAFE);
+        const vault = await ethers.getContractAt("IssuanceVault", VAULT, signer);
+        const nav = await ethers.getContractAt("NavOracleAutomation", NAV);
+        const receiver = await ethers.getContractAt("AutomationReceiver", RECEIVER, signer);
+        const primeReceiver = await ethers.getContractAt(
+            "AutomationReceiver",
+            PRIME_RECEIVER,
+            signer
+        );
+        const initialBatch = JSON.parse(
+            fs.readFileSync(
+                "reports/safe-mainnet-mezzanine-hastra-epoch-and-workflows.json",
+                "utf8"
+            )
+        );
+        for (const tx of initialBatch.transactions) await (await signer.sendTransaction(tx)).wait();
+        expect(await vault.epochDuration()).to.equal(WEEK);
+        expect(await vault.pendingEpochDuration()).to.equal(TEMPORARY_DURATION);
+
+        await time.setNextBlockTimestamp(utc("2026-11-05T14:25:11Z"));
+        await nav.connect(await ethers.getSigner(RECEIVER)).performUpkeep("0x");
+        expect(await vault.currentEpochId()).to.equal(4n);
+        expect(await vault.epochDuration()).to.equal(TEMPORARY_DURATION);
+        expect(await vault.pendingEpochDuration()).to.equal(0n);
+        for (const workflow of WORKFLOW_PERMISSIONS)
+            expect(await receiver.allowedWorkflowIds(workflow.id)).to.equal(true);
+
+        const batch = JSON.parse(
+            fs.readFileSync(
+                "reports/safe-mainnet-mezzanine-hastra-epoch-steady-and-cleanup.json",
+                "utf8"
+            )
+        );
+        expect(batch.chainId).to.equal("1");
+        expect(batch.meta.createdFromSafeAddress).to.equal(SAFE);
+        expect(batch.transactions).to.have.length(5);
+        expect(await primeReceiver.owner()).to.equal(SAFE);
+        const expected = [
+            {
+                to: VAULT,
+                data: vault.interface.encodeFunctionData("setEpochConfig", [STEADY_DURATION]),
+            },
+            ...WORKFLOW_PERMISSIONS.map(({oldId}) => ({
+                to: RECEIVER,
+                data: receiver.interface.encodeFunctionData("setWorkflowPermission", [
+                    oldId,
+                    false,
+                ]),
+            })),
+            ...PRIME_WORKFLOW_IDS.map((id) => ({
+                to: PRIME_RECEIVER,
+                data: primeReceiver.interface.encodeFunctionData("setWorkflowPermission", [
+                    id,
+                    false,
+                ]),
+            })),
+        ];
+        const start = await vault.epochStart();
+        for (const [index, tx] of batch.transactions.entries()) {
+            expect(tx.to).to.equal(expected[index].to);
+            expect(tx.data).to.equal(expected[index].data);
+            expect(tx.value).to.equal("0");
+            await (await signer.sendTransaction(tx)).wait();
+        }
+        expect(await vault.pendingEpochDuration()).to.equal(STEADY_DURATION);
+        expect(await vault.epochDuration()).to.equal(TEMPORARY_DURATION);
+        expect(await vault.currentEpochId()).to.equal(4n);
+        expect(await vault.epochStart()).to.equal(start);
+        for (const {oldId, id} of WORKFLOW_PERMISSIONS) {
+            expect(await receiver.allowedWorkflowIds(oldId)).to.equal(false);
+            expect(await receiver.allowedWorkflowIds(id)).to.equal(true);
+        }
+        for (const id of PRIME_WORKFLOW_IDS)
+            expect(await primeReceiver.allowedWorkflowIds(id)).to.equal(false);
+        for (const address of TRANCHES) {
+            const tranche = await ethers.getContractAt("Tranche", address);
+            expect(await tranche.yieldStreamEnd()).to.equal(start + TEMPORARY_DURATION);
+        }
     });
 
     it("respects the late NAV veto, recovers on November 12, and keeps November 19 at 14:00 UTC", async () => {
