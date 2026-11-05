@@ -1,9 +1,9 @@
-// Reads upkeep readiness and calldata from finalized on-chain state.
+// Reads upkeep readiness and calldata from the latest on-chain state.
 import {
     bytesToHex,
     encodeCallMsg,
     EVMClient,
-    LAST_FINALIZED_BLOCK_NUMBER,
+    LATEST_BLOCK_NUMBER,
     type Runtime,
 } from "@chainlink/cre-sdk";
 import {decodeFunctionResult, encodeFunctionData, zeroAddress, type Address, type Hex} from "viem";
@@ -31,8 +31,8 @@ export const readUpkeep = (
                     args: ["0x"],
                 }),
             }),
-            // Finalized reads can lag recent state changes until a later cron run.
-            blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+            // Observe completed upkeep immediately instead of waiting for finality.
+            blockNumber: LATEST_BLOCK_NUMBER,
         })
         .result();
     const [upkeepNeeded, performData] = decodeFunctionResult({

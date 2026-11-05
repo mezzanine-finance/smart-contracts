@@ -1,5 +1,5 @@
 {
-    "schedule": "0 */5 * * * *",
+    "schedule": "0 */5 14-21 * * 4",
     "chainName": "ethereum-mainnet",
     "isTestnet": false,
     "gasLimit": "1000000",
